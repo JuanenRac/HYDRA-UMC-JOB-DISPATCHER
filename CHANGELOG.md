@@ -27,10 +27,8 @@ semantic-versioning judgment calls:
   where the README always said it would (`src/`), rather than
   introducing a second, competing location. `main.go`/`version.go` stay
   at the repo root as the entry point.
-- Removed the empty, unused `docs/`, `images/` and `scripts/` folders
-  (moved to `SONNET/_papelera/`, never deleted outright) - kept only
-  while there was nothing real to put in them; real content can recreate
-  them later.
+- Removed the empty, unused `docs/`, `images/` and `scripts/` folders while
+  there was nothing real to put in them; real content can recreate them later.
 - `run.sh`/`run.bat` now forward CLI arguments (`"$@"`/`%*`) to the
   compiled binary - a gap from 0.0.2 (the README already showed
   `run.bat -addr ...`, but the script silently dropped the flag).
