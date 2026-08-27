@@ -63,6 +63,8 @@ HYDRA-UMC-JOB-DISPATCHER/
 │   ├── dispatcher/    # Le véritable moteur de planification : file,
 │   │                  # routage tenant compte de l'outil, dépendances multi-étapes
 │   └── api/           # Handlers JSON/HTTP simples encapsulant le moteur
+├── docs/
+│   └── API.md         # Référence réelle des endpoints HTTP (requêtes, réponses, codes de statut)
 ├── build/             # Binaires compilés (sortie de build.sh/build.bat)
 ├── go.mod / go.sum    # Définition du module Go
 ├── version.go         # const Version = "X.Y.Z" (go.mod n'a pas ce champ)
@@ -73,11 +75,12 @@ HYDRA-UMC-JOB-DISPATCHER/
 └── README.md
 ```
 
-Élagué du modèle original : `hardware/`, `firmware/`, `os/`, `docs/`,
+Élagué du modèle original : `hardware/`, `firmware/`, `os/`,
 `images/` et `scripts/` — il s'agit d'un service purement logiciel
 (binaire Go) sans matériel ni firmware propres, sans image de système
-d'exploitation à maintenir, et sans contenu de documentation/médias/scripts
-utilitaires encore suffisant pour justifier leurs propres dossiers.
+d'exploitation à maintenir, et sans contenu de médias/scripts utilitaires
+encore suffisant pour justifier leurs propres dossiers. Voir
+[`docs/API.md`](docs/API.md) pour la référence complète des endpoints HTTP.
 
 ---
 

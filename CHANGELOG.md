@@ -20,6 +20,18 @@ semantic-versioning judgment calls:
 
 ---
 
+## Documentation - Real HTTP API reference
+
+- **`docs/API.md`** (new) - every real endpoint (`GET`/`POST /jobs`,
+  `POST /jobs/complete`, `GET`/`POST /robots`, `POST /dispatch`)
+  documented from the actual handler code in `api.go` and the scheduling
+  semantics in `dispatcher.go`: request/response bodies, every status
+  code, and precisely how `Status`/`Load`/dependency-unblocking behave.
+  Cross-checked against `api_test.go`'s real status-code assertions.
+  Documentation-only - no code changed, no version bump.
+
+---
+
 ## [0.0.4] - Source layout: `src/` instead of `internal/`, unused folders removed
 
 - Moved `internal/dispatcher` and `internal/api` (added in 0.0.2) to

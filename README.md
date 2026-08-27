@@ -63,6 +63,8 @@ HYDRA-UMC-JOB-DISPATCHER/
 │   ├── dispatcher/    # The real scheduling engine: queue, tool-aware
 │   │                  # routing, multi-stage dependencies
 │   └── api/           # Plain JSON/HTTP handlers wrapping the engine
+├── docs/
+│   └── API.md         # Real HTTP endpoint reference (requests, responses, status codes)
 ├── build/             # Compiled binaries (build.sh/build.bat output)
 ├── go.mod / go.sum    # Go module definition
 ├── version.go         # const Version = "X.Y.Z" (go.mod has no app version field)
@@ -73,11 +75,12 @@ HYDRA-UMC-JOB-DISPATCHER/
 └── README.md
 ```
 
-Pruned from the original template: `hardware/`, `firmware/`, `os/`, `docs/`,
+Pruned from the original template: `hardware/`, `firmware/`, `os/`,
 `images/` and `scripts/` — this is a pure software service (Go binary)
 with no dedicated hardware or firmware of its own, no operating system image
-to maintain, and no documentation/media/utility-script content substantial
-enough yet to warrant their own folders.
+to maintain, and no media/utility-script content substantial enough yet to
+warrant their own folders. See [`docs/API.md`](docs/API.md) for the full
+HTTP endpoint reference.
 
 ---
 

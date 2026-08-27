@@ -66,6 +66,8 @@ HYDRA-UMC-JOB-DISPATCHER/
 │   ├── dispatcher/    # 真正的调度引擎：队列、工具感知路由、
 │   │                  # 多阶段依赖关系
 │   └── api/           # 封装引擎的简单 JSON/HTTP 处理器
+├── docs/
+│   └── API.md         # 真实的 HTTP 端点参考（请求、响应、状态码）
 ├── build/             # 编译后的二进制文件（build.sh/build.bat 的输出）
 ├── go.mod / go.sum    # Go 模块定义
 ├── version.go         # const Version = "X.Y.Z"（go.mod 没有应用版本字段）
@@ -76,10 +78,11 @@ HYDRA-UMC-JOB-DISPATCHER/
 └── README.md
 ```
 
-从原始模板中省略：`hardware/`、`firmware/`、`os/`、`docs/`、
+从原始模板中省略：`hardware/`、`firmware/`、`os/`、
 `images/` 和 `scripts/`——这是一个纯软件服务（Go 二进制文件），
 没有专属硬件或固件，没有需要维护的操作系统镜像，目前也还没有
-足够多的文档/媒体/实用脚本内容值得为它们单独建立文件夹。
+足够多的媒体/实用脚本内容值得为它们单独建立文件夹。完整的 HTTP
+端点参考见 [`docs/API.md`](docs/API.md)。
 
 ---
 
