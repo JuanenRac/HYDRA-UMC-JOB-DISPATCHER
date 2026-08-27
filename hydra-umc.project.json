@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "ecosystem": "HYDRA-UMC",
+  "name": "HYDRA-UMC-JOB-DISPATCHER",
+  "version": "0.0.4",
+  "role": "api",
+  "stack": "go",
+  "technologies": [
+    "Go",
+    "priority queue",
+    "HTTP API"
+  ],
+  "deployment_target": "cm5",
+  "maturity": "functional",
+  "family": "Orchestration & Swarm",
+  "parent": "HYDRA-UMC-ORCHESTRATOR",
+  "build": "go build ./...",
+  "notes": "Real priority-based job queue with a real HTTP API, tested.",
+  "native_version": {
+    "file": "version.go",
+    "pattern": "Version\\s*=\\s*\"(\\d+)\\.(\\d+)\\.(\\d+)\""
+  }
+}
