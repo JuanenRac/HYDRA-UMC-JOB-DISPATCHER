@@ -31,6 +31,7 @@
 * ⚖️ **工具認識ルーティング：** 正しい URTC ヘッドを持つロボットへ自動的にジョブをルーティングします。
 * 🔄 **マルチステージミッション：** タスク間の依存関係を管理します（例：「ピック」は「プレース」より先に発生する必要があります）。
 * 📡 **永続性：** ローカルの Redis/データベースストレージを用いた耐障害性のあるミッション状態管理。
+* 🔁 **冪等な送信（v0）：** `POST /jobs/submit` による実際の、任意の `DedupKey` ベースの重複排除——進行中または既に完了したジョブを再送信すると変更されずに返され、実際の失敗後の再試行は同じジョブ ID を再利用し、作業を二重に実行しません。優先順位の順序は繰り返し実行しても決定論的であり、明示的な回帰テストでカバーされています。
 
 ---
 
@@ -56,6 +57,8 @@ flowchart LR
 * **スケジューラは今日すでに本物だが、永続化はまだ本物ではない理由。** `src/dispatcher` は README の "DISPATCHER FLOW" 図が説明する実際のアルゴリズムを実装しています：優先度順に並んだグローバルキュー、工具を意識したルーティング、さらに多段階依存関係（`DependsOn` 内のすべてのジョブが `done` に達するまで、ジョブは `blocked` のまま）。これらはすべてメモリ上にのみ存在します——`Engine` の状態は、後で Redis/DB バックエンドのストアが、各呼び出し側を変えることなくこれらのメソッドの背後にあるものを置き換えられるよう、あえてエクスポートされたメソッドの背後に保持されています。スケジューリングアルゴリズム自体が正しいことを証明することが最初に来ました。
 * **HTTP API が gRPC ではなくプレーンな JSON/HTTP である理由。** これは人間/運用向けの制御サーフェース（ジョブを送信し、ロボットを登録し、何が起こったか尋ねる）です——`hydra.common.v1`（エコシステム共通の gRPC 契約、`HYDRA-UMC-ORCHESTRATOR/proto/` 参照）は、その proto 自体の既に文書化された適用範囲に従い、ノード間通信用に予約されたままです。
 * **エコシステムの他の部分との関係。** HYDRA-UMC-ORCHESTRATOR の下の兄弟サービスです——ミッションレベルの決定を、URTC の工具可用性と HYDRA-UMC-PATH-PLANNER-3D 自身のルートに照らしてチェックされた、具体的なロボットごとのジョブ割当てに変換します。
+* **`POST /jobs/submit` が `POST /jobs` を変更するのではなく新しいルートである理由。** `AddJob()`/`POST /jobs` は常に挿入を行い、ID の衝突ではエラーになります——この低レベルの契約は変更されません。`SubmitJob()`/`POST /jobs/submit` は `Job.DedupKey` を介してその上に実際の、任意の重複排除を重ねます——これはエコシステム全体で使われているのと同じパターンです（変更されない低レベルのプリミティブの隣に安全策付きのエントリポイントを追加するのであって、それに動作の変更を接ぎ木するのではありません）。
+* **失敗後の再試行が新しいジョブを作成するのではなく同じジョブ ID を再利用する理由。** 代替案——再試行のたびに新しいジョブを生成する——は、一つの論理的な作業単位の履歴を複数の ID に分散させてしまい、呼び出し側には「これは一度失敗して再試行されている」のか「これは無関係な新しい作業」なのかを区別する手段がなくなります。元のジョブを `Pending` にリセットすることで、失敗した試行を含むそのライフサイクル全体が一つの ID の下に保たれます。
 
 ---
 
@@ -117,6 +120,20 @@ curl -X POST localhost:8090/dispatch -d '{}'
 curl -X POST localhost:8090/jobs/complete -d '{"id":"job-1","success":true}'
 curl localhost:8090/jobs
 curl localhost:8090/robots
+```
+
+```bash
+# 冪等な送信：同じ dedupKey を持つ再試行リクエストは、クライアントが
+# 異なる id を使っても、同じジョブを二度実行することは決してありません。
+curl -X POST localhost:8090/jobs/submit -d '{"id":"job-2","priority":5,"requiredTool":"PnP","dedupKey":"req-abc"}'
+# -> {"ID":"job-2", ..., "result":"created"}
+curl -X POST localhost:8090/jobs/submit -d '{"id":"job-2-retry","priority":5,"requiredTool":"PnP","dedupKey":"req-abc"}'
+# -> {"ID":"job-2", ..., "result":"duplicate"} - 同じジョブ、変更なし
+
+# 実際の失敗の後、同じ dedupKey での再試行は job-2 の ID を再利用します：
+curl -X POST localhost:8090/jobs/complete -d '{"id":"job-2","success":false}'
+curl -X POST localhost:8090/jobs/submit -d '{"id":"job-2-retry-2","priority":5,"requiredTool":"PnP","dedupKey":"req-abc"}'
+# -> {"ID":"job-2", "Status":"pending", ..., "result":"retried"}
 ```
 
 ```bash

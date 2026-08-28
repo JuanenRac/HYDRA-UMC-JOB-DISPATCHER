@@ -61,6 +61,50 @@ Submits a new job to the queue.
 
 ---
 
+## `POST /jobs/submit`
+
+The idempotent counterpart to `POST /jobs`: submits work identified by an
+opt-in `dedupKey` instead of relying solely on the caller picking a unique
+`id`. Built for a client that may retry a submission (a timed-out HTTP
+response, a process restart mid-request) and needs a guarantee that the
+same logical job is never scheduled or run twice.
+
+**Request body**
+
+```json
+{
+  "id": "weld-42",
+  "priority": 5,
+  "requiredTool": "Laser",
+  "dependsOn": ["prep-42"],
+  "dedupKey": "req-9f2a"
+}
+```
+
+Same fields as `POST /jobs`, plus:
+
+- `dedupKey` (string, optional) - identifies the logical unit of work behind this submission, independent of `id`. Omitted or empty means no deduplication: behaves exactly like `POST /jobs`.
+
+**Responses**
+
+| Status | Body | Meaning |
+|---|---|---|
+| 201 | the created `Job` + `"result": "created"` | No job with this `dedupKey` existed yet - a real new job was inserted, same as `POST /jobs`. |
+| 200 | the existing `Job` + `"result": "duplicate"` | A job with this `dedupKey` is already `"pending"`, `"blocked"`, `"assigned"`, or `"done"` - returned **unchanged**. The submitted `id`/`priority`/etc. are ignored; nothing new is scheduled. |
+| 200 | the reset `Job` + `"result": "retried"` | A job with this `dedupKey` previously ended `"failed"` - it is reset to `"pending"` under its **original `id`**, refreshed with this submission's `priority`/`requiredTool`/`dependsOn`. |
+| 400 | `{"error": "\"id\" is required"}` or a JSON decode error | Missing `id`, or malformed JSON body. |
+| 409 | same error shapes as `POST /jobs` | No matching `dedupKey` on record and the plain insert failed (ID collision or unknown dependency), or a `"retried"` reset was attempted with an unknown `dependsOn` entry. |
+
+```bash
+curl -X POST localhost:8090/jobs/submit -d '{"id":"job-2","priority":5,"dedupKey":"req-abc"}'
+# -> 201 {"ID":"job-2", "Status":"pending", ..., "result":"created"}
+
+curl -X POST localhost:8090/jobs/submit -d '{"id":"job-2-retry","priority":5,"dedupKey":"req-abc"}'
+# -> 200 {"ID":"job-2", "Status":"pending", ..., "result":"duplicate"} - job-2, untouched
+```
+
+---
+
 ## `POST /jobs/complete`
 
 Marks an assigned job as finished (success or failure).

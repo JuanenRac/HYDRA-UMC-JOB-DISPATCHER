@@ -27,6 +27,7 @@ Garantisce che i compiti ad alta priorità (ad esempio, «Riparazione difetti di
 * ⚖️ **Routing consapevole degli strumenti:** Instrada automaticamente i lavori al robot con la testina URTC corretta.
 * 🔄 **Missioni multi-fase:** Gestisce le dipendenze tra i compiti (es. «Pick» deve avvenire prima di «Place»).
 * 📡 **Persistenza:** Stato della missione tollerante ai guasti utilizzando l'archiviazione locale Redis/Database.
+* 🔁 **Invio Idempotente (v0):** Deduplicazione reale e opzionale basata su `DedupKey` tramite `POST /jobs/submit` - un reinvio di un job in corso o già completato viene restituito invariato, e un nuovo tentativo dopo un fallimento reale riutilizza lo stesso ID del job invece di eseguire il lavoro due volte. L'ordine di priorità è deterministico attraverso esecuzioni ripetute, coperto da un test di regressione esplicito.
 
 ---
 
@@ -52,6 +53,8 @@ flowchart LR
 * **Perché lo scheduler è già reale oggi ma la persistenza no.** `src/dispatcher` implementa il vero algoritmo descritto dal diagramma "DISPATCHER FLOW" del README: una coda globale ordinata per priorità, instradamento consapevole dell'utensile, e dipendenze multi-fase (un lavoro resta `blocked` finché ogni suo `DependsOn` non raggiunge `done`). Tutto questo vive solo in memoria - lo stato di `Engine` resta dietro metodi esportati proprio perché uno storage basato su Redis/DB possa sostituire ciò che sta dietro quei metodi in seguito senza cambiare ogni chiamante. Dimostrare che l'algoritmo di scheduling in sé fosse corretto è venuto prima.
 * **Perché l'API HTTP è JSON/HTTP semplice, non gRPC.** È una superficie di controllo rivolta a umani/operatori (inviare un lavoro, registrare un robot, chiedere cosa è successo) - `hydra.common.v1` (il contratto gRPC condiviso dell'ecosistema, vedi `HYDRA-UMC-ORCHESTRATOR/proto/`) resta riservato al traffico nodo-a-nodo, secondo l'ambito già documentato di quel proto.
 * **Come si inserisce nel resto dell'ecosistema.** Un servizio fratello sotto HYDRA-UMC-ORCHESTRATOR - trasforma decisioni a livello di missione in assegnazioni concrete di lavoro per robot, verificate contro la disponibilità utensili di URTC e i percorsi propri di HYDRA-UMC-PATH-PLANNER-3D.
+* **Perché `POST /jobs/submit` è una nuova rotta invece di modificare `POST /jobs`.** `AddJob()`/`POST /jobs` inseriscono sempre e falliscono su una collisione di ID - quel contratto di basso livello resta intatto. `SubmitJob()`/`POST /jobs/submit` aggiunge sopra una deduplicazione reale e opzionale tramite `Job.DedupKey`: lo stesso schema usato in tutto l'ecosistema (un punto di ingresso con verifica aggiunto accanto a una primitiva di basso livello invariata, non un cambio di comportamento innestato su di essa).
+* **Perché un nuovo tentativo dopo un fallimento riutilizza lo stesso ID del job invece di crearne uno nuovo.** L'alternativa - generare un nuovo job a ogni tentativo - disperderebbe la cronologia di un'unica unità logica di lavoro su più ID e non darebbe a chi chiama modo di distinguere "questo è fallito una volta e viene ritentato" da "questo è nuovo lavoro senza relazione". Ripristinare il job originale a `Pending` mantiene tutto il suo ciclo di vita (incluso il tentativo fallito) sotto un unico ID.
 
 ---
 
@@ -112,6 +115,20 @@ curl -X POST localhost:8090/dispatch -d '{}'
 curl -X POST localhost:8090/jobs/complete -d '{"id":"job-1","success":true}'
 curl localhost:8090/jobs
 curl localhost:8090/robots
+```
+
+```bash
+# Invio idempotente: una richiesta ritentata con lo stesso dedupKey non
+# esegue mai due volte lo stesso job, anche se il client usa un id diverso.
+curl -X POST localhost:8090/jobs/submit -d '{"id":"job-2","priority":5,"requiredTool":"PnP","dedupKey":"req-abc"}'
+# -> {"ID":"job-2", ..., "result":"created"}
+curl -X POST localhost:8090/jobs/submit -d '{"id":"job-2-retry","priority":5,"requiredTool":"PnP","dedupKey":"req-abc"}'
+# -> {"ID":"job-2", ..., "result":"duplicate"} - stesso job, invariato
+
+# Dopo un fallimento reale, un nuovo tentativo con lo stesso dedupKey riutilizza l'ID di job-2:
+curl -X POST localhost:8090/jobs/complete -d '{"id":"job-2","success":false}'
+curl -X POST localhost:8090/jobs/submit -d '{"id":"job-2-retry-2","priority":5,"requiredTool":"PnP","dedupKey":"req-abc"}'
+# -> {"ID":"job-2", "Status":"pending", ..., "result":"retried"}
 ```
 
 ```bash

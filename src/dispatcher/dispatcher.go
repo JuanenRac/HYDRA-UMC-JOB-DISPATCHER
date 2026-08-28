@@ -37,8 +37,23 @@ type Job struct {
 	Status       JobStatus
 	AssignedRobot string
 
+	// DedupKey identifies the logical unit of work behind this submission
+	// (e.g. a client-generated request ID), independent of Job.ID. Empty
+	// means "no deduplication requested" - AddJob's plain ID-collision
+	// check is the only guard, unchanged. See SubmitJob.
+	DedupKey string
+
 	seq int64 // internal submission order, used only as a stable tie-breaker
 }
+
+// SubmitResult reports what SubmitJob actually did with a submission.
+type SubmitResult string
+
+const (
+	SubmitCreated   SubmitResult = "created"   // no matching DedupKey on record - a brand new job was added
+	SubmitDuplicate SubmitResult = "duplicate" // an in-flight or already-done job with this DedupKey exists - returned untouched
+	SubmitRetried   SubmitResult = "retried"   // a previously Failed job with this DedupKey was reset to Pending for a fresh attempt
+)
 
 // Robot is one entry in the fleet registry this engine dispatches against.
 type Robot struct {
@@ -67,17 +82,19 @@ type Assignment struct {
 // backing store can be added later by changing what's behind those
 // methods, not by changing every caller.
 type Engine struct {
-	mu       sync.Mutex
-	jobs     map[string]*Job
-	robots   map[string]*Robot
-	nextSeq  int64
+	mu         sync.Mutex
+	jobs       map[string]*Job
+	robots     map[string]*Robot
+	nextSeq    int64
+	dedupIndex map[string]string // DedupKey -> JobID, only for jobs submitted with a non-empty DedupKey
 }
 
 // NewEngine returns an empty, ready-to-use Engine.
 func NewEngine() *Engine {
 	return &Engine{
-		jobs:   make(map[string]*Job),
-		robots: make(map[string]*Robot),
+		jobs:       make(map[string]*Job),
+		robots:     make(map[string]*Robot),
+		dedupIndex: make(map[string]string),
 	}
 }
 
@@ -92,16 +109,27 @@ var (
 // AddJob submits a new job to the queue. DependsOn entries must already
 // exist (submitted earlier) - this catches a typo'd dependency ID at
 // submission time instead of the job silently never becoming eligible.
+//
+// AddJob always inserts: two calls with the same ID are a real error
+// (ErrJobExists), never silently merged. For a caller that may retry a
+// submission and needs the SAME logical job returned instead of a
+// collision error, see SubmitJob.
 func (e *Engine) AddJob(j Job) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	_, err := e.addJobLocked(j)
+	return err
+}
 
+// addJobLocked is the shared insert path for AddJob and a first-time
+// SubmitJob call. Caller must hold e.mu.
+func (e *Engine) addJobLocked(j Job) (*Job, error) {
 	if _, exists := e.jobs[j.ID]; exists {
-		return fmt.Errorf("%w: %q", ErrJobExists, j.ID)
+		return nil, fmt.Errorf("%w: %q", ErrJobExists, j.ID)
 	}
 	for _, dep := range j.DependsOn {
 		if _, exists := e.jobs[dep]; !exists {
-			return fmt.Errorf("%w: job %q depends on %q", ErrUnknownDep, j.ID, dep)
+			return nil, fmt.Errorf("%w: job %q depends on %q", ErrUnknownDep, j.ID, dep)
 		}
 	}
 
@@ -110,7 +138,62 @@ func (e *Engine) AddJob(j Job) error {
 	stored.seq = e.nextSeq
 	stored.Status = e.computeStatus(&stored)
 	e.jobs[j.ID] = &stored
-	return nil
+	if stored.DedupKey != "" {
+		e.dedupIndex[stored.DedupKey] = stored.ID
+	}
+	return &stored, nil
+}
+
+// SubmitJob is the idempotent entry point for submitting work: unlike
+// AddJob (which always inserts and errors on an ID collision), SubmitJob
+// treats a repeated Job.DedupKey as the same logical unit of work -
+// this is what makes a retried submission never execute the same work
+// twice.
+//
+//   - DedupKey == "": always creates a new job, identical to AddJob.
+//   - An existing job with the same DedupKey that is Pending, Blocked,
+//     Assigned, or Done is returned UNCHANGED (SubmitDuplicate). A caller
+//     that resubmits after a timed-out response, unsure whether the first
+//     attempt was received, gets back the original job instead of a
+//     second one racing it for a robot or a robot running it twice.
+//   - An existing job with the same DedupKey that is Failed is reset to
+//     Pending (SubmitRetried) under its ORIGINAL job ID, refreshed with
+//     the retry's own Priority/RequiredTool/DependsOn (e.g. a bumped
+//     Priority on a retried defect fix) - a genuine retry-after-failure
+//     reuses the same job identity rather than minting a new one, so its
+//     history stays under one ID.
+func (e *Engine) SubmitJob(j Job) (Job, SubmitResult, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	if j.DedupKey != "" {
+		if existingID, ok := e.dedupIndex[j.DedupKey]; ok {
+			existing := e.jobs[existingID]
+			if existing.Status != StatusFailed {
+				return *existing, SubmitDuplicate, nil
+			}
+			for _, dep := range j.DependsOn {
+				if dep == existing.ID {
+					return Job{}, "", fmt.Errorf("%w: job %q cannot depend on itself", ErrUnknownDep, existing.ID)
+				}
+				if _, ok := e.jobs[dep]; !ok {
+					return Job{}, "", fmt.Errorf("%w: job %q depends on %q", ErrUnknownDep, existing.ID, dep)
+				}
+			}
+			existing.Priority = j.Priority
+			existing.RequiredTool = j.RequiredTool
+			existing.DependsOn = j.DependsOn
+			existing.AssignedRobot = ""
+			existing.Status = e.computeStatus(existing)
+			return *existing, SubmitRetried, nil
+		}
+	}
+
+	stored, err := e.addJobLocked(j)
+	if err != nil {
+		return Job{}, "", err
+	}
+	return *stored, SubmitCreated, nil
 }
 
 // UpsertRobot registers a new robot or updates an existing one's fields

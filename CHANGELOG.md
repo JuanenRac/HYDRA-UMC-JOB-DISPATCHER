@@ -32,6 +32,14 @@ semantic-versioning judgment calls:
 
 ---
 
+## [0.0.6] - Idempotent job submission: real deduplication and safe retry
+
+- **`dispatcher.go`** - `Job` gains an opt-in `DedupKey` field and `Engine` gains `SubmitJob()`, a new idempotent entry point alongside the existing `AddJob()` (unchanged: still always inserts, still errors on an ID collision). `SubmitJob()` treats a repeated `DedupKey` as the same logical unit of work: a job that's Pending, Blocked, Assigned, or already Done is returned **unchanged** on a repeat submission (`SubmitDuplicate`) - the real guarantee this closes is that a client retrying a request it's unsure was received (a timed-out HTTP call, for example) can never cause the same job to be scheduled or run twice. A job that previously ended `Failed` is instead reset to `Pending` under its **original job ID** (`SubmitRetried`), refreshed with the retry's own `Priority`/`RequiredTool`/`DependsOn` - a genuine retry-after-failure keeps its whole history under one ID instead of minting a new one.
+- **`api.go`** - new `POST /jobs/submit` route wraps `SubmitJob()` (`201` on a real creation, `200` on a duplicate or a retry, with a `result` field in the response body); the existing `POST /jobs` route is untouched, still backed by `AddJob()`, same response shape as before for every current caller.
+- Deterministic priority ordering (already true in practice - `DispatchOnce()` sorts by `Priority` descending, then submission order ascending as a stable tie-break) is now covered by an explicit regression test that rebuilds the same job set from scratch 20 times and asserts the dispatch order never varies - guards against a future accidental dependency on Go's randomized map iteration order.
+- **`build.sh`** - fixed a version double-bump: the manifest-sync step ran `bump_manifest_version.py` without `--sync` *before* the native `bump_version.py` step, so `version.go` advanced twice per build while the manifest advanced once. Reordered to bump native first, then `--sync` after (matching `build.bat`'s already-correct order). Also added a `go test ./...` step to both `build.sh` and `build.bat` - previously neither actually ran the test suite as part of a real build, despite advertising "verification" in their own banner text.
+- 10 new tests (`TestSubmitJob_*`, `TestDispatchOnce_PriorityOrderIsDeterministicAcrossRepeatedRuns`, `TestHandleSubmitJob_*`) - 22 total, all passing. Verified live against the real running HTTP server: a duplicate submission returned the original job untouched, a retry-after-failure reused the same job ID and reset it to `Pending`, and `GET /jobs` showed exactly one job throughout.
+
 ## [0.0.4] - Source layout: `src/` instead of `internal/`, unused folders removed
 
 - Moved `internal/dispatcher` and `internal/api` (added in 0.0.2) to

@@ -27,6 +27,7 @@ It ensures that high-priority tasks (e.g., "Emergency Defect Fix") bypass the no
 * ⚖️ **Tool-Aware Routing:** Automatically routes jobs to the robot with the correct URTC head.
 * 🔄 **Multi-Stage Missions:** Manages dependencies between tasks (e.g., "Pick" must happen before "Place").
 * 📡 **Persistence:** Fault-tolerant mission state using local Redis/Database storage.
+* 🔁 **Idempotent Submission (v0):** Real, opt-in `DedupKey`-based deduplication via `POST /jobs/submit` - a retried submission of an in-flight or already-done job is returned unchanged, and a retry after a real failure reuses the same job ID instead of running the work twice. Priority ordering is deterministic across repeated runs, covered by an explicit regression test.
 
 ---
 
@@ -52,6 +53,8 @@ flowchart LR
 * **Why the scheduler is real today but persistence is not.** `src/dispatcher` implements the actual algorithm the README's "DISPATCHER FLOW" diagram describes: a priority-ordered global queue, tool-aware routing, and multi-stage dependencies (a job stays `blocked` until every job it `DependsOn` reaches `done`). It keeps all of that in memory only - `Engine`'s state lives behind exported methods precisely so a Redis/DB-backed store can replace what's behind them later without changing every caller. Proving the scheduling algorithm itself correct came first.
 * **Why the HTTP API is plain JSON/HTTP, not gRPC.** This is a human/ops-facing control surface (submit a job, register a robot, ask what happened) - `hydra.common.v1` (the ecosystem's shared gRPC contract, see `HYDRA-UMC-ORCHESTRATOR/proto/`) stays reserved for node-to-node traffic, per that proto's own documented scope.
 * **How this fits the rest of the ecosystem.** A sibling service under HYDRA-UMC-ORCHESTRATOR - turns mission-level decisions into concrete per-robot job assignments, checked against URTC tool availability and HYDRA-UMC-PATH-PLANNER-3D's own routes.
+* **Why `POST /jobs/submit` is a new route instead of changing `POST /jobs`.** `AddJob()`/`POST /jobs` always insert and error on an ID collision - that low-level contract is untouched. `SubmitJob()`/`POST /jobs/submit` layers real, opt-in deduplication on top via `Job.DedupKey`: same pattern used across the ecosystem (a safety-gated entry point added alongside an unchanged low-level primitive, not a behavior change bolted onto it).
+* **Why a retry-after-failure reuses the same job ID instead of creating a new job.** The alternative - minting a fresh job on every retry - would scatter one logical unit of work's history across several IDs and give a caller no way to tell "this failed once and is being retried" from "this is unrelated new work". Resetting the original job back to `Pending` keeps its whole lifecycle (including the failed attempt) under one ID.
 
 ---
 
@@ -111,6 +114,20 @@ curl -X POST localhost:8090/dispatch -d '{}'
 curl -X POST localhost:8090/jobs/complete -d '{"id":"job-1","success":true}'
 curl localhost:8090/jobs
 curl localhost:8090/robots
+```
+
+```bash
+# Idempotent submission: a retried request with the same dedupKey never
+# runs the same job twice, even if the client used a different job id.
+curl -X POST localhost:8090/jobs/submit -d '{"id":"job-2","priority":5,"requiredTool":"PnP","dedupKey":"req-abc"}'
+# -> {"ID":"job-2", ..., "result":"created"}
+curl -X POST localhost:8090/jobs/submit -d '{"id":"job-2-retry","priority":5,"requiredTool":"PnP","dedupKey":"req-abc"}'
+# -> {"ID":"job-2", ..., "result":"duplicate"} - same job, untouched
+
+# After a real failure, a retry with the same dedupKey reuses job-2's ID:
+curl -X POST localhost:8090/jobs/complete -d '{"id":"job-2","success":false}'
+curl -X POST localhost:8090/jobs/submit -d '{"id":"job-2-retry-2","priority":5,"requiredTool":"PnP","dedupKey":"req-abc"}'
+# -> {"ID":"job-2", "Status":"pending", ..., "result":"retried"}
 ```
 
 ```bash

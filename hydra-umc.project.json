@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "ecosystem": "HYDRA-UMC",
   "name": "HYDRA-UMC-JOB-DISPATCHER",
-  "version": "0.0.4",
+  "version": "0.0.6",
   "role": "api",
   "stack": "go",
   "technologies": [
@@ -11,11 +11,11 @@
     "HTTP API"
   ],
   "deployment_target": "cm5",
-  "maturity": "functional",
+  "maturity": "established",
   "family": "Orchestration & Swarm",
   "parent": "HYDRA-UMC-ORCHESTRATOR",
   "build": "go build ./...",
-  "notes": "Real priority-based job queue with a real HTTP API, tested.",
+  "notes": "Real priority-based job queue with a real HTTP API, tested. Deterministic priority ordering is now covered by an explicit repeated-run regression test. Engine.SubmitJob() adds real, opt-in DedupKey-based deduplication (POST /jobs/submit alongside the unchanged POST /jobs): a repeat submission of an in-flight or already-done job is returned unchanged, and a retry after a real failure reuses the same job ID instead of running the work twice.",
   "native_version": {
     "file": "version.go",
     "pattern": "Version\\s*=\\s*\"(\\d+)\\.(\\d+)\\.(\\d+)\""

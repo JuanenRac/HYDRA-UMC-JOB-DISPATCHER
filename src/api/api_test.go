@@ -101,6 +101,97 @@ func TestHandleJobs_RejectsDuplicateID(t *testing.T) {
 	}
 }
 
+func TestHandleSubmitJob_DuplicateDedupKeyReturns200Unchanged(t *testing.T) {
+	s := New(dispatcher.NewEngine())
+
+	rec := post(t, s, "/jobs/submit", submitRequest{ID: "job-1", Priority: 1, DedupKey: "req-abc"})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("first POST /jobs/submit status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var first submitResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &first); err != nil {
+		t.Fatalf("decoding first response: %v", err)
+	}
+	if first.Result != dispatcher.SubmitCreated {
+		t.Fatalf("first Result = %q, want %q", first.Result, dispatcher.SubmitCreated)
+	}
+
+	// Same DedupKey, different client-generated ID - the real shape of a
+	// retried HTTP request.
+	rec = post(t, s, "/jobs/submit", submitRequest{ID: "job-1-retry", Priority: 1, DedupKey: "req-abc"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("second POST /jobs/submit status = %d, want 200 (duplicate, not created), body = %s", rec.Code, rec.Body.String())
+	}
+	var second submitResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &second); err != nil {
+		t.Fatalf("decoding second response: %v", err)
+	}
+	if second.Result != dispatcher.SubmitDuplicate || second.ID != first.ID {
+		t.Fatalf("second = %+v, want the original job-1 returned as a duplicate", second)
+	}
+
+	rec = get(t, s, "/jobs")
+	var jobs []dispatcher.Job
+	if err := json.Unmarshal(rec.Body.Bytes(), &jobs); err != nil {
+		t.Fatalf("decoding /jobs response: %v", err)
+	}
+	if len(jobs) != 1 {
+		t.Fatalf("GET /jobs returned %d job(s), want exactly 1 - the retry must not create a second job", len(jobs))
+	}
+}
+
+func TestHandleSubmitJob_RetryAfterFailureRunsExactlyOnce(t *testing.T) {
+	s := New(dispatcher.NewEngine())
+	post(t, s, "/robots", robotRequest{ID: "robot-a", Available: true})
+
+	rec := post(t, s, "/jobs/submit", submitRequest{ID: "job-1", DedupKey: "req-abc"})
+	var created submitResponse
+	_ = json.Unmarshal(rec.Body.Bytes(), &created)
+
+	post(t, s, "/dispatch", nil)
+	rec = post(t, s, "/jobs/complete", completeRequest{ID: created.ID, Success: false})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("POST /jobs/complete (fail) status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+
+	rec = post(t, s, "/jobs/submit", submitRequest{ID: "job-1-retry", DedupKey: "req-abc"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("retry POST /jobs/submit status = %d, want 200 (retried, not created), body = %s", rec.Code, rec.Body.String())
+	}
+	var retried submitResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &retried); err != nil {
+		t.Fatalf("decoding retry response: %v", err)
+	}
+	if retried.Result != dispatcher.SubmitRetried || retried.ID != created.ID || retried.Status != dispatcher.StatusPending {
+		t.Fatalf("retried = %+v, want the same job reset to pending", retried)
+	}
+
+	rec = post(t, s, "/dispatch", nil)
+	var assignments []dispatcher.Assignment
+	_ = json.Unmarshal(rec.Body.Bytes(), &assignments)
+	if len(assignments) != 1 || assignments[0].JobID != created.ID {
+		t.Fatalf("assignments = %+v, want the retried job dispatched exactly once", assignments)
+	}
+}
+
+func TestHandleSubmitJob_RejectsMissingID(t *testing.T) {
+	s := New(dispatcher.NewEngine())
+	rec := post(t, s, "/jobs/submit", submitRequest{Priority: 1})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 for a job with no id", rec.Code)
+	}
+}
+
+func TestHandleSubmitJob_MethodNotAllowed(t *testing.T) {
+	s := New(dispatcher.NewEngine())
+	req := httptest.NewRequest(http.MethodGet, "/jobs/submit", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("status = %d, want 405 for GET /jobs/submit", rec.Code)
+	}
+}
+
 func TestHandleJobs_MethodNotAllowed(t *testing.T) {
 	s := New(dispatcher.NewEngine())
 	req := httptest.NewRequest(http.MethodDelete, "/jobs", nil)

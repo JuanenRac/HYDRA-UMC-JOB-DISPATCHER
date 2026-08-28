@@ -143,6 +143,198 @@ func TestCompleteJob_RejectsNotAssigned(t *testing.T) {
 	}
 }
 
+func TestSubmitJob_NoDedupKeyAlwaysCreates(t *testing.T) {
+	e := NewEngine()
+
+	job, result, err := e.SubmitJob(Job{ID: "job-1"})
+	if err != nil {
+		t.Fatalf("SubmitJob: %v", err)
+	}
+	if result != SubmitCreated {
+		t.Fatalf("result = %q, want %q", result, SubmitCreated)
+	}
+	if job.Status != StatusPending {
+		t.Fatalf("job.Status = %q, want pending", job.Status)
+	}
+}
+
+func TestSubmitJob_DuplicateDedupKeyReturnsSameJobUnchanged(t *testing.T) {
+	e := NewEngine()
+	e.UpsertRobot(Robot{ID: "robot-a", Available: true})
+
+	first, result, err := e.SubmitJob(Job{ID: "job-1", Priority: 1, DedupKey: "req-abc"})
+	if err != nil {
+		t.Fatalf("first SubmitJob: %v", err)
+	}
+	if result != SubmitCreated {
+		t.Fatalf("first result = %q, want %q", result, SubmitCreated)
+	}
+
+	// A client retries the same logical request (same DedupKey) with a
+	// DIFFERENT job ID, as a real client generating a fresh ID per HTTP
+	// attempt would - the dedup key, not the ID, is what must be honored.
+	second, result, err := e.SubmitJob(Job{ID: "job-1-retry-attempt", Priority: 99, DedupKey: "req-abc"})
+	if err != nil {
+		t.Fatalf("second SubmitJob: %v", err)
+	}
+	if result != SubmitDuplicate {
+		t.Fatalf("second result = %q, want %q", result, SubmitDuplicate)
+	}
+	if second.ID != first.ID || second.Priority != first.Priority {
+		t.Fatalf("second = %+v, want the original job (%+v) returned untouched", second, first)
+	}
+
+	if len(e.Jobs()) != 1 {
+		t.Fatalf("len(Jobs()) = %d, want exactly 1 - the duplicate must not create a second job", len(e.Jobs()))
+	}
+}
+
+func TestSubmitJob_RetryAfterFailureRunsExactlyOnceEachTime(t *testing.T) {
+	e := NewEngine()
+	e.UpsertRobot(Robot{ID: "robot-a", Available: true})
+
+	job, _, err := e.SubmitJob(Job{ID: "job-1", Priority: 1, DedupKey: "req-abc"})
+	if err != nil {
+		t.Fatalf("SubmitJob: %v", err)
+	}
+
+	assignments := e.DispatchOnce()
+	if len(assignments) != 1 || assignments[0].JobID != job.ID {
+		t.Fatalf("assignments = %+v, want job-1 dispatched", assignments)
+	}
+	if err := e.CompleteJob(job.ID, false); err != nil {
+		t.Fatalf("CompleteJob (fail): %v", err)
+	}
+
+	// The client, unaware the first attempt failed cleanly, retries with
+	// the same DedupKey but yet another fresh job ID.
+	retried, result, err := e.SubmitJob(Job{ID: "job-1-retry", Priority: 5, DedupKey: "req-abc"})
+	if err != nil {
+		t.Fatalf("retry SubmitJob: %v", err)
+	}
+	if result != SubmitRetried {
+		t.Fatalf("result = %q, want %q", result, SubmitRetried)
+	}
+	if retried.ID != job.ID {
+		t.Fatalf("retried.ID = %q, want the SAME original job ID %q, not a second job", retried.ID, job.ID)
+	}
+	if retried.Status != StatusPending {
+		t.Fatalf("retried.Status = %q, want pending (ready for a fresh attempt)", retried.Status)
+	}
+	if len(e.Jobs()) != 1 {
+		t.Fatalf("len(Jobs()) = %d, want exactly 1 - a retry must reuse the original job, never add a second one", len(e.Jobs()))
+	}
+
+	// The retried attempt now runs to completion - exactly once, under
+	// the same job ID throughout its whole lifecycle.
+	assignments = e.DispatchOnce()
+	if len(assignments) != 1 || assignments[0].JobID != job.ID {
+		t.Fatalf("assignments = %+v, want the retried job-1 dispatched again", assignments)
+	}
+	if err := e.CompleteJob(job.ID, true); err != nil {
+		t.Fatalf("CompleteJob (success): %v", err)
+	}
+	done, _ := e.Job(job.ID)
+	if done.Status != StatusDone {
+		t.Fatalf("job.Status = %q, want done", done.Status)
+	}
+
+	// A THIRD submission with the same DedupKey, after the job already
+	// succeeded, must NOT run it a third time.
+	final, result, err := e.SubmitJob(Job{ID: "job-1-yet-another-retry", Priority: 1, DedupKey: "req-abc"})
+	if err != nil {
+		t.Fatalf("final SubmitJob: %v", err)
+	}
+	if result != SubmitDuplicate {
+		t.Fatalf("final result = %q, want %q (already done, must not re-run)", result, SubmitDuplicate)
+	}
+	if final.Status != StatusDone {
+		t.Fatalf("final.Status = %q, want done (untouched)", final.Status)
+	}
+	assignments = e.DispatchOnce()
+	if len(assignments) != 0 {
+		t.Fatalf("assignments = %+v, want none - the already-done job must not be re-dispatched", assignments)
+	}
+}
+
+func TestSubmitJob_RetryRejectsUnknownDependency(t *testing.T) {
+	e := NewEngine()
+	e.UpsertRobot(Robot{ID: "robot-a", Available: true})
+
+	// Force job-1 into Failed the only real way: submit, dispatch, fail it.
+	if _, _, err := e.SubmitJob(Job{ID: "job-1", DedupKey: "req-abc"}); err != nil {
+		t.Fatalf("SubmitJob: %v", err)
+	}
+	e.DispatchOnce()
+	if err := e.CompleteJob("job-1", false); err != nil {
+		t.Fatalf("CompleteJob (fail): %v", err)
+	}
+
+	if _, _, err := e.SubmitJob(Job{ID: "job-1-retry", DedupKey: "req-abc", DependsOn: []string{"does-not-exist"}}); err == nil {
+		t.Fatal("expected an error retrying with a dependency on a nonexistent job, got nil")
+	}
+}
+
+func TestDispatchOnce_PriorityOrderIsDeterministicAcrossRepeatedRuns(t *testing.T) {
+	build := func() *Engine {
+		e := NewEngine()
+		e.UpsertRobot(Robot{ID: "robot-a", Available: true})
+		for i, spec := range []struct {
+			id       string
+			priority int
+		}{
+			{"job-c", 5}, {"job-a", 9}, {"job-e", 5}, {"job-b", 9}, {"job-d", 5},
+		} {
+			if err := e.AddJob(Job{ID: spec.id, Priority: spec.priority}); err != nil {
+				t.Fatalf("AddJob %d: %v", i, err)
+			}
+		}
+		return e
+	}
+
+	// Same jobs, same priorities, same submission order, run from scratch
+	// repeatedly - the dispatch order must come out identical every time:
+	// highest priority first, submission order (FIFO) breaking ties among
+	// equal priorities. A map-iteration-order bug would make this flaky.
+	var want []string
+	for run := 0; run < 20; run++ {
+		e := build()
+		var got []string
+		for {
+			assignments := e.DispatchOnce()
+			if len(assignments) == 0 {
+				break
+			}
+			got = append(got, assignments[0].JobID)
+			if err := e.CompleteJob(assignments[0].JobID, true); err != nil {
+				t.Fatalf("CompleteJob: %v", err)
+			}
+		}
+		if run == 0 {
+			want = got
+			continue
+		}
+		if len(got) != len(want) {
+			t.Fatalf("run %d: got %v, want same length as first run %v", run, got, want)
+		}
+		for i := range got {
+			if got[i] != want[i] {
+				t.Fatalf("run %d: dispatch order %v diverged from first run %v at index %d", run, got, want, i)
+			}
+		}
+	}
+
+	expected := []string{"job-a", "job-b", "job-c", "job-e", "job-d"}
+	if len(want) != len(expected) {
+		t.Fatalf("dispatch order = %v, want %v", want, expected)
+	}
+	for i := range expected {
+		if want[i] != expected[i] {
+			t.Fatalf("dispatch order = %v, want %v (priority desc, then FIFO submission order)", want, expected)
+		}
+	}
+}
+
 func TestDispatchOnce_NoMatchingToolLeavesJobPending(t *testing.T) {
 	e := NewEngine()
 	e.UpsertRobot(Robot{ID: "robot-a", Tool: "PnP", Available: true})

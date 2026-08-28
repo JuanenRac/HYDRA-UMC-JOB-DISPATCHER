@@ -4,9 +4,10 @@
 //
 // Real priority mission queue, no longer just an identity print:
 // src/dispatcher implements the scheduling algorithm (tool-aware
-// routing, multi-stage dependencies, priority bypass), src/api
-// exposes it over plain HTTP/JSON (POST /jobs, POST /robots, POST
-// /dispatch, POST /jobs/complete, GET /jobs, GET /robots).
+// routing, multi-stage dependencies, priority bypass, deterministic
+// priority ordering, and DedupKey-based idempotent submission), src/api
+// exposes it over plain HTTP/JSON (POST /jobs, POST /jobs/submit, POST
+// /robots, POST /dispatch, POST /jobs/complete, GET /jobs, GET /robots).
 //
 // Why persistence (Redis/DB, per the README) isn't wired in yet: see the
 // doc comment on dispatcher.Engine - the scheduling algorithm needed to
@@ -34,6 +35,6 @@ func main() {
 	server := api.New(engine)
 
 	fmt.Printf("[job-dispatcher] HTTP API listening on %s\n", *addr)
-	fmt.Println("[job-dispatcher] POST /robots, POST /jobs, POST /dispatch, POST /jobs/complete, GET /jobs, GET /robots")
+	fmt.Println("[job-dispatcher] POST /robots, POST /jobs, POST /jobs/submit, POST /dispatch, POST /jobs/complete, GET /jobs, GET /robots")
 	log.Fatal(http.ListenAndServe(*addr, server))
 }

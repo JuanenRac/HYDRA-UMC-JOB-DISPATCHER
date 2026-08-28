@@ -27,6 +27,7 @@ Il garantit que les tâches hautement prioritaires (ex : « Réparation de défa
 * ⚖️ **Routage sensible aux outils :** Achemine automatiquement les travaux vers le robot disposant de la tête URTC correcte.
 * 🔄 **Missions en plusieurs étapes :** Gère les dépendances entre les tâches (ex : « Pick » doit avoir lieu avant « Place »).
 * 📡 **Persistance :** État de mission tolérant aux pannes à l'aide d'un stockage Redis/Base de données local.
+* 🔁 **Soumission idempotente (v0) :** Déduplication réelle et facultative basée sur `DedupKey` via `POST /jobs/submit` - une resoumission d'un job en cours ou déjà terminé est renvoyée inchangée, et une nouvelle tentative après un vrai échec réutilise le même ID de job au lieu d'exécuter le travail deux fois. L'ordre de priorité est déterministe à travers des exécutions répétées, couvert par un test de régression explicite.
 
 ---
 
@@ -52,6 +53,8 @@ flowchart LR
 * **Pourquoi l'ordonnanceur est réel aujourd'hui mais pas la persistance.** `src/dispatcher` implémente le véritable algorithme que décrit le diagramme "DISPATCHER FLOW" du README : une file globale triée par priorité, un routage tenant compte de l'outil, et des dépendances multi-étapes (une tâche reste `blocked` tant que chaque tâche de son `DependsOn` n'atteint pas `done`). Tout cela ne vit qu'en mémoire - l'état d'`Engine` reste derrière des méthodes exportées précisément pour qu'un stockage adossé à Redis/une BD puisse remplacer ce qu'il y a derrière ces méthodes plus tard sans changer chaque appelant. Prouver que l'algorithme d'ordonnancement lui-même était correct est venu en premier.
 * **Pourquoi l'API HTTP est du JSON/HTTP simple, pas du gRPC.** C'est une surface de contrôle orientée humain/exploitation (soumettre une tâche, enregistrer un robot, demander ce qui s'est passé) - `hydra.common.v1` (le contrat gRPC partagé de l'écosystème, voir `HYDRA-UMC-ORCHESTRATOR/proto/`) reste réservé au trafic nœud-à-nœud, selon la portée déjà documentée de ce proto.
 * **Comment cela s'intègre dans le reste de l'écosystème.** Un service frère sous HYDRA-UMC-ORCHESTRATOR - transforme les décisions au niveau mission en attributions concrètes de tâches par robot, vérifiées contre la disponibilité d'outils d'URTC et les propres trajectoires de HYDRA-UMC-PATH-PLANNER-3D.
+* **Pourquoi `POST /jobs/submit` est une nouvelle route plutôt qu'un changement de `POST /jobs`.** `AddJob()`/`POST /jobs` insèrent toujours et échouent sur une collision d'ID - ce contrat de bas niveau reste intact. `SubmitJob()`/`POST /jobs/submit` ajoute par-dessus une déduplication réelle et facultative via `Job.DedupKey` : le même motif utilisé dans tout l'écosystème (un point d'entrée protégé ajouté à côté d'une primitive de bas niveau inchangée, pas un changement de comportement greffé dessus).
+* **Pourquoi une nouvelle tentative après un échec réutilise le même ID de job plutôt que d'en créer un nouveau.** L'alternative - créer un nouveau job à chaque tentative - disperserait l'historique d'une même unité logique de travail sur plusieurs ID et ne donnerait à l'appelant aucun moyen de distinguer « ceci a échoué une fois et est retenté » de « ceci est un nouveau travail sans rapport ». Réinitialiser le job d'origine à `Pending` garde tout son cycle de vie (y compris la tentative échouée) sous un seul ID.
 
 ---
 
@@ -113,6 +116,20 @@ curl -X POST localhost:8090/dispatch -d '{}'
 curl -X POST localhost:8090/jobs/complete -d '{"id":"job-1","success":true}'
 curl localhost:8090/jobs
 curl localhost:8090/robots
+```
+
+```bash
+# Soumission idempotente : une requête retentée avec le même dedupKey
+# n'exécute jamais deux fois le même job, même si le client utilise un id différent.
+curl -X POST localhost:8090/jobs/submit -d '{"id":"job-2","priority":5,"requiredTool":"PnP","dedupKey":"req-abc"}'
+# -> {"ID":"job-2", ..., "result":"created"}
+curl -X POST localhost:8090/jobs/submit -d '{"id":"job-2-retry","priority":5,"requiredTool":"PnP","dedupKey":"req-abc"}'
+# -> {"ID":"job-2", ..., "result":"duplicate"} - même job, inchangé
+
+# Après un vrai échec, une nouvelle tentative avec le même dedupKey réutilise l'ID de job-2 :
+curl -X POST localhost:8090/jobs/complete -d '{"id":"job-2","success":false}'
+curl -X POST localhost:8090/jobs/submit -d '{"id":"job-2-retry-2","priority":5,"requiredTool":"PnP","dedupKey":"req-abc"}'
+# -> {"ID":"job-2", "Status":"pending", ..., "result":"retried"}
 ```
 
 ```bash

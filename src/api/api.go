@@ -29,6 +29,7 @@ type Server struct {
 func New(engine *dispatcher.Engine) *Server {
 	s := &Server{engine: engine, mux: http.NewServeMux()}
 	s.mux.HandleFunc("/jobs", s.handleJobs)
+	s.mux.HandleFunc("/jobs/submit", s.handleSubmitJob)
 	s.mux.HandleFunc("/jobs/complete", s.handleCompleteJob)
 	s.mux.HandleFunc("/robots", s.handleRobots)
 	s.mux.HandleFunc("/dispatch", s.handleDispatch)
@@ -88,6 +89,63 @@ func (s *Server) handleJobs(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Allow", "GET, POST")
 		writeError(w, http.StatusMethodNotAllowed, errors.New("use GET to list jobs or POST to submit one"))
 	}
+}
+
+// submitRequest is jobRequest plus an optional idempotency key. A separate
+// type (and route) rather than adding DedupKey to jobRequest/handleJobs
+// keeps POST /jobs' existing AddJob-backed behavior and response shape
+// completely unchanged for every current caller.
+type submitRequest struct {
+	ID           string   `json:"id"`
+	Priority     int      `json:"priority"`
+	RequiredTool string   `json:"requiredTool"`
+	DependsOn    []string `json:"dependsOn"`
+	DedupKey     string   `json:"dedupKey"`
+}
+
+type submitResponse struct {
+	dispatcher.Job
+	Result dispatcher.SubmitResult `json:"result"`
+}
+
+// handleSubmitJob is the idempotent counterpart to POST /jobs: a caller
+// that sets dedupKey and retries the same logical submission (e.g. after
+// a timed-out response) gets back the SAME job - created once, then
+// either returned unchanged (already in flight or done) or reset to
+// Pending for a genuine retry-after-failure - instead of a plain ID
+// collision error or, worse, the same work running twice.
+func (s *Server) handleSubmitJob(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", "POST")
+		writeError(w, http.StatusMethodNotAllowed, errors.New("use POST"))
+		return
+	}
+	var req submitRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if req.ID == "" {
+		writeError(w, http.StatusBadRequest, errors.New("\"id\" is required"))
+		return
+	}
+	job := dispatcher.Job{
+		ID:           req.ID,
+		Priority:     req.Priority,
+		RequiredTool: req.RequiredTool,
+		DependsOn:    req.DependsOn,
+		DedupKey:     req.DedupKey,
+	}
+	stored, result, err := s.engine.SubmitJob(job)
+	if err != nil {
+		writeError(w, http.StatusConflict, err)
+		return
+	}
+	status := http.StatusOK
+	if result == dispatcher.SubmitCreated {
+		status = http.StatusCreated
+	}
+	writeJSON(w, status, submitResponse{Job: stored, Result: result})
 }
 
 type completeRequest struct {
