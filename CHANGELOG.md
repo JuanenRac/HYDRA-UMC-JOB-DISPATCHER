@@ -32,6 +32,13 @@ semantic-versioning judgment calls:
 
 ---
 
+## [0.0.8] - Real ecosystem live-status opt-in
+
+- **`hydra-umc.project.json`** declares its real `service.port` (8090)
+  and `health_path` (`/jobs`) - HYDRA-UMC-SERVER's ecosystem status
+  endpoint now does a real HTTP GET against it (expecting 2xx) instead
+  of only reporting static manifest metadata.
+
 ## [0.0.7] - Fixed: a job stuck `Blocked` forever behind a permanently failed dependency
 
 - **`dispatcher.go`** - found in a live ecosystem bug audit: `computeStatus()` only ever distinguished "dependency still unfinished" from "dependency `Done`", so a dependent job whose dependency ended `Failed` stayed `Blocked` forever - no state transition, no error, nothing visible via the API to tell an operator the job was permanently stuck rather than legitimately waiting. A multi-step mission (e.g. a `place` job depending on a `pick` job) whose first step failed left every later step wedged, since `DispatchOnce()` only ever considers `Pending` jobs and `refreshBlocked()` could only promote a `Blocked` job once *every* dependency reached `Done`, never `Failed`.

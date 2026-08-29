@@ -11,4 +11,4 @@
 package main
 
 // Version is the current release version of HYDRA-UMC-JOB-DISPATCHER.
-const Version = "0.0.7"
+const Version = "0.0.8"

@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "ecosystem": "HYDRA-UMC",
   "name": "HYDRA-UMC-JOB-DISPATCHER",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "role": "api",
   "stack": "go",
   "technologies": [
@@ -19,5 +19,9 @@
   "native_version": {
     "file": "version.go",
     "pattern": "Version\\s*=\\s*\"(\\d+)\\.(\\d+)\\.(\\d+)\""
+  },
+  "service": {
+    "port": 8090,
+    "health_path": "/jobs"
   }
 }
