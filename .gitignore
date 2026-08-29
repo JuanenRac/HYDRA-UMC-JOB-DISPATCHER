@@ -3,6 +3,10 @@
 .env.*
 !.env.example
 
-# Python bytecode (generated locally; never source)
+# Python bytecode (bump_manifest_version.py/bump_version.py are real
+# Python tooling alongside this repo's Go core; generated locally, never source)
 __pycache__/
 *.py[cod]
+
+# Go build output (build.sh/.bat's own `go build -o build/...`)
+/build/
