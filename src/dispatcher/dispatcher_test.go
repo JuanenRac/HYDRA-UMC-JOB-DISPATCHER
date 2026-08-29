@@ -335,6 +335,85 @@ func TestDispatchOnce_PriorityOrderIsDeterministicAcrossRepeatedRuns(t *testing.
 	}
 }
 
+func TestRefreshBlocked_DependencyFailureMakesDependentUnreachable(t *testing.T) {
+	e := NewEngine()
+	e.UpsertRobot(Robot{ID: "robot-a", Available: true})
+
+	if err := e.AddJob(Job{ID: "pick", Priority: 1}); err != nil {
+		t.Fatalf("AddJob pick: %v", err)
+	}
+	if err := e.AddJob(Job{ID: "place", Priority: 1, DependsOn: []string{"pick"}}); err != nil {
+		t.Fatalf("AddJob place: %v", err)
+	}
+
+	assignments := e.DispatchOnce()
+	if len(assignments) != 1 || assignments[0].JobID != "pick" {
+		t.Fatalf("assignments = %+v, want only pick dispatched", assignments)
+	}
+	if err := e.CompleteJob("pick", false); err != nil {
+		t.Fatalf("CompleteJob pick (fail): %v", err)
+	}
+
+	// "place" must not be left silently Blocked forever - its only
+	// dependency can never reach Done now, so it must surface as
+	// Unreachable, a real, queryable-via-the-API state distinct from
+	// both Blocked (implies "still waiting, will resolve on its own")
+	// and Failed (implies "this job itself ran and failed").
+	place, _ := e.Job("place")
+	if place.Status != StatusUnreachable {
+		t.Fatalf("place status after pick failed = %q, want unreachable (not stuck blocked forever)", place.Status)
+	}
+
+	// It must also never be dispatched: DispatchOnce only considers
+	// Pending jobs, so an Unreachable job (unlike a merely Blocked one)
+	// can never silently become eligible again on its own.
+	if assignments := e.DispatchOnce(); len(assignments) != 0 {
+		t.Fatalf("assignments = %+v, want none - place is unreachable, not pending", assignments)
+	}
+	place, _ = e.Job("place")
+	if place.Status != StatusUnreachable {
+		t.Fatalf("place status after a further DispatchOnce = %q, want still unreachable", place.Status)
+	}
+}
+
+func TestRefreshBlocked_UnreachablePropagatesThroughMultiStepChain(t *testing.T) {
+	e := NewEngine()
+	e.UpsertRobot(Robot{ID: "robot-a", Available: true})
+
+	if err := e.AddJob(Job{ID: "pick", Priority: 1}); err != nil {
+		t.Fatalf("AddJob pick: %v", err)
+	}
+	if err := e.AddJob(Job{ID: "place", Priority: 1, DependsOn: []string{"pick"}}); err != nil {
+		t.Fatalf("AddJob place: %v", err)
+	}
+	if err := e.AddJob(Job{ID: "weld", Priority: 1, DependsOn: []string{"place"}}); err != nil {
+		t.Fatalf("AddJob weld: %v", err)
+	}
+
+	weld, _ := e.Job("weld")
+	if weld.Status != StatusBlocked {
+		t.Fatalf("weld status = %q, want blocked before pick even runs", weld.Status)
+	}
+
+	e.DispatchOnce()
+	if err := e.CompleteJob("pick", false); err != nil {
+		t.Fatalf("CompleteJob pick (fail): %v", err)
+	}
+
+	// A single CompleteJob call on the first step of a three-stage mission
+	// must surface every later stage as Unreachable in one pass, not only
+	// the immediate next one - "weld" has no chance of ever seeing "place"
+	// reach Done, since "place" itself is now Unreachable.
+	place, _ := e.Job("place")
+	if place.Status != StatusUnreachable {
+		t.Fatalf("place status = %q, want unreachable", place.Status)
+	}
+	weld, _ = e.Job("weld")
+	if weld.Status != StatusUnreachable {
+		t.Fatalf("weld status = %q, want unreachable (propagated through place)", weld.Status)
+	}
+}
+
 func TestDispatchOnce_NoMatchingToolLeavesJobPending(t *testing.T) {
 	e := NewEngine()
 	e.UpsertRobot(Robot{ID: "robot-a", Tool: "PnP", Available: true})

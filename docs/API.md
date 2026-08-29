@@ -28,7 +28,7 @@ Lists every job currently known to the engine.
 ]
 ```
 
-`Status` is one of `"pending"`, `"blocked"`, `"assigned"`, `"done"`, `"failed"` - computed by the engine, never caller-supplied (see `POST /jobs` below).
+`Status` is one of `"pending"`, `"blocked"`, `"assigned"`, `"done"`, `"failed"`, `"unreachable"` - computed by the engine, never caller-supplied (see `POST /jobs` below). `"unreachable"` means a `dependsOn` entry itself ended `"failed"` (or is itself `"unreachable"`) - unlike `"blocked"`, which just means "still waiting", an `"unreachable"` job can never become eligible on its own; it only resolves back to `"pending"`/`"blocked"` if that dependency is retried (see `POST /jobs/submit`) and eventually succeeds.
 
 ## `POST /jobs`
 
@@ -48,7 +48,7 @@ Submits a new job to the queue.
 - `id` (string, required) - must be unique.
 - `priority` (int) - higher runs first.
 - `requiredTool` (string, optional) - must exactly match a robot's `Tool`; empty/omitted means any available robot qualifies.
-- `dependsOn` (array of strings, optional) - job IDs that must already exist and must reach `"done"` before this job becomes eligible. A job with unfinished dependencies starts as `"blocked"`, not `"pending"`.
+- `dependsOn` (array of strings, optional) - job IDs that must already exist and must reach `"done"` before this job becomes eligible. A job with unfinished dependencies starts as `"blocked"`, not `"pending"` - or, if a dependency already ended `"failed"` (or is itself `"unreachable"`), it starts `"unreachable"` instead.
 
 **Responses**
 
@@ -119,7 +119,7 @@ Marks an assigned job as finished (success or failure).
 
 | Status | Body | Meaning |
 |---|---|---|
-| 200 | the updated `Job` | `Status` becomes `"done"` (if `success: true`) or `"failed"` (if `success: false`). Completing a job to `"done"` also re-evaluates every other job's `dependsOn` - a job that was `"blocked"` on it may flip to `"pending"`. |
+| 200 | the updated `Job` | `Status` becomes `"done"` (if `success: true`) or `"failed"` (if `success: false`). Either way, every other job's `dependsOn` is re-evaluated: completing to `"done"` may flip a `"blocked"` dependent to `"pending"`; completing to `"failed"` may instead flip one or more downstream dependents (transitively, through a whole multi-step chain) to `"unreachable"` - it can never happen on its own. |
 | 400 | `{"error": "job ID does not exist"}` | Unknown `id`. |
 | 400 | `{"error": "job is not in the assigned state"}` | The job exists but was never dispatched (still `"pending"`/`"blocked"`) or is already `"done"`/`"failed"`. |
 

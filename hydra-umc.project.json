@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "ecosystem": "HYDRA-UMC",
   "name": "HYDRA-UMC-JOB-DISPATCHER",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "role": "api",
   "stack": "go",
   "technologies": [

@@ -21,11 +21,12 @@ import (
 type JobStatus string
 
 const (
-	StatusPending  JobStatus = "pending"  // submitted, not yet dispatchable or not yet assigned
-	StatusBlocked  JobStatus = "blocked"  // pending, but waiting on an unfinished dependency
-	StatusAssigned JobStatus = "assigned" // dispatched to a robot, work in progress
-	StatusDone     JobStatus = "done"
-	StatusFailed   JobStatus = "failed"
+	StatusPending     JobStatus = "pending"     // submitted, not yet dispatchable or not yet assigned
+	StatusBlocked     JobStatus = "blocked"     // pending, but waiting on an unfinished dependency
+	StatusAssigned    JobStatus = "assigned"    // dispatched to a robot, work in progress
+	StatusDone        JobStatus = "done"
+	StatusFailed      JobStatus = "failed"
+	StatusUnreachable JobStatus = "unreachable" // blocked on a dependency that itself ended Failed (or is Unreachable) - can never become eligible on its own, unlike Blocked which just needs more time. Not the same as Failed: this job itself was never dispatched. Resolves back to Pending/Blocked if that dependency is later retried (see SubmitJob) and succeeds.
 )
 
 // Job is one unit of work in the global mission queue.
@@ -215,24 +216,53 @@ func (e *Engine) UpsertRobot(r Robot) {
 	e.robots[r.ID] = &stored
 }
 
-// computeStatus derives Pending vs Blocked from current dependency state.
+// computeStatus derives Pending vs Blocked vs Unreachable from current
+// dependency state. A dependency that itself ended Failed - or is already
+// Unreachable, so it can never end anything but Failed either - means this
+// job can never become eligible on its own: it is Unreachable, not merely
+// Blocked (which implies "will unblock once the dependency finishes", a
+// promise a failed dependency can't keep without an operator retrying it).
 // Caller must hold e.mu.
 func (e *Engine) computeStatus(j *Job) JobStatus {
+	blocked := false
 	for _, dep := range j.DependsOn {
-		if d, ok := e.jobs[dep]; ok && d.Status != StatusDone {
-			return StatusBlocked
+		d, ok := e.jobs[dep]
+		if !ok {
+			continue
 		}
+		if d.Status == StatusFailed || d.Status == StatusUnreachable {
+			return StatusUnreachable
+		}
+		if d.Status != StatusDone {
+			blocked = true
+		}
+	}
+	if blocked {
+		return StatusBlocked
 	}
 	return StatusPending
 }
 
-// refreshBlocked re-evaluates every Blocked/Pending job's status. Called
-// after any job transitions to Done, since that may unblock others.
-// Caller must hold e.mu.
+// refreshBlocked re-evaluates every Pending/Blocked/Unreachable job's
+// status. Called after any job transitions to Done or Failed, since either
+// may change others' eligibility - Done can unblock a dependent, Failed can
+// make one Unreachable. Loops to a fixed point (instead of one pass) so an
+// Unreachable verdict propagates through an entire multi-step dependency
+// chain in one call - e.g. weld depends on place depends on pick: if pick
+// fails, place and weld must both surface as Unreachable right away, not
+// only after some future completion event on place that will now never
+// happen. Caller must hold e.mu.
 func (e *Engine) refreshBlocked() {
-	for _, j := range e.jobs {
-		if j.Status == StatusPending || j.Status == StatusBlocked {
-			j.Status = e.computeStatus(j)
+	for changed := true; changed; {
+		changed = false
+		for _, j := range e.jobs {
+			if j.Status != StatusPending && j.Status != StatusBlocked && j.Status != StatusUnreachable {
+				continue
+			}
+			if next := e.computeStatus(j); next != j.Status {
+				j.Status = next
+				changed = true
+			}
 		}
 	}
 }
@@ -298,8 +328,9 @@ func (e *Engine) bestRobotFor(j *Job) *Robot {
 
 // CompleteJob marks an Assigned job Done or Failed, frees its robot
 // (Available again, Load incremented on success so future ties favour a
-// less-used robot), and re-evaluates every Blocked job in case this
-// completion just unblocked a later stage of a multi-step mission.
+// less-used robot), and re-evaluates every Blocked/Unreachable job: a Done
+// result may unblock a later stage of a multi-step mission, while a Failed
+// result may instead make one or more later stages Unreachable.
 func (e *Engine) CompleteJob(jobID string, success bool) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
