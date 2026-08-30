@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 )
 
@@ -21,9 +22,9 @@ import (
 type JobStatus string
 
 const (
-	StatusPending     JobStatus = "pending"     // submitted, not yet dispatchable or not yet assigned
-	StatusBlocked     JobStatus = "blocked"     // pending, but waiting on an unfinished dependency
-	StatusAssigned    JobStatus = "assigned"    // dispatched to a robot, work in progress
+	StatusPending     JobStatus = "pending"  // submitted, not yet dispatchable or not yet assigned
+	StatusBlocked     JobStatus = "blocked"  // pending, but waiting on an unfinished dependency
+	StatusAssigned    JobStatus = "assigned" // dispatched to a robot, work in progress
 	StatusDone        JobStatus = "done"
 	StatusFailed      JobStatus = "failed"
 	StatusUnreachable JobStatus = "unreachable" // blocked on a dependency that itself ended Failed (or is Unreachable) - can never become eligible on its own, unlike Blocked which just needs more time. Not the same as Failed: this job itself was never dispatched. Resolves back to Pending/Blocked if that dependency is later retried (see SubmitJob) and succeeds.
@@ -31,11 +32,11 @@ const (
 
 // Job is one unit of work in the global mission queue.
 type Job struct {
-	ID           string
-	Priority     int      // higher runs first - an "Emergency Defect Fix" gets a high value to bypass normal flow
-	RequiredTool string   // must match a Robot's Tool exactly, e.g. "PnP", "Laser" (empty = any robot)
-	DependsOn    []string // job IDs that must reach StatusDone before this one is eligible
-	Status       JobStatus
+	ID            string
+	Priority      int      // higher runs first - an "Emergency Defect Fix" gets a high value to bypass normal flow
+	RequiredTool  string   // must match a Robot's Tool exactly, e.g. "PnP", "Laser" (empty = any robot)
+	DependsOn     []string // job IDs that must reach StatusDone before this one is eligible
+	Status        JobStatus
 	AssignedRobot string
 
 	// DedupKey identifies the logical unit of work behind this submission
@@ -100,11 +101,12 @@ func NewEngine() *Engine {
 }
 
 var (
-	ErrJobExists       = errors.New("job ID already exists")
-	ErrUnknownDep      = errors.New("dependency job ID does not exist")
-	ErrUnknownJob      = errors.New("job ID does not exist")
-	ErrUnknownRobot    = errors.New("robot ID does not exist")
-	ErrJobNotAssigned  = errors.New("job is not in the assigned state")
+	ErrJobExists      = errors.New("job ID already exists")
+	ErrUnknownDep     = errors.New("dependency job ID does not exist")
+	ErrUnknownJob     = errors.New("job ID does not exist")
+	ErrUnknownRobot   = errors.New("robot ID does not exist")
+	ErrJobNotAssigned = errors.New("job is not in the assigned state")
+	ErrInvalidJob     = errors.New("invalid job")
 )
 
 // AddJob submits a new job to the queue. DependsOn entries must already
@@ -125,6 +127,12 @@ func (e *Engine) AddJob(j Job) error {
 // addJobLocked is the shared insert path for AddJob and a first-time
 // SubmitJob call. Caller must hold e.mu.
 func (e *Engine) addJobLocked(j Job) (*Job, error) {
+	if strings.TrimSpace(j.ID) == "" {
+		return nil, fmt.Errorf("%w: job ID must not be empty", ErrInvalidJob)
+	}
+	if err := validateDependencyShape(j.ID, j.DependsOn); err != nil {
+		return nil, err
+	}
 	if _, exists := e.jobs[j.ID]; exists {
 		return nil, fmt.Errorf("%w: %q", ErrJobExists, j.ID)
 	}
@@ -143,6 +151,23 @@ func (e *Engine) addJobLocked(j Job) (*Job, error) {
 		e.dedupIndex[stored.DedupKey] = stored.ID
 	}
 	return &stored, nil
+}
+
+func validateDependencyShape(jobID string, dependencies []string) error {
+	seenDependencies := make(map[string]struct{}, len(dependencies))
+	for _, dep := range dependencies {
+		if strings.TrimSpace(dep) == "" {
+			return fmt.Errorf("%w: job %q has an empty dependency", ErrInvalidJob, jobID)
+		}
+		if dep == jobID {
+			return fmt.Errorf("%w: job %q cannot depend on itself", ErrInvalidJob, jobID)
+		}
+		if _, duplicate := seenDependencies[dep]; duplicate {
+			return fmt.Errorf("%w: job %q repeats dependency %q", ErrInvalidJob, jobID, dep)
+		}
+		seenDependencies[dep] = struct{}{}
+	}
+	return nil
 }
 
 // SubmitJob is the idempotent entry point for submitting work: unlike
@@ -173,10 +198,10 @@ func (e *Engine) SubmitJob(j Job) (Job, SubmitResult, error) {
 			if existing.Status != StatusFailed {
 				return *existing, SubmitDuplicate, nil
 			}
+			if err := validateDependencyShape(existing.ID, j.DependsOn); err != nil {
+				return Job{}, "", err
+			}
 			for _, dep := range j.DependsOn {
-				if dep == existing.ID {
-					return Job{}, "", fmt.Errorf("%w: job %q cannot depend on itself", ErrUnknownDep, existing.ID)
-				}
 				if _, ok := e.jobs[dep]; !ok {
 					return Job{}, "", fmt.Errorf("%w: job %q depends on %q", ErrUnknownDep, existing.ID, dep)
 				}

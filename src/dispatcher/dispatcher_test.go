@@ -3,7 +3,10 @@
 // GPL-3.0 - see LICENSE
 package dispatcher
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
 
 func TestDispatchOnce_ToolAwareRouting(t *testing.T) {
 	e := NewEngine()
@@ -129,6 +132,19 @@ func TestAddJob_RejectsUnknownDependency(t *testing.T) {
 	e := NewEngine()
 	if err := e.AddJob(Job{ID: "job-1", DependsOn: []string{"does-not-exist"}}); err == nil {
 		t.Fatal("expected an error for a dependency on a nonexistent job, got nil")
+	}
+}
+
+func TestAddJob_RejectsInvalidIdentityAndDependencies(t *testing.T) {
+	e := NewEngine()
+	if err := e.AddJob(Job{ID: "   "}); !errors.Is(err, ErrInvalidJob) {
+		t.Fatalf("blank ID error = %v, want ErrInvalidJob", err)
+	}
+	if err := e.AddJob(Job{ID: "self", DependsOn: []string{"self"}}); !errors.Is(err, ErrInvalidJob) {
+		t.Fatalf("self dependency error = %v, want ErrInvalidJob", err)
+	}
+	if err := e.AddJob(Job{ID: "repeat", DependsOn: []string{"dep", "dep"}}); !errors.Is(err, ErrInvalidJob) {
+		t.Fatalf("duplicate dependency error = %v, want ErrInvalidJob", err)
 	}
 }
 

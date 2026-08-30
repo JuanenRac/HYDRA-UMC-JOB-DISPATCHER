@@ -30,6 +30,14 @@ semantic-versioning judgment calls:
   Cross-checked against `api_test.go`'s real status-code assertions.
   Documentation-only - no code changed, no version bump.
 
+## Unreleased - validated job identity and dependency graph
+
+- **`dispatcher.go` / `api.go`** - direct engine callers and both submit
+  routes now reject blank job IDs, self-dependencies and repeated dependency
+  IDs. Invalid request topology is returned as HTTP 400 rather than being
+  stored as work that can never become eligible.
+- Added engine and HTTP regression coverage for the rejected inputs.
+
 ---
 
 ## [0.0.8] - Real ecosystem live-status opt-in

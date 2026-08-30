@@ -80,6 +80,10 @@ func (s *Server) handleJobs(w http.ResponseWriter, r *http.Request) {
 			DependsOn:    req.DependsOn,
 		}
 		if err := s.engine.AddJob(job); err != nil {
+			if errors.Is(err, dispatcher.ErrInvalidJob) || errors.Is(err, dispatcher.ErrUnknownDep) {
+				writeError(w, http.StatusBadRequest, err)
+				return
+			}
 			writeError(w, http.StatusConflict, err)
 			return
 		}
@@ -138,6 +142,10 @@ func (s *Server) handleSubmitJob(w http.ResponseWriter, r *http.Request) {
 	}
 	stored, result, err := s.engine.SubmitJob(job)
 	if err != nil {
+		if errors.Is(err, dispatcher.ErrInvalidJob) || errors.Is(err, dispatcher.ErrUnknownDep) {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
 		writeError(w, http.StatusConflict, err)
 		return
 	}

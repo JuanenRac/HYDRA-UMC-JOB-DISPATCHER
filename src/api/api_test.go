@@ -92,6 +92,19 @@ func TestHandleJobs_RejectsMissingID(t *testing.T) {
 	}
 }
 
+func TestHandleJobs_RejectsWhitespaceIDAndSelfDependency(t *testing.T) {
+	s := New(dispatcher.NewEngine())
+	for _, request := range []jobRequest{
+		{ID: "   "},
+		{ID: "self", DependsOn: []string{"self"}},
+	} {
+		rec := post(t, s, "/jobs", request)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("POST /jobs invalid request status = %d, want 400, body = %s", rec.Code, rec.Body.String())
+		}
+	}
+}
+
 func TestHandleJobs_RejectsDuplicateID(t *testing.T) {
 	s := New(dispatcher.NewEngine())
 	post(t, s, "/jobs", jobRequest{ID: "job-1"})
