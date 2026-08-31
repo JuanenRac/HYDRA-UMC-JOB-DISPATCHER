@@ -1,0 +1,33 @@
+# =============================================================================
+# HYDRA-UMC-JOB-DISPATCHER - Local CM5 priority mission queue systemd unit
+# Copyright (C) 2026 JuanenRac (Electro Hobby 3D) <electrohobby3d@gmail.com>
+# GPL-3.0-or-later - see LICENSE
+# =============================================================================
+# Loopback-only, same as HYDRA-UMC-DATALAKE/HYDRA-UMC-ANOMALY-DETECTOR: this
+# repo's own README already documents a real multi-cell fleet as a future
+# goal, but no cross-node authentication exists for this HTTP API yet - real
+# gap, deliberately not invented here. Binding 127.0.0.1 keeps today's
+# single-CM5 deployment safe without pretending that design question is
+# settled.
+[Unit]
+Description=HYDRA-UMC-JOB-DISPATCHER real priority mission queue
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=hydra-umc-job-dispatcher
+Group=hydra-umc-job-dispatcher
+WorkingDirectory=/opt/hydra-umc/job-dispatcher
+ExecStart=/opt/hydra-umc/job-dispatcher/hydra-umc-job-dispatcher --addr 127.0.0.1:8090
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectHome=true
+ProtectSystem=strict
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

@@ -40,6 +40,16 @@ semantic-versioning judgment calls:
 
 ---
 
+## [0.0.9] - Real CM5 deployment
+
+- **`systemd/hydra-umc-job-dispatcher.service`** (new) - loopback-only
+  unit for `HYDRA-UMC-OS/provisioning/install_job_dispatcher.sh` (new,
+  that repo), which builds this pure-Go binary on-device (no cgo
+  dependency, so no C toolchain beyond `golang-go` itself is needed).
+  Real gap found auditing the ecosystem against actual CM5 hardware: the
+  priority mission queue and its real HTTP API (`src/api`,
+  `src/dispatcher`) had never been built or installed anywhere.
+
 ## [0.0.8] - Real ecosystem live-status opt-in
 
 - **`hydra-umc.project.json`** declares its real `service.port` (8090)
