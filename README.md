@@ -87,7 +87,7 @@ HTTP endpoint reference.
 
 ---
 
-## 🔧 BUILD & RUN
+## 🔧 BUILD & RUN GUIDE
 
 A real priority mission queue with an HTTP API, not just a skeleton that compiles.
 
