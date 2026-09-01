@@ -22,6 +22,7 @@
   },
   "service": {
     "port": 8090,
-    "health_path": "/jobs"
+    "health_path": "/jobs",
+    "systemd_unit": "hydra-umc-job-dispatcher.service"
   }
 }
