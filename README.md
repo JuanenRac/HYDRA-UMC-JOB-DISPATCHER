@@ -161,6 +161,7 @@ This project is part of a larger robotics ecosystem by the same author (JuanenRa
 ### Directly Related (outside the family)
 
 - **[URTC](https://github.com/JuanenRac/URTC)** — assigns jobs based on which tool head is actually available.
+- **[HYDRA-UMC-PRODUCTION-REPORTS](https://github.com/JuanenRac/HYDRA-UMC-PRODUCTION-REPORTS)** — the diagrammed target for mission-completion logs; this dispatcher is the intended real source of its OEE `production_event` data once completions are wired to write it (not implemented yet, tracked on that project's own side).
 
 ### Rest of the Ecosystem
 
