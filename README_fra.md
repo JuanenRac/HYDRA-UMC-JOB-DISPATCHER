@@ -87,7 +87,7 @@ encore suffisant pour justifier leurs propres dossiers. Voir
 
 ---
 
-## 🔧 BUILD & RUN
+## 🔧 BUILD ET EXÉCUTION
 
 Une véritable file de missions priorisées avec une API HTTP, pas
 seulement un squelette qui compile.
@@ -139,7 +139,7 @@ go test ./...   # src/dispatcher (algorithme d'ordonnancement) +
 
 ---
 
-## 🚀 ROADMAP
+## 🚀 FEUILLE DE ROUTE
 * **Phase 1 :** Synchronisation déterministe d'essaim sur TSN et réduction de la gigue sub-ms.
 * **Phase 2 :** Planification de trajectoires 3D avec évitement dynamique d'obstacles dans les cellules multi-robots.
 * **Phase 3 :** Optimisation de la répartition des tâches multi-robots à l'aide de la disponibilité des ressources en temps réel.

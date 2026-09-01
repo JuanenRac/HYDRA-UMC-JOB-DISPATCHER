@@ -87,7 +87,7 @@ für die vollständige HTTP-Endpunktreferenz.
 
 ---
 
-## 🔧 BUILD & RUN
+## 🔧 BUILD UND AUSFÜHRUNG
 
 Eine echte priorisierte Auftragswarteschlange mit HTTP-API, nicht nur ein
 kompilierbares Skelett.
@@ -139,7 +139,7 @@ go test ./...   # src/dispatcher (Scheduling-Algorithmus) +
 
 ---
 
-## 🚀 ROADMAP
+## 🚀 FAHRPLAN
 * **Phase 1:** Deterministische Schwarm-Synchronisation über TSN und Sub-ms-Jitter-Reduzierung.
 * **Phase 2:** 3D-Pfadplanung mit dynamischer Hindernisvermeidung in Multi-Roboter-Zellen.
 * **Phase 3:** Multi-Roboter-Job-Dispatching-Optimierung unter Berücksichtigung der Ressourcenverfügbarkeit in Echtzeit.

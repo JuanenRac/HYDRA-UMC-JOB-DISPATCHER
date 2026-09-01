@@ -87,7 +87,7 @@ per il riferimento completo degli endpoint HTTP.
 
 ---
 
-## 🔧 BUILD & RUN
+## 🔧 BUILD ED ESECUZIONE
 
 Una vera coda di missioni con priorità e API HTTP, non solo uno scheletro
 che compila.
@@ -138,7 +138,7 @@ go test ./...   # src/dispatcher (algoritmo di scheduling) +
 
 ---
 
-## 🚀 ROADMAP
+## 🚀 TABELLA DI MARCIA
 * **Fase 1:** Sincronizzazione deterministica dello sciame su TSN e riduzione del jitter sub-ms.
 * **Fase 2:** Pianificazione dei percorsi 3D con evitamento dinamico degli ostacoli in celle multi-robot.
 * **Fase 3:** Ottimizzazione del dispacciamento dei lavori multi-robot utilizzando la disponibilità delle risorse in tempo reale.

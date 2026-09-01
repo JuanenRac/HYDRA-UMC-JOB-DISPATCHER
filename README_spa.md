@@ -87,7 +87,7 @@ referencia completa de endpoints HTTP.
 
 ---
 
-## 🔧 BUILD & RUN
+## 🔧 BUILD Y EJECUCIÓN
 
 Una cola de misiones con prioridad real y API HTTP, no solo un esqueleto
 que compila.
