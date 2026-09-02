@@ -68,22 +68,27 @@ HYDRA-UMC-JOB-DISPATCHER/
 │   └── api/           # Einfache JSON/HTTP-Handler, die die Engine umschließen
 ├── docs/
 │   └── API.md         # Echte HTTP-Endpunktreferenz (Requests, Responses, Statuscodes)
+├── images/            # Medien und Diagramme
+├── systemd/
+│   └── hydra-umc-job-dispatcher.service # systemd-Unit der lokalen Prioritäts-Missionswarteschlange auf der CM5
+├── tools/
+│   ├── build_test.py  # Build-/Kompilierprüfung ohne Versionserhöhung
+│   └── ci_validate.py # Manifest-/CHANGELOG-/Doku-Validierung, von der CI genutzt
 ├── build/             # Kompilierte Binärdateien (Ausgabe von build.sh/.bat)
 ├── go.mod / go.sum    # Go-Modul-Definition
 ├── version.go         # const Version = "X.Y.Z" (go.mod hat kein solches Feld)
 ├── main.go            # Einstiegspunkt: verbindet die Engine mit der HTTP-API und lauscht
 ├── bump_version.py    # Versions-Bump nach Kilometerzähler-Prinzip
+├── bump_manifest_version.py # Synchronisiert die Version von hydra-umc.project.json mit der nativen (--sync)
 ├── build.sh/.bat      # Erhöht die Version, dann `go build`
 ├── run.sh/.bat        # Führt die kompilierte Binärdatei aus
 └── README.md
 ```
 
-Aus der ursprünglichen Vorlage entfernt: `hardware/`, `firmware/`, `os/`,
-`images/` und `scripts/` — dies ist ein reiner Softwaredienst
-(Go-Binärdatei) ohne eigene Hardware oder Firmware, ohne zu pflegendes
-Betriebssystem-Image, und ohne Medien-/Utility-Skript-Inhalt, der eigene
-Ordner bislang rechtfertigen würde. Siehe [`docs/API.md`](docs/API.md)
-für die vollständige HTTP-Endpunktreferenz.
+Aus der ursprünglichen Vorlage entfernt: `hardware/`, `firmware/` und
+`os/` — dies ist ein reiner Softwaredienst (Go-Binärdatei) ohne eigene
+Hardware oder Firmware und ohne zu pflegendes Betriebssystem-Image. Siehe
+[`docs/API.md`](docs/API.md) für die vollständige HTTP-Endpunktreferenz.
 
 ---
 

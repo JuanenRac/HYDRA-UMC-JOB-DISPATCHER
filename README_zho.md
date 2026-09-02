@@ -71,21 +71,26 @@ HYDRA-UMC-JOB-DISPATCHER/
 │   └── api/           # 封装引擎的简单 JSON/HTTP 处理器
 ├── docs/
 │   └── API.md         # 真实的 HTTP 端点参考（请求、响应、状态码）
+├── images/            # 媒体与图示
+├── systemd/
+│   └── hydra-umc-job-dispatcher.service # CM5 本地优先级任务队列的 systemd 单元
+├── tools/
+│   ├── build_test.py  # 不递增版本号的构建/编译检查
+│   └── ci_validate.py # CI 使用的 manifest/CHANGELOG/docs 校验
 ├── build/             # 编译后的二进制文件（build.sh/build.bat 的输出）
 ├── go.mod / go.sum    # Go 模块定义
 ├── version.go         # const Version = "X.Y.Z"（go.mod 没有应用版本字段）
 ├── main.go            # 入口点：将引擎连接到 HTTP API 并监听
 ├── bump_version.py    # 里程表式版本递增，由 build.sh/.bat 运行
+├── bump_manifest_version.py # 将 hydra-umc.project.json 的版本与原生版本同步（--sync）
 ├── build.sh/.bat      # 递增版本号，然后执行 `go build`
 ├── run.sh/.bat        # 运行编译后的二进制文件
 └── README.md
 ```
 
-从原始模板中省略：`hardware/`、`firmware/`、`os/`、
-`images/` 和 `scripts/`——这是一个纯软件服务（Go 二进制文件），
-没有专属硬件或固件，没有需要维护的操作系统镜像，目前也还没有
-足够多的媒体/实用脚本内容值得为它们单独建立文件夹。完整的 HTTP
-端点参考见 [`docs/API.md`](docs/API.md)。
+从原始模板中省略：`hardware/`、`firmware/`、`os/`——这是一个纯软件
+服务（Go 二进制文件），没有专属硬件或固件，也没有需要维护的操作系统
+镜像。完整的 HTTP 端点参考见 [`docs/API.md`](docs/API.md)。
 
 ---
 

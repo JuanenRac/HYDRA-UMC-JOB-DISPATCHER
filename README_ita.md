@@ -68,22 +68,27 @@ HYDRA-UMC-JOB-DISPATCHER/
 │   └── api/           # Handler JSON/HTTP semplici che avvolgono il motore
 ├── docs/
 │   └── API.md         # Riferimento reale degli endpoint HTTP (richieste, risposte, codici di stato)
+├── images/            # Media e diagrammi
+├── systemd/
+│   └── hydra-umc-job-dispatcher.service # Unità systemd della coda missioni a priorità sulla CM5 locale
+├── tools/
+│   ├── build_test.py  # Controllo build/compilazione senza incremento di versione
+│   └── ci_validate.py # Validazione manifest/CHANGELOG/docs usata dalla CI
 ├── build/             # Binari compilati (output di build.sh/build.bat)
 ├── go.mod / go.sum    # Definizione del modulo Go
 ├── version.go         # const Version = "X.Y.Z" (go.mod non ha questo campo)
 ├── main.go            # Punto di ingresso: collega il motore all'API HTTP e ascolta
 ├── bump_version.py    # Bump di versione stile contachilometri
+├── bump_manifest_version.py # Sincronizza la versione di hydra-umc.project.json con quella nativa (--sync)
 ├── build.sh/.bat      # Aggiorna la versione, poi `go build`
 ├── run.sh/.bat        # Esegue il binario compilato
 └── README.md
 ```
 
-Rimossi dal template originale: `hardware/`, `firmware/`, `os/`,
-`images/` e `scripts/` — è un servizio puramente software (binario Go)
-senza hardware o firmware propri, senza un'immagine del sistema operativo
-da mantenere, e senza contenuto di media/script di utilità ancora
-sufficiente da giustificare cartelle proprie. Vedi [`docs/API.md`](docs/API.md)
-per il riferimento completo degli endpoint HTTP.
+Rimossi dal template originale: `hardware/`, `firmware/` e `os/` — è un
+servizio puramente software (binario Go) senza hardware o firmware propri
+e senza un'immagine del sistema operativo da mantenere. Vedi
+[`docs/API.md`](docs/API.md) per il riferimento completo degli endpoint HTTP.
 
 ---
 

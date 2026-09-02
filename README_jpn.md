@@ -72,22 +72,27 @@ HYDRA-UMC-JOB-DISPATCHER/
 │   └── api/           # エンジンを包む単純な JSON/HTTP ハンドラー
 ├── docs/
 │   └── API.md         # 本物の HTTP エンドポイントリファレンス（リクエスト、レスポンス、ステータスコード）
+├── images/            # メディアと図版
+├── systemd/
+│   └── hydra-umc-job-dispatcher.service # CM5 上のローカル優先度ミッションキュー用 systemd ユニット
+├── tools/
+│   ├── build_test.py  # バージョンを更新しないビルド/コンパイル確認
+│   └── ci_validate.py # CI が使用する manifest/CHANGELOG/docs の検証
 ├── build/             # コンパイル済みバイナリ(build.sh/build.bat の出力)
 ├── go.mod / go.sum    # Go モジュール定義
 ├── version.go         # const Version = "X.Y.Z"(go.mod にはアプリバージョンフィールドがありません)
 ├── main.go            # エントリポイント：エンジンを HTTP API に接続してリッスン
 ├── bump_version.py    # オドメーター式バージョンインクリメント、build.sh/.bat が実行
+├── bump_manifest_version.py # hydra-umc.project.json のバージョンをネイティブ側と同期（--sync）
 ├── build.sh/.bat      # バージョンを増加させ、その後 `go build` を実行
 ├── run.sh/.bat        # コンパイル済みバイナリを実行
 └── README.md
 ```
 
-元のテンプレートから省略：`hardware/`、`firmware/`、`os/`、
-`images/`、`scripts/` —— これは純粋なソフトウェアサービス(Go バイナリ)
-であり、専用のハードウェアやファームウェア、維持すべき
-オペレーティングシステムイメージもなく、専用フォルダを正当化するほどの
-メディア/ユーティリティスクリプトの内容もまだありません。完全な HTTP
-エンドポイントリファレンスは [`docs/API.md`](docs/API.md) を参照。
+元のテンプレートから省略：`hardware/`、`firmware/`、`os/` —— これは
+純粋なソフトウェアサービス(Go バイナリ)であり、専用のハードウェアや
+ファームウェア、維持すべきオペレーティングシステムイメージもありません。
+完全な HTTP エンドポイントリファレンスは [`docs/API.md`](docs/API.md) を参照。
 
 ---
 
