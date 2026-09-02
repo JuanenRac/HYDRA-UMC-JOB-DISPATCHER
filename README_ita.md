@@ -162,6 +162,7 @@ Questo progetto fa parte di un ecosistema robotico più ampio dello stesso autor
 ### Relazione Diretta (fuori dalla famiglia)
 
 - **[URTC](https://github.com/JuanenRac/URTC)** — assegna i lavori in base a quale testa utensile è realmente disponibile.
+- **[HYDRA-UMC-PRODUCTION-REPORTS](https://github.com/JuanenRac/HYDRA-UMC-PRODUCTION-REPORTS)** — la destinazione diagrammata per i log di completamento missione; questo dispatcher è la fonte reale prevista dei suoi dati OEE `production_event` una volta che i completamenti saranno collegati per scriverli (non ancora implementato, tracciato sul lato di quel progetto).
 
 ### Resto dell'Ecosistema
 

@@ -165,6 +165,7 @@ go test ./...   # src/dispatcher（调度算法）+
 ### 直接相关（项目族之外）
 
 - **[URTC](https://github.com/JuanenRac/URTC)** —— 根据实际可用的刀头分配任务。
+- **[HYDRA-UMC-PRODUCTION-REPORTS](https://github.com/JuanenRac/HYDRA-UMC-PRODUCTION-REPORTS)** —— 任务完成日志图示中的目标端;一旦完成事件被接入以写入数据,本调度器将成为其 OEE `production_event` 数据预期的真实来源(尚未实现,在该项目自身那一侧跟踪)。
 
 ### 生态系统的其余部分
 

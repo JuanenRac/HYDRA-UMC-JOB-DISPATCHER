@@ -163,6 +163,7 @@ Ce projet fait partie d'un écosystème robotique plus large du même auteur (Ju
 ### Relation Directe (hors de la famille)
 
 - **[URTC](https://github.com/JuanenRac/URTC)** — assigne les tâches selon la tête d'outil réellement disponible.
+- **[HYDRA-UMC-PRODUCTION-REPORTS](https://github.com/JuanenRac/HYDRA-UMC-PRODUCTION-REPORTS)** — la cible diagrammée pour les journaux de fin de mission ; ce dispatcher est la source réelle prévue de ses données OEE `production_event` une fois que les complétions seront câblées pour les écrire (pas encore implémenté, suivi du côté de ce projet).
 
 ### Reste de l'Écosystème
 

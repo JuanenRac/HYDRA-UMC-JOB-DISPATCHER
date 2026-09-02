@@ -171,6 +171,7 @@ go test ./...   # src/dispatcher(スケジューリングアルゴリズム) +
 ### 直接関連（ファミリー外）
 
 - **[URTC](https://github.com/JuanenRac/URTC)** —— 実際に利用可能な工具ヘッドに基づいてジョブを割り当てます。
+- **[HYDRA-UMC-PRODUCTION-REPORTS](https://github.com/JuanenRac/HYDRA-UMC-PRODUCTION-REPORTS)** —— ミッション完了ログの図示された宛先。完了処理がそれを書き込むように配線されれば、このディスパッチャーはそのOEE `production_event` データの本来意図された実際のソースとなります(まだ実装されておらず、そのプロジェクト自身の側で追跡されています)。
 
 ### エコシステムのその他のプロジェクト
 
