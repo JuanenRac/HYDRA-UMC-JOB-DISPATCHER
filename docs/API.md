@@ -56,6 +56,10 @@ Submits a new job to the queue.
 |---|---|---|
 | 201 | the created `Job` (see `GET /jobs`'s shape) | Job accepted; `Status` is `"pending"` or `"blocked"` depending on `dependsOn`. |
 | 400 | `{"error": "\"id\" is required"}` or a JSON decode error | Missing `id`, or malformed JSON body. |
+| 400 | `{"error": "invalid job: job ID must not be empty"}` | `id` is whitespace-only (e.g. `" "`) - rejected at the engine level even though it passed the HTTP layer's plain `req.ID == ""` check. No `id` is echoed back here - there's nothing meaningful to quote. |
+| 400 | `{"error": "invalid job: job \"<id>\" has an empty dependency"}` | A `dependsOn` entry is `""` or whitespace-only. |
+| 400 | `{"error": "invalid job: job \"<id>\" cannot depend on itself"}` | A `dependsOn` entry equals the job's own `id`. |
+| 400 | `{"error": "invalid job: job \"<id>\" repeats dependency \"<dep>\""}` | The same `dependsOn` entry appears more than once. |
 | 409 | `{"error": "job ID already exists: \"<id>\""}` | A job with that `id` already exists. |
 | 409 | `{"error": "dependency job ID does not exist: job \"<id>\" depends on \"<dep>\""}` | A `dependsOn` entry references a job ID that was never submitted - caught at submission time, not left to silently never become eligible. |
 
@@ -93,6 +97,7 @@ Same fields as `POST /jobs`, plus:
 | 200 | the existing `Job` + `"result": "duplicate"` | A job with this `dedupKey` is already `"pending"`, `"blocked"`, `"assigned"`, or `"done"` - returned **unchanged**. The submitted `id`/`priority`/etc. are ignored; nothing new is scheduled. |
 | 200 | the reset `Job` + `"result": "retried"` | A job with this `dedupKey` previously ended `"failed"` - it is reset to `"pending"` under its **original `id`**, refreshed with this submission's `priority`/`requiredTool`/`dependsOn`. |
 | 400 | `{"error": "\"id\" is required"}` or a JSON decode error | Missing `id`, or malformed JSON body. |
+| 400 | same `"invalid job"` shapes as `POST /jobs` (whitespace-only `id`, empty/self/repeated `dependsOn` entry) | Same job-shape validation as `POST /jobs`, applied before dedup lookup. |
 | 409 | same error shapes as `POST /jobs` | No matching `dedupKey` on record and the plain insert failed (ID collision or unknown dependency), or a `"retried"` reset was attempted with an unknown `dependsOn` entry. |
 
 ```bash
