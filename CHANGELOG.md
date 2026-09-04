@@ -20,6 +20,26 @@ semantic-versioning judgment calls:
 
 ---
 
+## [0.1.0] - Fixed: a retried dependency never un-stuck its Unreachable dependents
+
+- **`dispatcher.go`** - found in a live ecosystem bug audit: `SubmitJob()`'s
+  retry path (a previously `Failed` job resubmitted with the same
+  `DedupKey`) only ever recomputed the retried job's own `Status` - it
+  never called `refreshBlocked()`, the only mechanism that re-evaluates
+  *other* jobs' eligibility. A dependent already marked `Unreachable`
+  because this job had failed stayed `Unreachable` forever after the
+  retry, even though the retried job went straight back to `Pending` -
+  directly contradicting `Job.Status`'s own documented contract for
+  `StatusUnreachable` ("Resolves back to Pending/Blocked if that
+  dependency is later retried"). Reproduced with a real repro (`pick`
+  fails, `place` becomes `Unreachable`; `pick` is retried via
+  `SubmitJob` - `place` stayed `Unreachable` instead of returning to
+  `Blocked`) and confirmed fixed: the retry path now calls
+  `refreshBlocked()`, the same fixed-point re-evaluation `CompleteJob()`
+  already used for the Done/Failed transitions.
+- New test (`TestSubmitJob_RetryUnsticksDependentFromUnreachable`) - full
+  suite passing.
+
 ## Documentation - Real HTTP API reference
 
 - **`docs/API.md`** (new) - every real endpoint (`GET`/`POST /jobs`,
@@ -39,6 +59,10 @@ semantic-versioning judgment calls:
 - Added engine and HTTP regression coverage for the rejected inputs.
 
 ---
+
+## [0.1.0]
+
+- Build version synchronized with `hydra-umc.project.json` and the repository-native version source.
 
 ## [0.0.9] - Real CM5 deployment
 

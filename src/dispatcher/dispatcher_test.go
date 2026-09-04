@@ -446,3 +446,53 @@ func TestDispatchOnce_NoMatchingToolLeavesJobPending(t *testing.T) {
 		t.Fatalf("job-1 status = %q, want still pending", j.Status)
 	}
 }
+
+// BUG (found in audit): SubmitJob's retry path only ever recomputed the
+// retried job's OWN Status - it never called refreshBlocked(), the only
+// mechanism that re-evaluates OTHER jobs' eligibility. A dependent already
+// marked Unreachable because this job had failed stayed stuck as
+// Unreachable forever after the retry, even though the retried job went
+// straight back to Pending - directly contradicting StatusUnreachable's
+// own documented contract ("Resolves back to Pending/Blocked if that
+// dependency is later retried"). Reproduced against the pre-fix code
+// (place stayed "unreachable" after pick was retried) and confirmed fixed.
+func TestSubmitJob_RetryUnsticksDependentFromUnreachable(t *testing.T) {
+	e := NewEngine()
+	e.UpsertRobot(Robot{ID: "robot-a", Available: true})
+
+	pick, _, err := e.SubmitJob(Job{ID: "pick", Priority: 1, DedupKey: "pick-key"})
+	if err != nil {
+		t.Fatalf("submit pick: %v", err)
+	}
+	if _, _, err := e.SubmitJob(Job{ID: "place", Priority: 1, DependsOn: []string{"pick"}}); err != nil {
+		t.Fatalf("submit place: %v", err)
+	}
+
+	if len(e.DispatchOnce()) != 1 {
+		t.Fatalf("expected pick to be dispatched")
+	}
+	if err := e.CompleteJob(pick.ID, false); err != nil {
+		t.Fatalf("complete pick (fail): %v", err)
+	}
+
+	place, _ := e.Job("place")
+	if place.Status != StatusUnreachable {
+		t.Fatalf("place.Status = %q, want Unreachable after pick failed", place.Status)
+	}
+
+	retriedPick, result, err := e.SubmitJob(Job{ID: "pick-retry", Priority: 1, DedupKey: "pick-key"})
+	if err != nil {
+		t.Fatalf("retry submit: %v", err)
+	}
+	if result != SubmitRetried {
+		t.Fatalf("result = %q, want SubmitRetried", result)
+	}
+	if retriedPick.Status != StatusPending {
+		t.Fatalf("retriedPick.Status = %q, want Pending", retriedPick.Status)
+	}
+
+	place, _ = e.Job("place")
+	if place.Status != StatusBlocked {
+		t.Fatalf("place.Status = %q, want Blocked once its dependency is retryable again, not stuck Unreachable", place.Status)
+	}
+}

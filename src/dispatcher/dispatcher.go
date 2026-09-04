@@ -211,6 +211,24 @@ func (e *Engine) SubmitJob(j Job) (Job, SubmitResult, error) {
 			existing.DependsOn = j.DependsOn
 			existing.AssignedRobot = ""
 			existing.Status = e.computeStatus(existing)
+			// BUG (found in audit): a retried job going back to Pending/Blocked
+			// only ever updated ITS OWN Status above - any other job that had
+			// already been marked Unreachable because it (transitively)
+			// DependsOn this one stayed stuck as Unreachable forever, since
+			// nothing re-evaluated it: the only other caller of
+			// refreshBlocked() is CompleteJob, which this retry path never
+			// goes through. That directly contradicts Job.Status's own
+			// documented contract for StatusUnreachable ("Resolves back to
+			// Pending/Blocked if that dependency is later retried"). Verified
+			// with a real repro (pick fails -> place becomes Unreachable;
+			// pick is retried via SubmitJob -> place stayed Unreachable
+			// instead of returning to Blocked) before this fix, and confirmed
+			// fixed after it. refreshBlocked() re-evaluates every
+			// Pending/Blocked/Unreachable job to a fixed point, so this both
+			// unsticks direct dependents and propagates through a multi-step
+			// chain in one call, the same way CompleteJob's own call already
+			// does for the Done/Failed transitions.
+			e.refreshBlocked()
 			return *existing, SubmitRetried, nil
 		}
 	}
