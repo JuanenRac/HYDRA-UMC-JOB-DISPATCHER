@@ -65,7 +65,8 @@ HYDRA-UMC-JOB-DISPATCHER/
 ├── src/
 │   ├── dispatcher/    # Le véritable moteur de planification : file,
 │   │                  # routage tenant compte de l'outil, dépendances multi-étapes
-│   └── api/           # Handlers JSON/HTTP simples encapsulant le moteur
+│   ├── api/           # Handlers JSON/HTTP simples encapsulant le moteur
+│   └── sqlitestore/  # Persistance SQLite optionnelle en Go pur (-db PATH)
 ├── docs/
 │   └── API.md         # Référence réelle des endpoints HTTP (requêtes, réponses, codes de statut)
 ├── images/            # Médias et diagrammes

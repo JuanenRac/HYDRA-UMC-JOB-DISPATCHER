@@ -65,7 +65,8 @@ HYDRA-UMC-JOB-DISPATCHER/
 ├── src/
 │   ├── dispatcher/    # Die echte Planungs-Engine: Warteschlange,
 │   │                  # werkzeugbewusstes Routing, mehrstufige Abhängigkeiten
-│   └── api/           # Einfache JSON/HTTP-Handler, die die Engine umschließen
+│   ├── api/           # Einfache JSON/HTTP-Handler, die die Engine umschließen
+│   └── sqlitestore/  # Optionale reine Go-SQLite-Persistenz (-db PATH)
 ├── docs/
 │   └── API.md         # Echte HTTP-Endpunktreferenz (Requests, Responses, Statuscodes)
 ├── images/            # Medien und Diagramme

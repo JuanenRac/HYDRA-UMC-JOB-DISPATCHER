@@ -69,7 +69,8 @@ HYDRA-UMC-JOB-DISPATCHER/
 ├── src/
 │   ├── dispatcher/    # 実際のスケジューリングエンジン：キュー、
 │   │                  # 工具を意識したルーティング、多段階依存関係
-│   └── api/           # エンジンを包む単純な JSON/HTTP ハンドラー
+│   ├── api/           # エンジンを包む単純な JSON/HTTP ハンドラー
+│   └── sqlitestore/  # オプションの純粋な Go による SQLite 永続化 (-db PATH)
 ├── docs/
 │   └── API.md         # 本物の HTTP エンドポイントリファレンス（リクエスト、レスポンス、ステータスコード）
 ├── images/            # メディアと図版

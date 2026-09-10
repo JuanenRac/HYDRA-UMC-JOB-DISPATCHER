@@ -65,7 +65,8 @@ HYDRA-UMC-JOB-DISPATCHER/
 ├── src/
 │   ├── dispatcher/    # The real scheduling engine: queue, tool-aware
 │   │                  # routing, multi-stage dependencies
-│   └── api/           # Plain JSON/HTTP handlers wrapping the engine
+│   ├── api/           # Plain JSON/HTTP handlers wrapping the engine
+│   └── sqlitestore/  # Opt-in pure-Go SQLite persistence (-db PATH)
 ├── docs/
 │   └── API.md         # Real HTTP endpoint reference (requests, responses, status codes)
 ├── images/            # Media and diagrams

@@ -68,7 +68,8 @@ HYDRA-UMC-JOB-DISPATCHER/
 ├── src/
 │   ├── dispatcher/    # 真正的调度引擎：队列、工具感知路由、
 │   │                  # 多阶段依赖关系
-│   └── api/           # 封装引擎的简单 JSON/HTTP 处理器
+│   ├── api/           # 封装引擎的简单 JSON/HTTP 处理器
+│   └── sqlitestore/  # 可选的纯 Go SQLite 持久化 (-db PATH)
 ├── docs/
 │   └── API.md         # 真实的 HTTP 端点参考（请求、响应、状态码）
 ├── images/            # 媒体与图示
