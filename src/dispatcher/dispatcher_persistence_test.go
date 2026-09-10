@@ -19,7 +19,7 @@ import (
 )
 
 // TestRealRestart_MissionQueueSurvivesAcrossTwoEngines is the end-to-end
-// proof of the audit finding this package closes: a real Engine, backed
+// proof of the finding this package closes: a real Engine, backed
 // by a real SQLite file, that has already dispatched one job and
 // completed another, handed to a genuinely SEPARATE Engine/Store pair
 // pointed at the same file - as a real process restart would - and
