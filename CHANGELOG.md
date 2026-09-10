@@ -20,7 +20,7 @@ semantic-versioning judgment calls:
 
 ## [0.1.2] - JOB-01/JOB-02: defensive copies and a real reservation guard
 
-- **JOB-01 (found in an ecosystem-wide software-improvements audit, P1):**
+- **JOB-01 (P1):**
   `Job.DependsOn` was only ever struct-shallow-copied - a slice's backing
   array is shared across a plain `*j` dereference. A caller mutating a
   `[]string` it got back from `Job()`/`Jobs()`/`SubmitJob`, or later
@@ -29,7 +29,7 @@ semantic-versioning judgment calls:
   entirely and never going through persistence. Every read/write boundary
   (`addJobLocked`, `SubmitJob`'s retry path, `Job()`, `Jobs()`) now goes
   through a real, allocated copy (`cloneJob`/`cloneStrings`).
-- **JOB-02 (found in the same audit, P0):** `Robot.Available` doubled as
+- **JOB-02 (P0):** `Robot.Available` doubled as
   both the robot's own self-reported heartbeat readiness AND the
   scheduler's real reservation flag. A heartbeat/re-registration declaring
   `Available=true` could silently reopen a robot `DispatchOnce` had
@@ -55,7 +55,7 @@ semantic-versioning judgment calls:
 
 ## [0.1.1] - Real SQLite-backed persistence: the mission queue survives a restart
 
-- Found in an ecosystem-wide software-improvements audit: the README's
+- The README's
   own "Persistence: fault-tolerant mission state using local Redis/
   Database storage" was real, disclosed future work, not forgotten -
   `dispatcher.Engine`'s state had been kept behind exported methods only
@@ -103,7 +103,7 @@ semantic-versioning judgment calls:
 
 ## [0.1.0] - Fixed: a retried dependency never un-stuck its Unreachable dependents
 
-- **`dispatcher.go`** - found in a live ecosystem bug audit: `SubmitJob()`'s
+- **`dispatcher.go`** - `SubmitJob()`'s
   retry path (a previously `Failed` job resubmitted with the same
   `DedupKey`) only ever recomputed the retried job's own `Status` - it
   never called `refreshBlocked()`, the only mechanism that re-evaluates
@@ -151,7 +151,7 @@ semantic-versioning judgment calls:
   unit for `HYDRA-UMC-OS/provisioning/install_job_dispatcher.sh` (new,
   that repo), which builds this pure-Go binary on-device (no cgo
   dependency, so no C toolchain beyond `golang-go` itself is needed).
-  Real gap found auditing the ecosystem against actual CM5 hardware: the
+  Real gap on actual CM5 hardware: the
   priority mission queue and its real HTTP API (`src/api`,
   `src/dispatcher`) had never been built or installed anywhere.
 
@@ -164,7 +164,7 @@ semantic-versioning judgment calls:
 
 ## [0.0.7] - Fixed: a job stuck `Blocked` forever behind a permanently failed dependency
 
-- **`dispatcher.go`** - found in a live ecosystem bug audit: `computeStatus()` only ever distinguished "dependency still unfinished" from "dependency `Done`", so a dependent job whose dependency ended `Failed` stayed `Blocked` forever - no state transition, no error, nothing visible via the API to tell an operator the job was permanently stuck rather than legitimately waiting. A multi-step mission (e.g. a `place` job depending on a `pick` job) whose first step failed left every later step wedged, since `DispatchOnce()` only ever considers `Pending` jobs and `refreshBlocked()` could only promote a `Blocked` job once *every* dependency reached `Done`, never `Failed`.
+- **`dispatcher.go`** - `computeStatus()` only ever distinguished "dependency still unfinished" from "dependency `Done`", so a dependent job whose dependency ended `Failed` stayed `Blocked` forever - no state transition, no error, nothing visible via the API to tell an operator the job was permanently stuck rather than legitimately waiting. A multi-step mission (e.g. a `place` job depending on a `pick` job) whose first step failed left every later step wedged, since `DispatchOnce()` only ever considers `Pending` jobs and `refreshBlocked()` could only promote a `Blocked` job once *every* dependency reached `Done`, never `Failed`.
 - New `StatusUnreachable` status: `computeStatus()` now returns it as soon as any `DependsOn` entry is itself `Failed` or `Unreachable` - a real, queryable-via-the-API distinction from `Blocked` (which still means "will resolve on its own, given time") and from `Failed` (which means "this job itself ran and failed", not "one of its dependencies did"). `refreshBlocked()` now loops to a fixed point instead of a single pass, so an `Unreachable` verdict propagates through an entire multi-step dependency chain in one `CompleteJob()` call rather than only the immediate next stage. It also re-evaluates `Unreachable` jobs, not only `Pending`/`Blocked` ones, so a dependent un-sticks on its own if the failed dependency is later retried (`SubmitJob`, already supported) and succeeds.
 - **`docs/API.md`** - documented `"unreachable"` alongside the existing `Status` values, and updated the `POST /jobs`/`POST /jobs/complete` sections to describe when a job starts or transitions into it.
 - 2 new tests (`TestRefreshBlocked_DependencyFailureMakesDependentUnreachable`, `TestRefreshBlocked_UnreachablePropagatesThroughMultiStepChain`) - full suite (23 tests across both packages) passing.
