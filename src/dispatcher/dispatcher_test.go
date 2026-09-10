@@ -447,7 +447,7 @@ func TestDispatchOnce_NoMatchingToolLeavesJobPending(t *testing.T) {
 	}
 }
 
-// BUG (found in audit): SubmitJob's retry path only ever recomputed the
+// BUG: SubmitJob's retry path only ever recomputed the
 // retried job's OWN Status - it never called refreshBlocked(), the only
 // mechanism that re-evaluates OTHER jobs' eligibility. A dependent already
 // marked Unreachable because this job had failed stayed stuck as
@@ -497,7 +497,7 @@ func TestSubmitJob_RetryUnsticksDependentFromUnreachable(t *testing.T) {
 	}
 }
 
-// JOB-01 (ecosystem-wide software-improvements audit, P1): mutating a
+// JOB-01 (P1): mutating a
 // DependsOn slice returned by Job() must never reach back into Engine's
 // own internal state - a shallow copy shares the slice's backing array.
 func TestJob_MutatingReturnedDependsOnDoesNotCorruptInternalState(t *testing.T) {
@@ -601,7 +601,7 @@ func TestSubmitJob_RetriedJobReturnsIndependentDependsOnCopy(t *testing.T) {
 	}
 }
 
-// JOB-02 (ecosystem-wide software-improvements audit, P0): a heartbeat
+// JOB-02 (P0): a heartbeat
 // declaring Available=true must never override a robot's active
 // reservation - the exact scenario from the finding: two jobs, one
 // robot, a heartbeat/upsert in between, must still produce exactly one

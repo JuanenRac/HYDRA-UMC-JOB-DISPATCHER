@@ -84,7 +84,7 @@ type JobRecord struct {
 }
 
 // Store is the real, minimal persistence boundary Engine writes through
-// - found in an ecosystem-wide software-improvements audit: the README's
+// - found while auditing the code: the README's
 // own "Persistence: fault-tolerant mission state using local Redis/
 // Database storage" was real future work, not forgotten, and Engine's
 // state was deliberately kept behind exported methods only so a real
@@ -325,7 +325,7 @@ func cloneStrings(s []string) []string {
 // cloneJob returns a deep copy of *j safe to hand to a caller (or store
 // as a caller's own input) without sharing DependsOn's backing array.
 //
-// JOB-01 (found in an ecosystem-wide software-improvements audit, P1): a
+// JOB-01 (P1): a
 // Job's DependsOn slice was copied only at the struct level (a plain
 // `*j` dereference, or `existing.DependsOn = j.DependsOn`) - a shallow
 // copy of a struct containing a slice copies the slice HEADER only, so
@@ -401,7 +401,7 @@ func (e *Engine) SubmitJob(j Job) (Job, SubmitResult, error) {
 			existing.AssignedRobot = ""
 			existing.Status = e.computeStatus(existing)
 			existingErr := e.persistJobLocked(existing)
-			// BUG (found in audit): a retried job going back to Pending/Blocked
+			// BUG: a retried job going back to Pending/Blocked
 			// only ever updated ITS OWN Status above - any other job that had
 			// already been marked Unreachable because it (transitively)
 			// DependsOn this one stayed stuck as Unreachable forever, since
@@ -443,8 +443,7 @@ func (e *Engine) UpsertRobot(r Robot) {
 	if existing, ok := e.robots[r.ID]; ok {
 		existing.Location = r.Location
 		existing.Tool = r.Tool
-		// JOB-02 (found in an ecosystem-wide software-improvements audit,
-		// P0): Available doubles as both the robot's own self-reported
+		// JOB-02 (P0): Available doubles as both the robot's own self-reported
 		// readiness AND the scheduler's real reservation flag (DispatchOnce
 		// sets it false the instant it assigns a job). A heartbeat/
 		// re-registration declaring Available=true must never override an

@@ -114,7 +114,7 @@ func TestSaveRobot_RoundTripsAndUpserts(t *testing.T) {
 }
 
 // TestRealRestart_DataSurvivesReopeningTheSameFile is the test that
-// actually matters for the audit finding this package closes: a real
+// actually matters for the finding this package closes: a real
 // file on disk (not :memory:, which by definition never survives a
 // process restart), closed and reopened as a genuinely separate *Store,
 // still has everything the first process wrote to it.
