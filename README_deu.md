@@ -16,6 +16,10 @@
 
 ---
 
+**Ehrlichkeitscheck - was heute wirklich läuft:** die Scheduling-Engine (`src/dispatcher/dispatcher.go`) - nach Priorität geordnete Warteschlange, werkzeugbewusstes Routing, mehrstufige Abhängigkeitsverfolgung und idempotente Einreichung über `DedupKey` - sowie die einfache JSON/HTTP-API, die sie umschließt (`src/api/api.go`), sind real und getestet (43 bestandene Tests über `src/dispatcher`, `src/api`, `src/sqlitestore`, `go test ./...`). Die optionale SQLite-Persistenz (`src/sqlitestore/sqlitestore.go`, reines Go, kein CGO) ist tatsächlich Ende-zu-Ende gegen einen echten, beendeten und neu gestarteten Prozess verifiziert, nicht nur isoliert unitgetestet. Was eine bekannte, dokumentierte Lücke ist: das werkzeugbewusste Routing prüft `RequiredTool`/`Robot.Tool` durch exakten String-Abgleich gegen das, was die eigene `POST /robots`-Registrierung eines Roboters behauptet - es spricht noch nicht mit einem echten URTC über CAN, um zu bestätigen, dass der Werkzeugkopf physisch angebracht ist, sodass ein Roboter, der über sein eigenes Werkzeug lügt (oder dessen Kopf abgefallen ist), heute nicht von einem ehrlichen zu unterscheiden ist. Die 4 Roadmap-Phasen (TSN-Synchronisation, 3D-Pfadplanung, Dispatch-Optimierung, KI-gestützte Dauerschätzung) sind angestrebte Zukunftsarbeit ohne jeglichen Code dahinter bisher. Siehe `CHANGELOG.md` für das, was bisher genau ausgeliefert wurde.
+
+---
+
 ## 1. 🛠️ TECHNISCHER ÜBERBLICK
 
 **HYDRA-UMC-JOB-DISPATCHER** ist die Engine zur Aufgabenverteilung des Orchestrators. Sie verwaltet eine globale Missions-Warteschlange und verteilt Aufgaben an einzelne Roboter basierend auf deren aktueller Verfügbarkeit, Standort und angebautem Werkzeug (URTC).
