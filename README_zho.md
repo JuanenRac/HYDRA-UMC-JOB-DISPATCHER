@@ -16,6 +16,10 @@
 
 ---
 
+**诚实核查 - 今天真正能运行的部分：** 调度引擎(`src/dispatcher/dispatcher.go`)——按优先级排序的队列、工具感知路由、多阶段依赖跟踪，以及通过 `DedupKey` 实现的幂等提交——以及包装它的简单 JSON/HTTP API(`src/api/api.go`)都是真实的并经过测试(`src/dispatcher`、`src/api`、`src/sqlitestore` 共 43 个测试通过，`go test ./...`)。可选的 SQLite 持久化(`src/sqlitestore/sqlitestore.go`，纯 Go 实现，不使用 CGO)已针对一个真实被杀死并重新启动的进程完成端到端验证，而不仅仅是孤立的单元测试。一个已知且已记录的差距：工具感知路由是通过精确字符串匹配来检查 `RequiredTool`/`Robot.Tool` 的，依据的只是机器人自身通过 `POST /robots` 声明的内容——它尚未通过 CAN 总线与真实的 URTC 通信以确认工具头是否真的物理连接，因此一个谎报自身工具的机器人(或工具头已经脱落的机器人)目前与如实汇报的机器人是无法区分的。路线图中的 4 个阶段(TSN 同步、3D 路径规划、调度优化、AI 驱动的时长估算)都是尚无任何代码支撑的愿景性未来工作。具体已交付的内容请见 `CHANGELOG.md`。
+
+---
+
 ## 1. 🛠️ 技术概述
 
 **HYDRA-UMC-JOB-DISPATCHER** 是编排器的任务分配引擎。它管理一个全局任务

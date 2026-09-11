@@ -18,6 +18,19 @@ semantic-versioning judgment calls:
 
 ---
 
+## [0.1.3] - Honesty check section in every README
+
+Added a "Honesty check" paragraph right after the badges in `README.md`
+and all 6 translated READMEs, naming the real, tested modules
+(`src/dispatcher/dispatcher.go`, `src/api/api.go`,
+`src/sqlitestore/sqlitestore.go`) and the real test count (43 passing
+across `go test ./...`). States plainly the one known, already-documented
+gap: tool-aware routing trusts a robot's own `POST /robots` claim about
+its attached tool rather than confirming it over a real URTC/CAN link,
+and the 4 roadmap phases are aspirational with no code behind them yet.
+Documents the real, current state of what's implemented vs. planned; no
+behavior changed.
+
 ## [0.1.2] - JOB-01/JOB-02: defensive copies and a real reservation guard
 
 - **JOB-01 (P1):**
