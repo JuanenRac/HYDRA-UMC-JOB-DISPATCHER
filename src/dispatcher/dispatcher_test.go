@@ -6,6 +6,7 @@ package dispatcher
 import (
 	"errors"
 	"testing"
+	"time"
 )
 
 func TestDispatchOnce_ToolAwareRouting(t *testing.T) {
@@ -729,5 +730,214 @@ func TestCompleteJob_StillReenablesARobotThatNeverSelfReportedUnavailable(t *tes
 	robots := e.Robots()
 	if len(robots) != 1 || !robots[0].Available {
 		t.Fatalf("robots = %+v, want robot-a Available again after an ordinary completion", robots)
+	}
+}
+
+// fakeClock lets a test control e.now() exactly - real time never has to
+// pass to prove a timeout-based decision.
+type fakeClock struct{ t time.Time }
+
+func (c *fakeClock) now() time.Time { return c.t }
+
+func TestDetectStaleAssignments_MarksAssignedJobUnknownAfterTimeout(t *testing.T) {
+	e := NewEngine()
+	clock := &fakeClock{t: time.Unix(1000, 0)}
+	e.now = clock.now
+
+	e.UpsertRobot(Robot{ID: "robot-a", Available: true})
+	if err := e.AddJob(Job{ID: "job-1"}); err != nil {
+		t.Fatalf("AddJob: %v", err)
+	}
+	if assignments := e.DispatchOnce(); len(assignments) != 1 {
+		t.Fatalf("DispatchOnce = %+v, want job-1 assigned", assignments)
+	}
+
+	clock.t = clock.t.Add(2 * time.Minute) // robot-a has been silent since its assignment
+	unknown := e.DetectStaleAssignments(time.Minute)
+	if len(unknown) != 1 || unknown[0] != "job-1" {
+		t.Fatalf("DetectStaleAssignments = %v, want [job-1]", unknown)
+	}
+
+	job, _ := e.Job("job-1")
+	if job.Status != StatusUnknown {
+		t.Fatalf("job-1 Status = %q, want %q", job.Status, StatusUnknown)
+	}
+}
+
+func TestDetectStaleAssignments_LeavesAFreshHeartbeatAlone(t *testing.T) {
+	e := NewEngine()
+	clock := &fakeClock{t: time.Unix(2000, 0)}
+	e.now = clock.now
+
+	e.UpsertRobot(Robot{ID: "robot-a", Available: true})
+	if err := e.AddJob(Job{ID: "job-1"}); err != nil {
+		t.Fatalf("AddJob: %v", err)
+	}
+	e.DispatchOnce()
+
+	clock.t = clock.t.Add(30 * time.Second)
+	e.UpsertRobot(Robot{ID: "robot-a", Available: false}) // a real, recent heartbeat mid-task (JOB-02: Available itself is dropped, but this still counts as contact)
+	clock.t = clock.t.Add(30 * time.Second)               // 30s since that heartbeat - under a 60s timeout
+
+	unknown := e.DetectStaleAssignments(time.Minute)
+	if len(unknown) != 0 {
+		t.Fatalf("DetectStaleAssignments = %v, want none - robot-a heartbeated 30s ago, under the 60s timeout", unknown)
+	}
+	job, _ := e.Job("job-1")
+	if job.Status != StatusAssigned {
+		t.Fatalf("job-1 Status = %q, want to remain %q", job.Status, StatusAssigned)
+	}
+}
+
+func TestDetectStaleAssignments_NeverFlagsARobotThatHasNeverHeartbeatedSinceThisProcessStarted(t *testing.T) {
+	// Real scenario: NewEngineWithStore restores robots from disk, and
+	// lastHeartbeatAt is deliberately never persisted (see its own
+	// comment) - every restored robot starts this process's life with a
+	// zero value. Treating a zero value as "known-stale" would flag
+	// every single in-flight assignment the instant this process
+	// restarts, which is worse than useless. It must instead wait for at
+	// least one real heartbeat before it can ever judge staleness.
+	e := NewEngine()
+	clock := &fakeClock{t: time.Unix(3000, 0)}
+	e.now = clock.now
+
+	e.UpsertRobot(Robot{ID: "robot-a", Available: true})
+	if err := e.AddJob(Job{ID: "job-1"}); err != nil {
+		t.Fatalf("AddJob: %v", err)
+	}
+	e.DispatchOnce()
+	e.robots["robot-a"].lastHeartbeatAt = time.Time{} // simulate a restart wiping this process-local field
+
+	clock.t = clock.t.Add(365 * 24 * time.Hour) // absurdly stale by any real clock
+	unknown := e.DetectStaleAssignments(time.Minute)
+	if len(unknown) != 0 {
+		t.Fatalf("DetectStaleAssignments = %v, want none - a never-yet-heartbeated robot must never be judged stale", unknown)
+	}
+}
+
+func TestDetectStaleAssignments_NeverTouchesAJobThatIsNotAssigned(t *testing.T) {
+	e := NewEngine()
+	clock := &fakeClock{t: time.Unix(4000, 0)}
+	e.now = clock.now
+
+	e.UpsertRobot(Robot{ID: "robot-a", Available: true})
+	if err := e.AddJob(Job{ID: "job-1"}); err != nil {
+		t.Fatalf("AddJob: %v", err)
+	}
+	e.DispatchOnce()
+	if err := e.CompleteJob("job-1", true); err != nil {
+		t.Fatalf("CompleteJob: %v", err)
+	}
+
+	clock.t = clock.t.Add(24 * time.Hour)
+	unknown := e.DetectStaleAssignments(time.Minute)
+	if len(unknown) != 0 {
+		t.Fatalf("DetectStaleAssignments = %v, want none - job-1 is already Done, not Assigned", unknown)
+	}
+	job, _ := e.Job("job-1")
+	if job.Status != StatusDone {
+		t.Fatalf("job-1 Status = %q, want to remain %q", job.Status, StatusDone)
+	}
+}
+
+func TestCompleteJob_AcceptsALateGenuineReportForAnUnknownJob(t *testing.T) {
+	e := NewEngine()
+	clock := &fakeClock{t: time.Unix(5000, 0)}
+	e.now = clock.now
+
+	e.UpsertRobot(Robot{ID: "robot-a", Available: true})
+	if err := e.AddJob(Job{ID: "job-1"}); err != nil {
+		t.Fatalf("AddJob: %v", err)
+	}
+	e.DispatchOnce()
+	clock.t = clock.t.Add(2 * time.Minute)
+	if unknown := e.DetectStaleAssignments(time.Minute); len(unknown) != 1 {
+		t.Fatalf("DetectStaleAssignments = %v, want job-1 marked unknown", unknown)
+	}
+
+	// robot-a reconnects and reports what actually happened - a real,
+	// late but genuine outcome, not silence.
+	if err := e.CompleteJob("job-1", true); err != nil {
+		t.Fatalf("CompleteJob on a formerly-unknown job: %v", err)
+	}
+	job, _ := e.Job("job-1")
+	if job.Status != StatusDone {
+		t.Fatalf("job-1 Status = %q, want %q", job.Status, StatusDone)
+	}
+	robots := e.Robots()
+	if len(robots) != 1 || !robots[0].Available {
+		t.Fatalf("robots = %+v, want robot-a Available again - it has no other active assignment", robots)
+	}
+}
+
+func TestDetectStaleAssignments_UnknownJobNoLongerReservesItsRobot(t *testing.T) {
+	// A robot whose only job just went Unknown must be immediately
+	// eligible for new work on its own next positive heartbeat - see
+	// DetectStaleAssignments's own comment on why stranding an idle,
+	// reconnected robot would help nobody.
+	e := NewEngine()
+	clock := &fakeClock{t: time.Unix(6000, 0)}
+	e.now = clock.now
+
+	e.UpsertRobot(Robot{ID: "robot-a", Available: true})
+	if err := e.AddJob(Job{ID: "job-1"}); err != nil {
+		t.Fatalf("AddJob job-1: %v", err)
+	}
+	e.DispatchOnce()
+	clock.t = clock.t.Add(2 * time.Minute)
+	if unknown := e.DetectStaleAssignments(time.Minute); len(unknown) != 1 {
+		t.Fatalf("DetectStaleAssignments = %v, want job-1 marked unknown", unknown)
+	}
+
+	// robot-a reconnects healthy, with no memory of job-1 (it may have
+	// crashed and restarted) - a genuinely fresh, positive heartbeat.
+	e.UpsertRobot(Robot{ID: "robot-a", Available: true})
+	if err := e.AddJob(Job{ID: "job-2"}); err != nil {
+		t.Fatalf("AddJob job-2: %v", err)
+	}
+	assignments := e.DispatchOnce()
+	if len(assignments) != 1 || assignments[0].JobID != "job-2" || assignments[0].RobotID != "robot-a" {
+		t.Fatalf("DispatchOnce = %+v, want job-2 assigned to robot-a - it must not stay stranded by job-1's unresolved outcome", assignments)
+	}
+}
+
+func TestCompleteJob_LateUnknownReportNeverReenablesARobotBusyWithANewerJob(t *testing.T) {
+	// The exact real risk DetectStaleAssignments' own design creates:
+	// robot-a picks up a second job (job-2) while job-1 is still
+	// Unknown, THEN job-1's own late report finally arrives. That report
+	// must resolve job-1 without touching robot-a's current, real
+	// reservation for job-2.
+	e := NewEngine()
+	clock := &fakeClock{t: time.Unix(7000, 0)}
+	e.now = clock.now
+
+	e.UpsertRobot(Robot{ID: "robot-a", Available: true})
+	if err := e.AddJob(Job{ID: "job-1"}); err != nil {
+		t.Fatalf("AddJob job-1: %v", err)
+	}
+	e.DispatchOnce()
+	clock.t = clock.t.Add(2 * time.Minute)
+	e.DetectStaleAssignments(time.Minute)
+
+	e.UpsertRobot(Robot{ID: "robot-a", Available: true})
+	if err := e.AddJob(Job{ID: "job-2"}); err != nil {
+		t.Fatalf("AddJob job-2: %v", err)
+	}
+	assignments := e.DispatchOnce()
+	if len(assignments) != 1 || assignments[0].JobID != "job-2" {
+		t.Fatalf("DispatchOnce = %+v, want job-2 assigned to robot-a", assignments)
+	}
+
+	// job-1's own stale report finally arrives.
+	if err := e.CompleteJob("job-1", true); err != nil {
+		t.Fatalf("CompleteJob on job-1: %v", err)
+	}
+	robots := e.Robots()
+	if len(robots) != 1 || robots[0].Available {
+		t.Fatalf("robots = %+v, want robot-a to remain unavailable - it is genuinely busy with job-2 right now", robots)
+	}
+	job2, _ := e.Job("job-2")
+	if job2.Status != StatusAssigned {
+		t.Fatalf("job-2 Status = %q, want to remain %q - resolving job-1 must not disturb it", job2.Status, StatusAssigned)
 	}
 }

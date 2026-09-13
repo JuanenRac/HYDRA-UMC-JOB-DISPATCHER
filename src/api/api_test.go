@@ -216,6 +216,52 @@ func TestHandleJobs_MethodNotAllowed(t *testing.T) {
 	}
 }
 
+func TestHandleDetectStale_MethodNotAllowed(t *testing.T) {
+	s := New(dispatcher.NewEngine())
+	req := httptest.NewRequest(http.MethodGet, "/jobs/detect-stale", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("status = %d, want 405 for GET /jobs/detect-stale", rec.Code)
+	}
+}
+
+func TestHandleDetectStale_RejectsNonPositiveTimeout(t *testing.T) {
+	s := New(dispatcher.NewEngine())
+	for _, req := range []detectStaleRequest{{TimeoutSeconds: 0}, {TimeoutSeconds: -5}} {
+		rec := post(t, s, "/jobs/detect-stale", req)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("timeoutSeconds=%v: status = %d, want 400, body = %s", req.TimeoutSeconds, rec.Code, rec.Body.String())
+		}
+	}
+}
+
+func TestHandleDetectStale_ReportsNoneStaleRightAfterDispatch(t *testing.T) {
+	// A real end-to-end round trip through the actual handler: no fake
+	// clock available at this layer (dispatcher.Engine's own clock is
+	// package-private, see the dispatcher package's own tests for the
+	// timeout logic itself), but a real assignment made moments ago must
+	// never be reported stale against any real, sane timeout.
+	s := New(dispatcher.NewEngine())
+	post(t, s, "/robots", robotRequest{ID: "robot-a", Tool: "PnP", Available: true})
+	post(t, s, "/jobs", jobRequest{ID: "job-1", RequiredTool: "PnP"})
+	post(t, s, "/dispatch", nil)
+
+	rec := post(t, s, "/jobs/detect-stale", detectStaleRequest{TimeoutSeconds: 300})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("POST /jobs/detect-stale status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		UnknownJobIds []string `json:"unknownJobIds"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decoding /jobs/detect-stale response: %v", err)
+	}
+	if len(resp.UnknownJobIds) != 0 {
+		t.Fatalf("unknownJobIds = %v, want none - job-1 was just assigned", resp.UnknownJobIds)
+	}
+}
+
 func TestHandleHealth_ReportsHealthyWithNoStoreConfigured(t *testing.T) {
 	s := New(dispatcher.NewEngine())
 	rec := get(t, s, "/health")

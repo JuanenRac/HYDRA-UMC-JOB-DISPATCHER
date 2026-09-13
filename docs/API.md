@@ -64,7 +64,7 @@ Lists every job currently known to the engine.
 ]
 ```
 
-`Status` is one of `"pending"`, `"blocked"`, `"assigned"`, `"done"`, `"failed"`, `"unreachable"` - computed by the engine, never caller-supplied (see `POST /jobs` below). `"unreachable"` means a `dependsOn` entry itself ended `"failed"` (or is itself `"unreachable"`) - unlike `"blocked"`, which just means "still waiting", an `"unreachable"` job can never become eligible on its own; it only resolves back to `"pending"`/`"blocked"` if that dependency is retried (see `POST /jobs/submit`) and eventually succeeds.
+`Status` is one of `"pending"`, `"blocked"`, `"assigned"`, `"done"`, `"failed"`, `"unreachable"`, `"unknown"` - computed by the engine, never caller-supplied (see `POST /jobs` below). `"unreachable"` means a `dependsOn` entry itself ended `"failed"` (or is itself `"unreachable"`) - unlike `"blocked"`, which just means "still waiting", an `"unreachable"` job can never become eligible on its own; it only resolves back to `"pending"`/`"blocked"` if that dependency is retried (see `POST /jobs/submit`) and eventually succeeds. `"unknown"` means the job was `"assigned"` to a robot whose heartbeat then went stale with no completion ever reported (see `POST /jobs/detect-stale` below) - the dispatcher genuinely cannot tell whether it succeeded, is still running, or was lost with the robot; it only ever resolves via a real, later `POST /jobs/complete` for that same job.
 
 ## `POST /jobs`
 
@@ -148,7 +148,7 @@ curl -X POST localhost:8090/jobs/submit -d '{"id":"job-2-retry","priority":5,"de
 
 ## `POST /jobs/complete`
 
-Marks an assigned job as finished (success or failure).
+Marks an assigned (or `"unknown"` - see `POST /jobs/detect-stale` below) job as finished (success or failure).
 
 **Request body**
 
@@ -160,9 +160,9 @@ Marks an assigned job as finished (success or failure).
 
 | Status | Body | Meaning |
 |---|---|---|
-| 200 | the updated `Job` | `Status` becomes `"done"` (if `success: true`) or `"failed"` (if `success: false`). Either way, every other job's `dependsOn` is re-evaluated: completing to `"done"` may flip a `"blocked"` dependent to `"pending"`; completing to `"failed"` may instead flip one or more downstream dependents (transitively, through a whole multi-step chain) to `"unreachable"` - it can never happen on its own. |
+| 200 | the updated `Job` | `Status` becomes `"done"` (if `success: true`) or `"failed"` (if `success: false`). Either way, every other job's `dependsOn` is re-evaluated: completing to `"done"` may flip a `"blocked"` dependent to `"pending"`; completing to `"failed"` may instead flip one or more downstream dependents (transitively, through a whole multi-step chain) to `"unreachable"` - it can never happen on its own. The robot becomes `Available` again only if it isn't already busy with a different job it picked up while this one sat `"unknown"`. |
 | 400 | `{"error": "job ID does not exist"}` | Unknown `id`. |
-| 400 | `{"error": "job is not in the assigned state"}` | The job exists but was never dispatched (still `"pending"`/`"blocked"`) or is already `"done"`/`"failed"`. |
+| 400 | `{"error": "job is not in the assigned state"}` | The job exists but was never dispatched (still `"pending"`/`"blocked"`), or is already `"done"`/`"failed"` - `"unknown"` is accepted, everything else is not. |
 
 ---
 
@@ -212,6 +212,29 @@ No request body.
 ```
 
 Each assigned job's `Status` becomes `"assigned"` and `AssignedRobot` is set; the matched robot's `Available` becomes `false` until `POST /jobs/complete` (or a `POST /robots` update) changes it.
+
+---
+
+## `POST /jobs/detect-stale`
+
+Marks every `"assigned"` job whose robot has not sent a real heartbeat (a `POST /robots` call) within `timeoutSeconds` as `"unknown"` - see `Status`'s own description above. A caller should invoke this on the same cadence it already polls `POST /dispatch` on; it never runs on its own timer.
+
+A robot that has never sent a single heartbeat since this process started (for example, one restored from persistence after a restart) is never flagged stale on its own account - it must send one real heartbeat first.
+
+Marking a job `"unknown"` does not touch its robot's `Available` field: a robot whose only job just became `"unknown"` is immediately eligible for new work on its own next heartbeat reporting `available: true`, rather than being stranded over one unresolved outcome. If that stale job's own late, genuine report later arrives via `POST /jobs/complete`, it resolves normally - without disturbing whatever newer job the robot has since picked up.
+
+**Request body**
+
+```json
+{"timeoutSeconds": 300}
+```
+
+**Responses**
+
+| Status | Body | Meaning |
+|---|---|---|
+| 200 | `{"unknownJobIds": ["weld-42"]}` | The IDs of every job just marked `"unknown"` this pass (`[]` if none). |
+| 400 | `{"error": "\"timeoutSeconds\" must be a positive number"}` | Missing, zero, negative, or malformed `timeoutSeconds`. |
 
 ---
 
