@@ -64,6 +64,16 @@ type Robot struct {
 	Tool      string // currently attached URTC tool head, e.g. "PnP", "Laser", "" if none
 	Available bool   // false while it is executing an assigned job
 	Load      int    // completed-job counter this session, used to balance ties (lower = preferred)
+	// H018: set when a heartbeat reports Available=false WHILE this robot
+	// has an active assignment - JOB-02's own guard in UpsertRobot already
+	// refuses to let that heartbeat touch Available directly (the
+	// scheduler's reservation must win over a racing heartbeat), but
+	// silently dropping it entirely lost the real signal outright: a robot
+	// that faults mid-task used to come back fully Available the instant
+	// CompleteJob ran, with no memory that anything was ever wrong.
+	// Package-private and never persisted - see CompleteJob/UpsertRobot's
+	// own comments for exactly how it is set and cleared.
+	selfReportedUnavailable bool
 }
 
 // Assignment is the result of matching one eligible Job to one available Robot.
@@ -457,6 +467,20 @@ func (e *Engine) UpsertRobot(r Robot) {
 		// whatever a robot's own heartbeat currently declares.
 		if !e.robotHasActiveAssignmentLocked(r.ID) {
 			existing.Available = r.Available
+			// H018: a valid heartbeat received while genuinely idle is the
+			// only thing that may clear a prior mid-task fault signal - see
+			// CompleteJob's own comment for why finishing the job itself
+			// must not do this. A fresh Available=false here re-arms it
+			// too (redundant with the mid-task case below, but harmless
+			// and correct: still not available).
+			existing.selfReportedUnavailable = !r.Available
+		} else if !r.Available {
+			// JOB-02's own guard above correctly refuses to let this
+			// heartbeat flip Available while the scheduler's reservation
+			// owns it - but the negative signal itself is real and must
+			// not just vanish. Recorded here so CompleteJob can refuse to
+			// silently clear it later.
+			existing.selfReportedUnavailable = true
 		}
 		e.recordPersistOutcome(e.persistRobotLocked(existing))
 		return
@@ -588,15 +612,52 @@ func (e *Engine) DispatchOnce() []Assignment {
 		if robot == nil {
 			continue // no matching idle robot this pass - stays Pending
 		}
-		j.Status = StatusAssigned
-		j.AssignedRobot = robot.ID
+		prevRobotAvailable := robot.Available
 		robot.Available = false
 		persisted = true
-		if err := e.persistJobLocked(j); err != nil {
-			persistErr = err
-		}
+		// H019: Store's own two SaveJob/SaveRobot calls are not a joint
+		// transaction, so this used to emit the assignment (and keep the
+		// in-memory Assigned/Available state) even when either write
+		// failed, only combining the failure into persistErr for the
+		// caller to notice later, out of band - the physical dispatch
+		// this return value drives had no such caller. If the process
+		// restarted before a later retry happened to persist the job,
+		// that exact job would still read Pending from disk and get
+		// handed to DispatchOnce again next cycle - a second, invisible
+		// dispatch of work already sent out once.
+		//
+		// The robot is saved FIRST, deliberately: a robot's own
+		// availability self-heals from its next real heartbeat regardless
+		// of what this call does (see UpsertRobot), but nothing else in
+		// this system ever re-announces a JOB's own status - so the one
+		// write that must never durably say "Assigned" unless a matching
+		// robot reservation is durable too is the job's. Only once the
+		// robot save succeeds does the job even get marked Assigned in
+		// memory, and only a job whose OWN save also succeeds is emitted;
+		// any failure rolls every change on this iteration back to its
+		// pre-attempt state, so a restart at any point during this
+		// sequence can never observe a job durably Assigned with no
+		// durable robot reservation behind it.
 		if err := e.persistRobotLocked(robot); err != nil {
+			robot.Available = prevRobotAvailable
 			persistErr = err
+			continue
+		}
+		j.Status = StatusAssigned
+		j.AssignedRobot = robot.ID
+		if err := e.persistJobLocked(j); err != nil {
+			j.Status = StatusPending
+			j.AssignedRobot = ""
+			robot.Available = prevRobotAvailable
+			persistErr = err
+			// Best-effort compensating write - if this also fails, the
+			// robot's own next heartbeat still recovers it (see above);
+			// this second failure is folded into the same persistErr
+			// report either way, never silently dropped.
+			if compErr := e.persistRobotLocked(robot); compErr != nil {
+				persistErr = compErr
+			}
+			continue
 		}
 		assignments = append(assignments, Assignment{JobID: j.ID, RobotID: robot.ID})
 	}
@@ -651,7 +712,20 @@ func (e *Engine) CompleteJob(jobID string, success bool) error {
 	} else {
 		j.Status = StatusFailed
 	}
-	robot.Available = true
+	// H018: finishing THIS job only ever ends the scheduler's own
+	// reservation on the robot - it must never be read as "the robot
+	// itself is healthy again". A heartbeat reporting Available=false
+	// while this job was active (dropped by UpsertRobot's JOB-02 guard,
+	// but recorded via selfReportedUnavailable) means the robot itself
+	// already said it isn't ready; unconditionally flipping Available
+	// back to true here used to silently discard that real signal the
+	// instant the job ended, regardless of success or failure. Only a
+	// robot that never self-reported unavailable mid-task comes back
+	// available on completion - one that did stays unavailable until its
+	// own next heartbeat reports true (see UpsertRobot).
+	if !robot.selfReportedUnavailable {
+		robot.Available = true
+	}
 	// Soft persist, matching Engine's own doc comment: the physical work
 	// already happened - a store hiccup here must not turn into an error
 	// telling the caller a real completion never occurred. Combined via

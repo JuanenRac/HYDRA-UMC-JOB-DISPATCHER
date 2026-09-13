@@ -18,6 +18,32 @@ semantic-versioning judgment calls:
 
 ---
 
+## [0.1.4] - H018/H019: a mid-task fault silently cleared on completion, and a non-durable assignment emitted anyway
+
+- **H018 (P0):** `CompleteJob` unconditionally set `robot.Available = true`
+  on every completion, success or failure. A robot that self-reported
+  `Available=false` mid-task (a real fault/negative heartbeat, correctly
+  refused by JOB-02's own guard from overriding the scheduler's active
+  reservation) had that signal silently discarded the instant its job
+  ended - it came back fully available with no memory anything was ever
+  wrong. `CompleteJob` now leaves such a robot unavailable; only a fresh,
+  genuinely positive heartbeat (via `UpsertRobot`) re-arms it.
+- **H019 (P0):** `DispatchOnce` emitted an assignment - and kept the
+  in-memory Assigned/Available state - even when the underlying
+  `SaveJob`/`SaveRobot` write failed, combining the failure into
+  `LastPersistError()` for a caller to notice only later, out of band. A
+  process restart before a later retry happened to persist it would read
+  that exact job back as Pending and dispatch it again - a second,
+  invisible dispatch of work already sent out once. The robot is now
+  saved first (its own availability self-heals from its next real
+  heartbeat regardless), and the job is only marked Assigned - and only
+  emitted - once its own save also succeeds; any failure rolls the whole
+  attempt back (with a best-effort compensating write reverting an
+  already-saved robot) so a restart at any point in the sequence can
+  never observe a job durably Assigned with no durable robot reservation
+  behind it.
+- 4 new regression tests (`go test ./...` all green, `go vet ./...` clean).
+
 ## [0.1.3] - Honesty check section in every README
 
 Added a "Honesty check" paragraph right after the badges in `README.md`
