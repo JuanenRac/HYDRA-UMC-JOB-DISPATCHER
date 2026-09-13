@@ -661,3 +661,73 @@ func TestUpsertRobot_HeartbeatStillControlsAvailabilityForAnUnreservedRobot(t *t
 		t.Fatalf("robots = %+v, want robot-a to honor a real heartbeat while it has no active assignment", robots)
 	}
 }
+
+// H018 (P0): a robot that self-reports Available=false WHILE a job is
+// actively assigned to it (a real fault/negative heartbeat mid-task)
+// must not come back Available just because that job finishes -
+// success or failure. It must stay unavailable through the next
+// DispatchOnce cycle too, until a fresh, genuinely positive heartbeat
+// arrives.
+func TestCompleteJob_DoesNotReenableARobotThatSelfReportedUnavailableMidTask(t *testing.T) {
+	e := NewEngine()
+	e.UpsertRobot(Robot{ID: "robot-a", Available: true})
+	if err := e.AddJob(Job{ID: "job-1", Priority: 1}); err != nil {
+		t.Fatalf("AddJob job-1: %v", err)
+	}
+	if err := e.AddJob(Job{ID: "job-2", Priority: 1}); err != nil {
+		t.Fatalf("AddJob job-2: %v", err)
+	}
+
+	first := e.DispatchOnce()
+	if len(first) != 1 || first[0].RobotID != "robot-a" {
+		t.Fatalf("first dispatch = %+v, want job-1 assigned to robot-a", first)
+	}
+
+	// A real negative heartbeat arrives mid-task - JOB-02's own guard
+	// correctly refuses to let it flip Available while the job is still
+	// active (the scheduler's reservation must win over a racing
+	// heartbeat), but the fault it reports must not just vanish either.
+	e.UpsertRobot(Robot{ID: "robot-a", Available: false})
+
+	if err := e.CompleteJob("job-1", true); err != nil {
+		t.Fatalf("CompleteJob: %v", err)
+	}
+	robots := e.Robots()
+	if len(robots) != 1 || robots[0].Available {
+		t.Fatalf("robots = %+v, want robot-a to remain unavailable after completion - it self-reported a fault mid-task", robots)
+	}
+
+	// Next dispatch cycle: no new assignment until a genuinely positive
+	// heartbeat is received.
+	second := e.DispatchOnce()
+	if len(second) != 0 {
+		t.Fatalf("second dispatch = %+v, want no assignment - robot-a never confirmed it is actually available again", second)
+	}
+
+	e.UpsertRobot(Robot{ID: "robot-a", Available: true})
+	third := e.DispatchOnce()
+	if len(third) != 1 || third[0].RobotID != "robot-a" {
+		t.Fatalf("third dispatch = %+v, want job-2 assigned to robot-a now that it confirmed availability", third)
+	}
+}
+
+// A robot whose job completes without ever self-reporting unavailable
+// mid-task must come back Available exactly like before this fix -
+// this is the ordinary, overwhelmingly common path and must not
+// regress.
+func TestCompleteJob_StillReenablesARobotThatNeverSelfReportedUnavailable(t *testing.T) {
+	e := NewEngine()
+	e.UpsertRobot(Robot{ID: "robot-a", Available: true})
+	if err := e.AddJob(Job{ID: "job-1"}); err != nil {
+		t.Fatalf("AddJob: %v", err)
+	}
+	e.DispatchOnce()
+
+	if err := e.CompleteJob("job-1", true); err != nil {
+		t.Fatalf("CompleteJob: %v", err)
+	}
+	robots := e.Robots()
+	if len(robots) != 1 || !robots[0].Available {
+		t.Fatalf("robots = %+v, want robot-a Available again after an ordinary completion", robots)
+	}
+}

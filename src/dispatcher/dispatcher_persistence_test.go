@@ -185,3 +185,84 @@ func TestCompleteJob_SoftPersistFailureIsObservableButDoesNotUndoTheTransition(t
 		t.Fatalf("expected LastPersistError() to clear once the store is healthy again, got %v", e.LastPersistError())
 	}
 }
+
+// H019 (P0): unlike CompleteJob (soft - the physical work already
+// happened by the time it's called), DispatchOnce must never emit an
+// assignment - nor leave the job Assigned in memory - unless it was
+// actually saved durably first. Store's own SaveJob/SaveRobot are two
+// separate calls with no joint transaction, so this covers both halves
+// failing independently.
+func TestDispatchOnce_EmitsNoAssignmentWhenTheRobotWriteFails(t *testing.T) {
+	store := &brokenStore{failRobots: true}
+	e, err := dispatcher.NewEngineWithStore(store)
+	if err != nil {
+		t.Fatalf("NewEngineWithStore: %v", err)
+	}
+	e.UpsertRobot(dispatcher.Robot{ID: "robot-a", Available: true})
+	if err := e.AddJob(dispatcher.Job{ID: "pick-1"}); err != nil {
+		t.Fatalf("AddJob: %v", err)
+	}
+
+	assignments := e.DispatchOnce()
+	if len(assignments) != 0 {
+		t.Fatalf("assignments = %+v, want none - the robot reservation was never durably saved", assignments)
+	}
+	if job, _ := e.Job("pick-1"); job.Status != dispatcher.StatusPending {
+		t.Fatalf("pick-1 status = %q, want it rolled back to Pending so a future call retries it fresh", job.Status)
+	}
+	robots := e.Robots()
+	if len(robots) != 1 || !robots[0].Available {
+		t.Fatalf("robots = %+v, want robot-a rolled back to Available", robots)
+	}
+	if e.LastPersistError() == nil {
+		t.Fatal("expected LastPersistError() to report the simulated store failure")
+	}
+
+	// Prove this was a real, honest rollback, not just a returned-empty
+	// slice with corrupted internal state: a healthy store dispatches it
+	// normally right after.
+	store.failRobots = false
+	retry := e.DispatchOnce()
+	if len(retry) != 1 || retry[0].JobID != "pick-1" {
+		t.Fatalf("retry dispatch = %+v, want pick-1 assigned once the store is healthy again", retry)
+	}
+}
+
+func TestDispatchOnce_EmitsNoAssignmentAndRevertsTheRobotWhenTheJobWriteFails(t *testing.T) {
+	store := &brokenStore{}
+	e, err := dispatcher.NewEngineWithStore(store)
+	if err != nil {
+		t.Fatalf("NewEngineWithStore: %v", err)
+	}
+	e.UpsertRobot(dispatcher.Robot{ID: "robot-a", Available: true})
+	if err := e.AddJob(dispatcher.Job{ID: "pick-1"}); err != nil {
+		t.Fatalf("AddJob: %v", err)
+	}
+	// Only fail the job write DispatchOnce itself makes below - AddJob's
+	// own initial persist above is a separate, already-hard-failing path
+	// (see TestAddJob_FailsAndLeavesNoTraceWhenTheStoreCannotPersist) and
+	// must succeed here so there is a real Pending job to dispatch.
+	store.failJobs = true
+
+	assignments := e.DispatchOnce()
+	if len(assignments) != 0 {
+		t.Fatalf("assignments = %+v, want none - the job's own Assigned state was never durably saved", assignments)
+	}
+	if job, _ := e.Job("pick-1"); job.Status != dispatcher.StatusPending || job.AssignedRobot != "" {
+		t.Fatalf("pick-1 = %+v, want rolled back to Pending with no AssignedRobot", job)
+	}
+	// The robot save itself succeeded (only failJobs is set) - the
+	// compensating write below must revert it back to Available in the
+	// store too, not just in memory, so a restart doesn't strand it as
+	// durably unavailable for a job that never actually happened.
+	robots := e.Robots()
+	if len(robots) != 1 || !robots[0].Available {
+		t.Fatalf("robots = %+v, want robot-a reverted to Available after the compensating write", robots)
+	}
+
+	store.failJobs = false
+	retry := e.DispatchOnce()
+	if len(retry) != 1 || retry[0].JobID != "pick-1" {
+		t.Fatalf("retry dispatch = %+v, want pick-1 assigned once the store is healthy again", retry)
+	}
+}
