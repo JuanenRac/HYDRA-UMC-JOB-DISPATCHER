@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 )
 
 // JobStatus is the lifecycle state of a Job.
@@ -28,6 +29,15 @@ const (
 	StatusDone        JobStatus = "done"
 	StatusFailed      JobStatus = "failed"
 	StatusUnreachable JobStatus = "unreachable" // blocked on a dependency that itself ended Failed (or is Unreachable) - can never become eligible on its own, unlike Blocked which just needs more time. Not the same as Failed: this job itself was never dispatched. Resolves back to Pending/Blocked if that dependency is later retried (see SubmitJob) and succeeds.
+	// StatusUnknown means this job was Assigned to a robot whose
+	// heartbeat then went stale (see DetectStaleAssignments) with no
+	// completion ever reported - the dispatcher genuinely does not know
+	// whether it succeeded, is still running, or was lost with the
+	// robot. Never set automatically to Done/Failed by anything but a
+	// real, later CompleteJob call for this same job (a robot that
+	// reconnects and reports what actually happened) - silence alone
+	// must never be read as either outcome.
+	StatusUnknown JobStatus = "unknown"
 )
 
 // Job is one unit of work in the global mission queue.
@@ -74,6 +84,17 @@ type Robot struct {
 	// Package-private and never persisted - see CompleteJob/UpsertRobot's
 	// own comments for exactly how it is set and cleared.
 	selfReportedUnavailable bool
+	// lastHeartbeatAt is when UpsertRobot last recorded a real heartbeat/
+	// registration for this robot - the engine's own clock (e.now()), not
+	// whatever the caller passed. Zero means "never checked in even
+	// once". Package-private and never persisted, same tradeoff as
+	// selfReportedUnavailable above: a process restart resets every
+	// robot's own freshness, so DetectStaleAssignments can only ever
+	// catch a robot that goes silent AFTER this process's own current
+	// run started, never across a restart, until the Store gains a real
+	// migration for this field. Accepted deliberately rather than
+	// bolting a schema change onto this change too.
+	lastHeartbeatAt time.Time
 }
 
 // Assignment is the result of matching one eligible Job to one available Robot.
@@ -148,6 +169,10 @@ type Engine struct {
 	dedupIndex     map[string]string // DedupKey -> JobID, only for jobs submitted with a non-empty DedupKey
 	store          Store
 	lastPersistErr error
+	// now is the engine's own clock, injectable so a test can control it
+	// exactly (see DetectStaleAssignments) - real callers always get
+	// time.Now via the constructors below.
+	now func() time.Time
 }
 
 // NewEngine returns an empty, ready-to-use, purely in-memory Engine - no
@@ -157,6 +182,7 @@ func NewEngine() *Engine {
 		jobs:       make(map[string]*Job),
 		robots:     make(map[string]*Robot),
 		dedupIndex: make(map[string]string),
+		now:        time.Now,
 	}
 }
 
@@ -181,6 +207,7 @@ func NewEngineWithStore(store Store) (*Engine, error) {
 		robots:     make(map[string]*Robot, len(robots)),
 		dedupIndex: make(map[string]string),
 		store:      store,
+		now:        time.Now,
 	}
 	for i := range records {
 		r := records[i]
@@ -453,6 +480,11 @@ func (e *Engine) UpsertRobot(r Robot) {
 	if existing, ok := e.robots[r.ID]; ok {
 		existing.Location = r.Location
 		existing.Tool = r.Tool
+		// This call arriving at all is itself a real heartbeat, whether or
+		// not JOB-02's own guard below lets it change Available - recorded
+		// unconditionally so DetectStaleAssignments sees this robot as
+		// genuinely alive right now.
+		existing.lastHeartbeatAt = e.now()
 		// JOB-02 (P0): Available doubles as both the robot's own self-reported
 		// readiness AND the scheduler's real reservation flag (DispatchOnce
 		// sets it false the instant it assigns a job). A heartbeat/
@@ -486,6 +518,7 @@ func (e *Engine) UpsertRobot(r Robot) {
 		return
 	}
 	stored := r
+	stored.lastHeartbeatAt = e.now() // a first-ever registration counts as this robot's first heartbeat
 	e.robots[r.ID] = &stored
 	// Soft, not hard, unlike a job's own first-ever insert: a robot that
 	// fails to persist here re-registers on its very next heartbeat/
@@ -685,11 +718,13 @@ func (e *Engine) bestRobotFor(j *Job) *Robot {
 	return best
 }
 
-// CompleteJob marks an Assigned job Done or Failed, frees its robot
-// (Available again, Load incremented on success so future ties favour a
-// less-used robot), and re-evaluates every Blocked/Unreachable job: a Done
-// result may unblock a later stage of a multi-step mission, while a Failed
-// result may instead make one or more later stages Unreachable.
+// CompleteJob marks an Assigned (or Unknown - see DetectStaleAssignments)
+// job Done or Failed, frees its robot (Available again, Load incremented
+// on success so future ties favour a less-used robot) if that robot
+// isn't already busy with something else, and re-evaluates every
+// Blocked/Unreachable job: a Done result may unblock a later stage of a
+// multi-step mission, while a Failed result may instead make one or more
+// later stages Unreachable.
 func (e *Engine) CompleteJob(jobID string, success bool) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -698,7 +733,11 @@ func (e *Engine) CompleteJob(jobID string, success bool) error {
 	if !ok {
 		return fmt.Errorf("%w: %q", ErrUnknownJob, jobID)
 	}
-	if j.Status != StatusAssigned {
+	// A job DetectStaleAssignments gave up tracking can still be resolved
+	// for real by a late, genuine report from the robot that was actually
+	// running it - silence being wrong (the robot was fine all along)
+	// must not permanently lock that job out of ever completing honestly.
+	if j.Status != StatusAssigned && j.Status != StatusUnknown {
 		return fmt.Errorf("%w: job %q is %q", ErrJobNotAssigned, jobID, j.Status)
 	}
 	robot, ok := e.robots[j.AssignedRobot]
@@ -723,7 +762,15 @@ func (e *Engine) CompleteJob(jobID string, success bool) error {
 	// robot that never self-reported unavailable mid-task comes back
 	// available on completion - one that did stays unavailable until its
 	// own next heartbeat reports true (see UpsertRobot).
-	if !robot.selfReportedUnavailable {
+	//
+	// robotHasActiveAssignmentLocked is checked too (j.Status is already
+	// updated away from Assigned/Unknown above, so this only ever sees a
+	// DIFFERENT job): DetectStaleAssignments can let a robot pick up a
+	// brand new job B while its stale job A is still sitting Unknown -
+	// if A's own late completion report then arrives, the robot may
+	// genuinely be busy with B right now, and this must never mark it
+	// Available out from under that real, current assignment.
+	if !e.robotHasActiveAssignmentLocked(robot.ID) && !robot.selfReportedUnavailable {
 		robot.Available = true
 	}
 	// Soft persist, matching Engine's own doc comment: the physical work
@@ -737,6 +784,60 @@ func (e *Engine) CompleteJob(jobID string, success bool) error {
 	refreshErr := e.refreshBlocked()
 	e.recordPersistOutcome(jobErr, robotErr, refreshErr)
 	return nil
+}
+
+// DetectStaleAssignments marks every StatusAssigned job whose robot has
+// not sent a real heartbeat (UpsertRobot call) within `timeout` as
+// StatusUnknown - the dispatcher genuinely cannot tell whether that job
+// succeeded, is still running, or was lost along with its robot. A
+// caller should invoke this on the same cadence it already polls
+// DispatchOnce on; it does not run on any timer of its own.
+//
+// A robot that has never sent a single heartbeat is never flagged stale
+// by this check on its own account - see lastHeartbeatAt's own comment
+// on why a zero value can't be trusted to mean "known-stale" (it may
+// simply mean this process restarted since that robot last checked in).
+//
+// Marking a job Unknown deliberately does NOT touch its robot's
+// Available field: robotHasActiveAssignmentLocked only ever counts a
+// StatusAssigned job as an active reservation, so a robot whose only job
+// just became Unknown is immediately eligible to accept new work on its
+// own next heartbeat reporting Available=true - refusing to let a real,
+// reconnected, idle robot pick up new work just because one old job's
+// outcome is still a mystery would strand it for no operational benefit.
+// See CompleteJob's own comment for how a later, genuine report for the
+// stale job itself is still honoured even after that happens.
+//
+// Returns the IDs of every job just marked Unknown, so a caller can
+// alert on them.
+func (e *Engine) DetectStaleAssignments(timeout time.Duration) []string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	now := e.now()
+	var newlyUnknown []string
+	var persistErr error
+	for _, j := range e.jobs {
+		if j.Status != StatusAssigned {
+			continue
+		}
+		robot, ok := e.robots[j.AssignedRobot]
+		if !ok {
+			continue // the robot itself was removed entirely - a separate concern from a merely-quiet one
+		}
+		if robot.lastHeartbeatAt.IsZero() || now.Sub(robot.lastHeartbeatAt) < timeout {
+			continue
+		}
+		j.Status = StatusUnknown
+		newlyUnknown = append(newlyUnknown, j.ID)
+		if err := e.persistJobLocked(j); err != nil {
+			persistErr = err
+		}
+	}
+	if len(newlyUnknown) > 0 {
+		e.recordPersistOutcome(persistErr)
+	}
+	return newlyUnknown
 }
 
 // Job returns a copy of one job's current state.

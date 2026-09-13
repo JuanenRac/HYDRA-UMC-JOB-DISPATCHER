@@ -18,6 +18,44 @@ semantic-versioning judgment calls:
 
 ---
 
+## [0.1.5] - New StatusUnknown: a job whose robot went silent mid-task is never silently forgotten
+
+- **The gap.** A robot that stopped heartbeating entirely while holding an
+  Assigned job (crash, power loss, network partition) left that job
+  Assigned forever - nothing in the engine ever noticed or surfaced it.
+  An operator had no honest way to tell "still genuinely running" from
+  "the dispatcher has no idea what happened to this".
+- **New `Robot.lastHeartbeatAt`** (package-private, updated on every real
+  `UpsertRobot` call) and **`Engine.DetectStaleAssignments(timeout)`**:
+  marks every Assigned job whose robot's last heartbeat is older than
+  `timeout` as the new `StatusUnknown` - never automatically resolved to
+  Done/Failed by anything but a real, later `CompleteJob` call for that
+  same job. A robot that has never heartbeated even once since this
+  process started (e.g. one just restored from a restart) is never
+  flagged stale on its own account - `lastHeartbeatAt` is deliberately
+  not persisted (same tradeoff as the existing `selfReportedUnavailable`
+  field), so this can only ever catch silence that happens after this
+  process's own current run began.
+- Marking a job Unknown does not lock its robot: `robotHasActiveAssignmentLocked`
+  only counts a `StatusAssigned` job as a reservation, so a robot whose
+  only job just went Unknown is immediately eligible for new work on its
+  next positive heartbeat, rather than being stranded. `CompleteJob` was
+  extended to accept a late, genuine report for a formerly-Unknown job
+  too - and now double-checks the robot has no *other* active assignment
+  before marking it `Available` again, since `DetectStaleAssignments` can
+  let the same robot pick up a newer job while the old one is still
+  unresolved.
+- New `POST /jobs/detect-stale` HTTP endpoint (`{"timeoutSeconds": N}` ->
+  `{"unknownJobIds": [...]}`), meant to be polled on the same cadence as
+  the existing `POST /dispatch`.
+- 10 new tests (7 in `src/dispatcher`, 3 in `src/api`), confirmed to fail
+  against a deliberately broken guard (a robot wrongly re-enabled while
+  busy with a newer job; a never-heartbeated robot wrongly flagged
+  stale) - restored before committing. 57/57 `go test ./...` pass,
+  `go vet` clean.
+- `docs/API.md` updated: the `Status` enum, `POST /jobs/complete`'s
+  accepted states, and the new endpoint's full reference.
+
 ## [0.1.4] - H018/H019: a mid-task fault silently cleared on completion, and a non-durable assignment emitted anyway
 
 - **H018 (P0):** `CompleteJob` unconditionally set `robot.Available = true`

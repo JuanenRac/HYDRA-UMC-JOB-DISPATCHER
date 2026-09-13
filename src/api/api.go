@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/JuanenRac/hydra-umc-job-dispatcher/src/dispatcher"
 )
@@ -33,6 +34,7 @@ func New(engine *dispatcher.Engine) *Server {
 	s.mux.HandleFunc("/jobs/complete", s.handleCompleteJob)
 	s.mux.HandleFunc("/robots", s.handleRobots)
 	s.mux.HandleFunc("/dispatch", s.handleDispatch)
+	s.mux.HandleFunc("/jobs/detect-stale", s.handleDetectStale)
 	s.mux.HandleFunc("/health", s.handleHealth)
 	return s
 }
@@ -257,4 +259,30 @@ func (s *Server) handleDispatch(w http.ResponseWriter, r *http.Request) {
 		assignments = []dispatcher.Assignment{}
 	}
 	writeJSON(w, http.StatusOK, assignments)
+}
+
+type detectStaleRequest struct {
+	TimeoutSeconds float64 `json:"timeoutSeconds"`
+}
+
+func (s *Server) handleDetectStale(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", "POST")
+		writeError(w, http.StatusMethodNotAllowed, errors.New("use POST"))
+		return
+	}
+	var req detectStaleRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if req.TimeoutSeconds <= 0 {
+		writeError(w, http.StatusBadRequest, errors.New("\"timeoutSeconds\" must be a positive number"))
+		return
+	}
+	unknownJobIDs := s.engine.DetectStaleAssignments(time.Duration(req.TimeoutSeconds * float64(time.Second)))
+	if unknownJobIDs == nil {
+		unknownJobIDs = []string{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"unknownJobIds": unknownJobIDs})
 }
