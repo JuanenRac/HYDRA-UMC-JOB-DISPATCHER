@@ -63,7 +63,7 @@ func TestFullFlow_RegisterSubmitDispatchComplete(t *testing.T) {
 		t.Fatalf("assignments = %+v, want job-1 assigned to robot-a", assignments)
 	}
 
-	rec = post(t, s, "/jobs/complete", completeRequest{ID: "job-1", Success: true})
+	rec = post(t, s, "/jobs/complete", completeRequest{ID: "job-1", Success: true, RobotID: "robot-a"})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("POST /jobs/complete status = %d, body = %s", rec.Code, rec.Body.String())
 	}
@@ -82,6 +82,46 @@ func TestFullFlow_RegisterSubmitDispatchComplete(t *testing.T) {
 	}
 	if len(robots) != 1 || !robots[0].Available {
 		t.Fatalf("robots = %+v, want robot-a available again after job completion", robots)
+	}
+}
+
+// I17: the HTTP handler itself must require a real robotId, not just
+// forward whatever the engine happens to accept.
+func TestHandleCompleteJob_RejectsMissingRobotID(t *testing.T) {
+	s := New(dispatcher.NewEngine())
+	post(t, s, "/robots", robotRequest{ID: "robot-a", Available: true})
+	post(t, s, "/jobs", jobRequest{ID: "job-1"})
+	post(t, s, "/dispatch", nil)
+
+	rec := post(t, s, "/jobs/complete", completeRequest{ID: "job-1", Success: true})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 when robotId is missing, body = %s", rec.Code, rec.Body.String())
+	}
+}
+
+// Same real check, exercised through the actual HTTP round-trip rather
+// than calling the engine directly.
+func TestHandleCompleteJob_RejectsAMismatchedRobotID(t *testing.T) {
+	s := New(dispatcher.NewEngine())
+	post(t, s, "/robots", robotRequest{ID: "robot-a", Available: true})
+	post(t, s, "/robots", robotRequest{ID: "robot-b", Available: true})
+	post(t, s, "/jobs", jobRequest{ID: "job-1", RequiredTool: ""})
+	rec := post(t, s, "/dispatch", nil)
+	var assignments []dispatcher.Assignment
+	if err := json.Unmarshal(rec.Body.Bytes(), &assignments); err != nil {
+		t.Fatalf("decoding /dispatch response: %v", err)
+	}
+	if len(assignments) != 1 {
+		t.Fatalf("assignments = %+v, want exactly 1", assignments)
+	}
+	wrongRobot := "robot-b"
+	if assignments[0].RobotID == wrongRobot {
+		wrongRobot = "robot-a"
+	}
+
+	rec = post(t, s, "/jobs/complete", completeRequest{ID: "job-1", Success: true, RobotID: wrongRobot})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 for a mismatched robotId, body = %s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -163,7 +203,7 @@ func TestHandleSubmitJob_RetryAfterFailureRunsExactlyOnce(t *testing.T) {
 	_ = json.Unmarshal(rec.Body.Bytes(), &created)
 
 	post(t, s, "/dispatch", nil)
-	rec = post(t, s, "/jobs/complete", completeRequest{ID: created.ID, Success: false})
+	rec = post(t, s, "/jobs/complete", completeRequest{ID: created.ID, Success: false, RobotID: "robot-a"})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("POST /jobs/complete (fail) status = %d, body = %s", rec.Code, rec.Body.String())
 	}

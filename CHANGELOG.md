@@ -18,6 +18,31 @@ semantic-versioning judgment calls:
 
 ---
 
+## [0.1.6] - I17: CompleteJob now verifies the reporting robot, not just a job ID and a success flag
+
+- **The gap.** `POST /jobs/complete` accepted just `{"id", "success"}` -
+  ANY caller naming a real job ID could report its completion, with no
+  way at all to verify the report actually came from the robot the
+  dispatcher assigned that job to. A wrong or malicious report for job
+  X could silently corrupt a DIFFERENT robot's own `Load`/`Available`
+  bookkeeping - freeing a robot that never actually did the work, or
+  crediting one that isn't the real assignee.
+- **The fix.** `CompleteJob` (and the HTTP handler) now require a
+  `robotId` that must match the job's own real `AssignedRobot` - a
+  mismatch is rejected outright with the new `ErrRobotMismatch`, and
+  the job/robot state is left completely untouched, not partially
+  applied. This does not yet track retry attempt/generation numbers:
+  `DispatchOnce` has no real mechanism today to reassign a `"unknown"`
+  job to a different robot (see `DetectStaleAssignments`'s own doc
+  comment), so there is no real "which attempt is this" ambiguity to
+  resolve yet - only which ROBOT is reporting, which this closes.
+- 3 new tests (a real mismatch rejected at the engine level and via a
+  real HTTP round-trip, plus a missing-`robotId` HTTP rejection);
+  confirmed with the check itself disabled that both new tests fail for
+  real, restored before committing. 60/60 tests pass across
+  `src/dispatcher`/`src/api`/`src/sqlitestore`. `docs/API.md` and the
+  README's own curl examples (all 7 languages) updated to match.
+
 ## [0.1.5] - New StatusUnknown: a job whose robot went silent mid-task is never silently forgotten
 
 - **The gap.** A robot that stopped heartbeating entirely while holding an

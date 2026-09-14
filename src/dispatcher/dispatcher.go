@@ -291,6 +291,7 @@ var (
 	ErrUnknownJob     = errors.New("job ID does not exist")
 	ErrUnknownRobot   = errors.New("robot ID does not exist")
 	ErrJobNotAssigned = errors.New("job is not in the assigned state")
+	ErrRobotMismatch  = errors.New("robot ID does not match the job's assigned robot")
 	ErrInvalidJob     = errors.New("invalid job")
 )
 
@@ -725,7 +726,19 @@ func (e *Engine) bestRobotFor(j *Job) *Robot {
 // Blocked/Unreachable job: a Done result may unblock a later stage of a
 // multi-step mission, while a Failed result may instead make one or more
 // later stages Unreachable.
-func (e *Engine) CompleteJob(jobID string, success bool) error {
+//
+// I17: `robotID` must match the job's own real `AssignedRobot` - the
+// HTTP handler had no way at all to tell a genuine completion report
+// from the robot the dispatcher actually assigned this job to apart
+// from ANY caller simply naming a job ID and a success flag, so a wrong
+// or malicious report for job X could silently steal or corrupt a
+// DIFFERENT robot's own real Load/Available bookkeeping. This does not
+// yet track retry attempt/generation numbers - DispatchOnce has no real
+// mechanism to reassign a Unknown job to a different robot today (see
+// DetectStaleAssignments's own doc comment), so there is no real
+// "which attempt is this" ambiguity to resolve yet; only which ROBOT is
+// reporting.
+func (e *Engine) CompleteJob(jobID string, success bool, robotID string) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
@@ -739,6 +752,9 @@ func (e *Engine) CompleteJob(jobID string, success bool) error {
 	// must not permanently lock that job out of ever completing honestly.
 	if j.Status != StatusAssigned && j.Status != StatusUnknown {
 		return fmt.Errorf("%w: job %q is %q", ErrJobNotAssigned, jobID, j.Status)
+	}
+	if robotID != j.AssignedRobot {
+		return fmt.Errorf("%w: job %q is assigned to %q, not %q", ErrRobotMismatch, jobID, j.AssignedRobot, robotID)
 	}
 	robot, ok := e.robots[j.AssignedRobot]
 	if !ok {

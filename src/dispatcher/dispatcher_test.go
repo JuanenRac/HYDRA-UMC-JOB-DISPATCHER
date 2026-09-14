@@ -71,7 +71,7 @@ func TestDispatchOnce_MultiStageDependency(t *testing.T) {
 		t.Fatalf("assignments = %+v, want only pick dispatched first", assignments)
 	}
 
-	if err := e.CompleteJob("pick", true); err != nil {
+	if err := e.CompleteJob("pick", true, "robot-a"); err != nil {
 		t.Fatalf("CompleteJob pick: %v", err)
 	}
 
@@ -96,7 +96,7 @@ func TestDispatchOnce_LoadBalancesAcrossIdleRobots(t *testing.T) {
 		t.Fatal(err)
 	}
 	assignments := e.DispatchOnce()
-	if err := e.CompleteJob(assignments[0].JobID, true); err != nil {
+	if err := e.CompleteJob(assignments[0].JobID, true, assignments[0].RobotID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -155,8 +155,54 @@ func TestCompleteJob_RejectsNotAssigned(t *testing.T) {
 		t.Fatal(err)
 	}
 	// job-1 is still Pending - never dispatched - so completing it must fail.
-	if err := e.CompleteJob("job-1", true); err == nil {
+	if err := e.CompleteJob("job-1", true, "robot-a"); err == nil {
 		t.Fatal("expected an error completing a job that was never assigned, got nil")
+	}
+}
+
+// I17: without this, ANY caller naming just a job ID and a success flag
+// could report completion for a job assigned to a DIFFERENT robot -
+// e.g. a buggy or malicious robot-b claiming credit (and freeing itself
+// up) for work robot-a is the one actually assigned to and doing.
+func TestCompleteJob_RejectsAMismatchedRobotID(t *testing.T) {
+	e := NewEngine()
+	e.UpsertRobot(Robot{ID: "robot-a", Available: true})
+	e.UpsertRobot(Robot{ID: "robot-b", Available: true})
+	if err := e.AddJob(Job{ID: "job-1", Priority: 1}); err != nil {
+		t.Fatalf("AddJob: %v", err)
+	}
+	assignments := e.DispatchOnce()
+	if len(assignments) != 1 {
+		t.Fatalf("DispatchOnce = %+v, want job-1 assigned", assignments)
+	}
+	wrongRobot := "robot-b"
+	if assignments[0].RobotID == wrongRobot {
+		wrongRobot = "robot-a"
+	}
+
+	if err := e.CompleteJob("job-1", true, wrongRobot); !errors.Is(err, ErrRobotMismatch) {
+		t.Fatalf("CompleteJob with the wrong robot ID = %v, want ErrRobotMismatch", err)
+	}
+	// The real job/robot state must be completely untouched by a
+	// rejected report - not partially applied.
+	job, _ := e.Job("job-1")
+	if job.Status != StatusAssigned {
+		t.Fatalf("job-1 Status = %q after a rejected completion, want unchanged %q", job.Status, StatusAssigned)
+	}
+	robots := e.Robots()
+	for _, r := range robots {
+		if r.ID == assignments[0].RobotID && r.Available {
+			t.Fatalf("robot %q reported Available after a REJECTED completion from a different robot - its real reservation must be untouched", r.ID)
+		}
+	}
+
+	// The real assigned robot's own genuine report must still work.
+	if err := e.CompleteJob("job-1", true, assignments[0].RobotID); err != nil {
+		t.Fatalf("CompleteJob from the real assigned robot: %v", err)
+	}
+	job, _ = e.Job("job-1")
+	if job.Status != StatusDone {
+		t.Fatalf("job-1 Status = %q, want done", job.Status)
 	}
 }
 
@@ -219,7 +265,7 @@ func TestSubmitJob_RetryAfterFailureRunsExactlyOnceEachTime(t *testing.T) {
 	if len(assignments) != 1 || assignments[0].JobID != job.ID {
 		t.Fatalf("assignments = %+v, want job-1 dispatched", assignments)
 	}
-	if err := e.CompleteJob(job.ID, false); err != nil {
+	if err := e.CompleteJob(job.ID, false, "robot-a"); err != nil {
 		t.Fatalf("CompleteJob (fail): %v", err)
 	}
 
@@ -248,7 +294,7 @@ func TestSubmitJob_RetryAfterFailureRunsExactlyOnceEachTime(t *testing.T) {
 	if len(assignments) != 1 || assignments[0].JobID != job.ID {
 		t.Fatalf("assignments = %+v, want the retried job-1 dispatched again", assignments)
 	}
-	if err := e.CompleteJob(job.ID, true); err != nil {
+	if err := e.CompleteJob(job.ID, true, "robot-a"); err != nil {
 		t.Fatalf("CompleteJob (success): %v", err)
 	}
 	done, _ := e.Job(job.ID)
@@ -283,7 +329,7 @@ func TestSubmitJob_RetryRejectsUnknownDependency(t *testing.T) {
 		t.Fatalf("SubmitJob: %v", err)
 	}
 	e.DispatchOnce()
-	if err := e.CompleteJob("job-1", false); err != nil {
+	if err := e.CompleteJob("job-1", false, "robot-a"); err != nil {
 		t.Fatalf("CompleteJob (fail): %v", err)
 	}
 
@@ -323,7 +369,7 @@ func TestDispatchOnce_PriorityOrderIsDeterministicAcrossRepeatedRuns(t *testing.
 				break
 			}
 			got = append(got, assignments[0].JobID)
-			if err := e.CompleteJob(assignments[0].JobID, true); err != nil {
+			if err := e.CompleteJob(assignments[0].JobID, true, assignments[0].RobotID); err != nil {
 				t.Fatalf("CompleteJob: %v", err)
 			}
 		}
@@ -367,7 +413,7 @@ func TestRefreshBlocked_DependencyFailureMakesDependentUnreachable(t *testing.T)
 	if len(assignments) != 1 || assignments[0].JobID != "pick" {
 		t.Fatalf("assignments = %+v, want only pick dispatched", assignments)
 	}
-	if err := e.CompleteJob("pick", false); err != nil {
+	if err := e.CompleteJob("pick", false, "robot-a"); err != nil {
 		t.Fatalf("CompleteJob pick (fail): %v", err)
 	}
 
@@ -413,7 +459,7 @@ func TestRefreshBlocked_UnreachablePropagatesThroughMultiStepChain(t *testing.T)
 	}
 
 	e.DispatchOnce()
-	if err := e.CompleteJob("pick", false); err != nil {
+	if err := e.CompleteJob("pick", false, "robot-a"); err != nil {
 		t.Fatalf("CompleteJob pick (fail): %v", err)
 	}
 
@@ -472,7 +518,7 @@ func TestSubmitJob_RetryUnsticksDependentFromUnreachable(t *testing.T) {
 	if len(e.DispatchOnce()) != 1 {
 		t.Fatalf("expected pick to be dispatched")
 	}
-	if err := e.CompleteJob(pick.ID, false); err != nil {
+	if err := e.CompleteJob(pick.ID, false, "robot-a"); err != nil {
 		t.Fatalf("complete pick (fail): %v", err)
 	}
 
@@ -576,7 +622,7 @@ func TestSubmitJob_RetriedJobReturnsIndependentDependsOnCopy(t *testing.T) {
 	}
 	e.UpsertRobot(Robot{ID: "robot-a", Available: true})
 	e.DispatchOnce() // assigns "pick" to robot-a
-	if err := e.CompleteJob("pick", true); err != nil {
+	if err := e.CompleteJob("pick", true, "robot-a"); err != nil {
 		t.Fatalf("CompleteJob(pick, true): %v", err)
 	}
 
@@ -586,7 +632,7 @@ func TestSubmitJob_RetriedJobReturnsIndependentDependsOnCopy(t *testing.T) {
 	// "flaky" is Pending now that its only dependency is Done - assign and
 	// fail it so it reaches StatusFailed, a precondition for a real retry.
 	e.DispatchOnce()
-	if err := e.CompleteJob("flaky", false); err != nil {
+	if err := e.CompleteJob("flaky", false, "robot-a"); err != nil {
 		t.Fatalf("CompleteJob(flaky, false): %v", err)
 	}
 
@@ -639,7 +685,7 @@ func TestUpsertRobot_HeartbeatCannotReclaimARobotWithAnActiveAssignment(t *testi
 
 	// Once the real job actually completes, the robot becomes available
 	// again through the normal path, and the second job can be dispatched.
-	if err := e.CompleteJob(first[0].JobID, true); err != nil {
+	if err := e.CompleteJob(first[0].JobID, true, first[0].RobotID); err != nil {
 		t.Fatalf("CompleteJob: %v", err)
 	}
 	third := e.DispatchOnce()
@@ -690,7 +736,7 @@ func TestCompleteJob_DoesNotReenableARobotThatSelfReportedUnavailableMidTask(t *
 	// heartbeat), but the fault it reports must not just vanish either.
 	e.UpsertRobot(Robot{ID: "robot-a", Available: false})
 
-	if err := e.CompleteJob("job-1", true); err != nil {
+	if err := e.CompleteJob("job-1", true, "robot-a"); err != nil {
 		t.Fatalf("CompleteJob: %v", err)
 	}
 	robots := e.Robots()
@@ -724,7 +770,7 @@ func TestCompleteJob_StillReenablesARobotThatNeverSelfReportedUnavailable(t *tes
 	}
 	e.DispatchOnce()
 
-	if err := e.CompleteJob("job-1", true); err != nil {
+	if err := e.CompleteJob("job-1", true, "robot-a"); err != nil {
 		t.Fatalf("CompleteJob: %v", err)
 	}
 	robots := e.Robots()
@@ -825,7 +871,7 @@ func TestDetectStaleAssignments_NeverTouchesAJobThatIsNotAssigned(t *testing.T) 
 		t.Fatalf("AddJob: %v", err)
 	}
 	e.DispatchOnce()
-	if err := e.CompleteJob("job-1", true); err != nil {
+	if err := e.CompleteJob("job-1", true, "robot-a"); err != nil {
 		t.Fatalf("CompleteJob: %v", err)
 	}
 
@@ -857,7 +903,7 @@ func TestCompleteJob_AcceptsALateGenuineReportForAnUnknownJob(t *testing.T) {
 
 	// robot-a reconnects and reports what actually happened - a real,
 	// late but genuine outcome, not silence.
-	if err := e.CompleteJob("job-1", true); err != nil {
+	if err := e.CompleteJob("job-1", true, "robot-a"); err != nil {
 		t.Fatalf("CompleteJob on a formerly-unknown job: %v", err)
 	}
 	job, _ := e.Job("job-1")
@@ -929,7 +975,7 @@ func TestCompleteJob_LateUnknownReportNeverReenablesARobotBusyWithANewerJob(t *t
 	}
 
 	// job-1's own stale report finally arrives.
-	if err := e.CompleteJob("job-1", true); err != nil {
+	if err := e.CompleteJob("job-1", true, "robot-a"); err != nil {
 		t.Fatalf("CompleteJob on job-1: %v", err)
 	}
 	robots := e.Robots()
