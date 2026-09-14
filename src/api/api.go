@@ -162,6 +162,12 @@ func (s *Server) handleSubmitJob(w http.ResponseWriter, r *http.Request) {
 type completeRequest struct {
 	ID      string `json:"id"`
 	Success bool   `json:"success"`
+	// RobotID is I17's own real fix: without it, ANY caller naming just a
+	// job ID and a success flag could report completion for a job
+	// assigned to a DIFFERENT robot, silently corrupting that other
+	// robot's own Load/Available bookkeeping. Required - see
+	// dispatcher.Engine.CompleteJob's own doc comment.
+	RobotID string `json:"robotId"`
 }
 
 func (s *Server) handleCompleteJob(w http.ResponseWriter, r *http.Request) {
@@ -175,7 +181,11 @@ func (s *Server) handleCompleteJob(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	if err := s.engine.CompleteJob(req.ID, req.Success); err != nil {
+	if req.RobotID == "" {
+		writeError(w, http.StatusBadRequest, errors.New("\"robotId\" is required"))
+		return
+	}
+	if err := s.engine.CompleteJob(req.ID, req.Success, req.RobotID); err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}

@@ -16,7 +16,7 @@
 
 ---
 
-**Honesty check - what actually runs today:** the scheduling engine (`src/dispatcher/dispatcher.go`) - priority-ordered queueing, tool-aware routing, multi-stage dependency tracking, and idempotent `DedupKey` submission - and the plain JSON/HTTP API wrapping it (`src/api/api.go`) are real and tested (57 tests passing across `src/dispatcher`, `src/api`, `src/sqlitestore`, `go test ./...`). The opt-in SQLite persistence (`src/sqlitestore/sqlitestore.go`, pure Go, no CGO) is genuinely verified end-to-end against a real killed-and-relaunched process, not just unit-tested in isolation. What is a known, documented gap: tool-aware routing checks `RequiredTool`/`Robot.Tool` by exact string match against whatever a robot's own `POST /robots` registration claims - it does not yet talk to a real URTC over CAN to confirm the tool head is physically attached, so a robot that lies about its own tool (or one whose head fell off) is currently indistinguishable from one telling the truth. The 4 roadmap phases (TSN sync, 3D path planning, dispatch optimization, AI-driven duration estimation) are aspirational future work with no code behind them yet. See `CHANGELOG.md` for exactly what has shipped so far.
+**Honesty check - what actually runs today:** the scheduling engine (`src/dispatcher/dispatcher.go`) - priority-ordered queueing, tool-aware routing, multi-stage dependency tracking, and idempotent `DedupKey` submission - and the plain JSON/HTTP API wrapping it (`src/api/api.go`) are real and tested (60 tests passing across `src/dispatcher`, `src/api`, `src/sqlitestore`, `go test ./...`). The opt-in SQLite persistence (`src/sqlitestore/sqlitestore.go`, pure Go, no CGO) is genuinely verified end-to-end against a real killed-and-relaunched process, not just unit-tested in isolation. What is a known, documented gap: tool-aware routing checks `RequiredTool`/`Robot.Tool` by exact string match against whatever a robot's own `POST /robots` registration claims - it does not yet talk to a real URTC over CAN to confirm the tool head is physically attached, so a robot that lies about its own tool (or one whose head fell off) is currently indistinguishable from one telling the truth. The 4 roadmap phases (TSN sync, 3D path planning, dispatch optimization, AI-driven duration estimation) are aspirational future work with no code behind them yet. See `CHANGELOG.md` for exactly what has shipped so far.
 
 ---
 
@@ -121,7 +121,7 @@ execute the resulting binary directly.
 curl -X POST localhost:8090/robots -d '{"id":"robot-a","tool":"PnP","available":true}'
 curl -X POST localhost:8090/jobs   -d '{"id":"job-1","priority":5,"requiredTool":"PnP"}'
 curl -X POST localhost:8090/dispatch -d '{}'
-curl -X POST localhost:8090/jobs/complete -d '{"id":"job-1","success":true}'
+curl -X POST localhost:8090/jobs/complete -d '{"id":"job-1","success":true,"robotId":"robot-a"}'
 curl localhost:8090/jobs
 curl localhost:8090/robots
 ```
@@ -135,7 +135,7 @@ curl -X POST localhost:8090/jobs/submit -d '{"id":"job-2-retry","priority":5,"re
 # -> {"ID":"job-2", ..., "result":"duplicate"} - same job, untouched
 
 # After a real failure, a retry with the same dedupKey reuses job-2's ID:
-curl -X POST localhost:8090/jobs/complete -d '{"id":"job-2","success":false}'
+curl -X POST localhost:8090/jobs/complete -d '{"id":"job-2","success":false,"robotId":"robot-a"}'
 curl -X POST localhost:8090/jobs/submit -d '{"id":"job-2-retry-2","priority":5,"requiredTool":"PnP","dedupKey":"req-abc"}'
 # -> {"ID":"job-2", "Status":"pending", ..., "result":"retried"}
 ```

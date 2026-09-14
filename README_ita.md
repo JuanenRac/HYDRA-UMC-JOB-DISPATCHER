@@ -16,7 +16,7 @@
 
 ---
 
-**Controllo di onestà - cosa funziona davvero oggi:** il motore di scheduling (`src/dispatcher/dispatcher.go`) - coda ordinata per priorità, routing consapevole dello strumento, tracciamento delle dipendenze multi-fase, e invio idempotente tramite `DedupKey` - e la semplice API JSON/HTTP che lo avvolge (`src/api/api.go`) sono reali e testati (57 test superati tra `src/dispatcher`, `src/api`, `src/sqlitestore`, `go test ./...`). La persistenza SQLite opzionale (`src/sqlitestore/sqlitestore.go`, Go puro, senza CGO) è genuinamente verificata end-to-end contro un vero processo terminato e rilanciato, non solo testata in isolamento. Ciò che è una lacuna nota e documentata: il routing consapevole dello strumento verifica `RequiredTool`/`Robot.Tool` tramite corrispondenza esatta di stringa rispetto a ciò che dichiara la registrazione `POST /robots` di un robot - non parla ancora con un vero URTC via CAN per confermare che la testa utensile sia fisicamente montata, quindi un robot che mentisse sul proprio strumento (o a cui fosse caduta la testa) è oggi indistinguibile da uno che dice la verità. Le 4 fasi della roadmap (sincronizzazione TSN, pianificazione di percorsi 3D, ottimizzazione del dispatching, stima della durata basata su IA) sono lavoro futuro aspirazionale senza alcun codice dietro per ora. Vedi `CHANGELOG.md` per ciò che è stato consegnato esattamente finora.
+**Controllo di onestà - cosa funziona davvero oggi:** il motore di scheduling (`src/dispatcher/dispatcher.go`) - coda ordinata per priorità, routing consapevole dello strumento, tracciamento delle dipendenze multi-fase, e invio idempotente tramite `DedupKey` - e la semplice API JSON/HTTP che lo avvolge (`src/api/api.go`) sono reali e testati (60 test superati tra `src/dispatcher`, `src/api`, `src/sqlitestore`, `go test ./...`). La persistenza SQLite opzionale (`src/sqlitestore/sqlitestore.go`, Go puro, senza CGO) è genuinamente verificata end-to-end contro un vero processo terminato e rilanciato, non solo testata in isolamento. Ciò che è una lacuna nota e documentata: il routing consapevole dello strumento verifica `RequiredTool`/`Robot.Tool` tramite corrispondenza esatta di stringa rispetto a ciò che dichiara la registrazione `POST /robots` di un robot - non parla ancora con un vero URTC via CAN per confermare che la testa utensile sia fisicamente montata, quindi un robot che mentisse sul proprio strumento (o a cui fosse caduta la testa) è oggi indistinguibile da uno che dice la verità. Le 4 fasi della roadmap (sincronizzazione TSN, pianificazione di percorsi 3D, ottimizzazione del dispatching, stima della durata basata su IA) sono lavoro futuro aspirazionale senza alcun codice dietro per ora. Vedi `CHANGELOG.md` per ciò che è stato consegnato esattamente finora.
 
 ---
 
@@ -122,7 +122,7 @@ un campo di versione nativo per i binari applicativi) e poi eseguono
 curl -X POST localhost:8090/robots -d '{"id":"robot-a","tool":"PnP","available":true}'
 curl -X POST localhost:8090/jobs   -d '{"id":"job-1","priority":5,"requiredTool":"PnP"}'
 curl -X POST localhost:8090/dispatch -d '{}'
-curl -X POST localhost:8090/jobs/complete -d '{"id":"job-1","success":true}'
+curl -X POST localhost:8090/jobs/complete -d '{"id":"job-1","success":true,"robotId":"robot-a"}'
 curl localhost:8090/jobs
 curl localhost:8090/robots
 ```
@@ -136,7 +136,7 @@ curl -X POST localhost:8090/jobs/submit -d '{"id":"job-2-retry","priority":5,"re
 # -> {"ID":"job-2", ..., "result":"duplicate"} - stesso job, invariato
 
 # Dopo un fallimento reale, un nuovo tentativo con lo stesso dedupKey riutilizza l'ID di job-2:
-curl -X POST localhost:8090/jobs/complete -d '{"id":"job-2","success":false}'
+curl -X POST localhost:8090/jobs/complete -d '{"id":"job-2","success":false,"robotId":"robot-a"}'
 curl -X POST localhost:8090/jobs/submit -d '{"id":"job-2-retry-2","priority":5,"requiredTool":"PnP","dedupKey":"req-abc"}'
 # -> {"ID":"job-2", "Status":"pending", ..., "result":"retried"}
 ```

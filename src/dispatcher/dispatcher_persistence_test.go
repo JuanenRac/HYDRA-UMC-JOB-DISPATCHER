@@ -47,7 +47,7 @@ func TestRealRestart_MissionQueueSurvivesAcrossTwoEngines(t *testing.T) {
 	if len(assignments) != 1 || assignments[0].JobID != "pick-1" {
 		t.Fatalf("expected only pick-1 to be dispatched (place-1 is still blocked), got %+v", assignments)
 	}
-	if err := e1.CompleteJob("pick-1", true); err != nil {
+	if err := e1.CompleteJob("pick-1", true, "robot-a"); err != nil {
 		t.Fatalf("CompleteJob(pick-1): %v", err)
 	}
 	// place-1 is now real-eligible (Pending) but not yet actually
@@ -166,7 +166,7 @@ func TestCompleteJob_SoftPersistFailureIsObservableButDoesNotUndoTheTransition(t
 	}
 
 	store.failJobs = true
-	if err := e.CompleteJob("pick-1", true); err != nil {
+	if err := e.CompleteJob("pick-1", true, "robot-a"); err != nil {
 		t.Fatalf("CompleteJob must still succeed even when the store write fails - the physical work already happened: %v", err)
 	}
 	if job, _ := e.Job("pick-1"); job.Status != dispatcher.StatusDone {

@@ -153,16 +153,20 @@ Marks an assigned (or `"unknown"` - see `POST /jobs/detect-stale` below) job as 
 **Request body**
 
 ```json
-{"id": "weld-42", "success": true}
+{"id": "weld-42", "success": true, "robotId": "arm-3"}
 ```
+
+`robotId` is required (I17) and must match the job's own real `AssignedRobot` - without it, any caller naming just a job ID and a success flag could report completion for a job assigned to a DIFFERENT robot, silently corrupting that other robot's own `Load`/`Available` bookkeeping.
 
 **Responses**
 
 | Status | Body | Meaning |
 |---|---|---|
 | 200 | the updated `Job` | `Status` becomes `"done"` (if `success: true`) or `"failed"` (if `success: false`). Either way, every other job's `dependsOn` is re-evaluated: completing to `"done"` may flip a `"blocked"` dependent to `"pending"`; completing to `"failed"` may instead flip one or more downstream dependents (transitively, through a whole multi-step chain) to `"unreachable"` - it can never happen on its own. The robot becomes `Available` again only if it isn't already busy with a different job it picked up while this one sat `"unknown"`. |
+| 400 | `{"error": "\"robotId\" is required"}` | `robotId` was missing or empty. |
 | 400 | `{"error": "job ID does not exist"}` | Unknown `id`. |
 | 400 | `{"error": "job is not in the assigned state"}` | The job exists but was never dispatched (still `"pending"`/`"blocked"`), or is already `"done"`/`"failed"` - `"unknown"` is accepted, everything else is not. |
+| 400 | `{"error": "robot ID does not match the job's assigned robot"}` | `robotId` does not match the job's own real `AssignedRobot` - the job/robot state is left completely untouched, not partially applied. |
 
 ---
 
