@@ -18,6 +18,24 @@ semantic-versioning judgment calls:
 
 ---
 
+## [0.1.7] - POST /jobs/complete now returns distinct HTTP statuses per failure mode
+
+- **The gap.** Every failure from `dispatcher.Engine.CompleteJob` - an
+  unknown job ID, an unknown robot ID, a job that isn't currently
+  Assigned/Unknown, or a robot ID that doesn't match the job's real
+  assignee - collapsed to the same generic `400 Bad Request`, with only
+  the message text to tell them apart.
+- **The fix.** A new `completeJobErrorStatus` maps each of the engine's
+  own sentinel errors to a distinct, meaningful status: `404 Not Found`
+  for `ErrUnknownJob`/`ErrUnknownRobot` (the named job or robot simply
+  doesn't exist), `409 Conflict` for `ErrJobNotAssigned`/`ErrRobotMismatch`
+  (the job and robot both exist, but completing it right now conflicts
+  with real server-side state), and `400 Bad Request` still covers
+  malformed/missing request fields. Every other handler in this file
+  already distinguished `400` from `409` this way (`POST /jobs`,
+  `POST /jobs/submit`) - `POST /jobs/complete` was the one handler still
+  flattening everything to `400`.
+
 ## [0.1.6] - I17: CompleteJob now verifies the reporting robot, not just a job ID and a success flag
 
 - **The gap.** `POST /jobs/complete` accepted just `{"id", "success"}` -

@@ -120,8 +120,44 @@ func TestHandleCompleteJob_RejectsAMismatchedRobotID(t *testing.T) {
 	}
 
 	rec = post(t, s, "/jobs/complete", completeRequest{ID: "job-1", Success: true, RobotID: wrongRobot})
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400 for a mismatched robotId, body = %s", rec.Code, rec.Body.String())
+	// A mismatched robotId is a real conflict with the job's actual
+	// assigned-robot state (both the job and the named robot genuinely
+	// exist), not a malformed request - see completeJobErrorStatus.
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409 for a mismatched robotId, body = %s", rec.Code, rec.Body.String())
+	}
+}
+
+// A job ID that was never submitted is a missing resource, not a
+// malformed request - distinct from every other completeJobErrorStatus
+// case below.
+func TestHandleCompleteJob_UnknownJobIDReturns404(t *testing.T) {
+	s := New(dispatcher.NewEngine())
+	post(t, s, "/robots", robotRequest{ID: "robot-a", Available: true})
+
+	rec := post(t, s, "/jobs/complete", completeRequest{ID: "no-such-job", Success: true, RobotID: "robot-a"})
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404 for an unknown job ID, body = %s", rec.Code, rec.Body.String())
+	}
+}
+
+// Completing a job that's already Done/Failed (i.e. was never Assigned/
+// Unknown to begin with) is a real state conflict, not a 400 - the
+// request itself is well-formed and names a real job.
+func TestHandleCompleteJob_AlreadyCompletedJobReturns409(t *testing.T) {
+	s := New(dispatcher.NewEngine())
+	post(t, s, "/robots", robotRequest{ID: "robot-a", Available: true})
+	post(t, s, "/jobs", jobRequest{ID: "job-1"})
+	post(t, s, "/dispatch", nil)
+
+	rec := post(t, s, "/jobs/complete", completeRequest{ID: "job-1", Success: true, RobotID: "robot-a"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("first POST /jobs/complete status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+
+	rec = post(t, s, "/jobs/complete", completeRequest{ID: "job-1", Success: true, RobotID: "robot-a"})
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409 for completing an already-done job, body = %s", rec.Code, rec.Body.String())
 	}
 }
 
