@@ -186,11 +186,41 @@ func (s *Server) handleCompleteJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.engine.CompleteJob(req.ID, req.Success, req.RobotID); err != nil {
-		writeError(w, http.StatusBadRequest, err)
+		writeError(w, completeJobErrorStatus(err), err)
 		return
 	}
 	updated, _ := s.engine.Job(req.ID)
 	writeJSON(w, http.StatusOK, updated)
+}
+
+// completeJobErrorStatus maps dispatcher.Engine.CompleteJob's own distinct
+// sentinel errors to a distinct, meaningful HTTP status instead of the
+// generic 400 this handler used to return for every failure mode
+// regardless of what actually went wrong - a caller (an actual robot or
+// an operator script) can't tell "you named a job that was never
+// submitted" apart from "wrong robot reported this" apart from "this job
+// already finished" if they're all indistinguishable 400s with only the
+// message text to go on.
+func completeJobErrorStatus(err error) int {
+	switch {
+	case errors.Is(err, dispatcher.ErrUnknownJob), errors.Is(err, dispatcher.ErrUnknownRobot):
+		// The named job (or the robot it's assigned to) doesn't exist at
+		// all - a missing resource, not a malformed request.
+		return http.StatusNotFound
+	case errors.Is(err, dispatcher.ErrJobNotAssigned), errors.Is(err, dispatcher.ErrRobotMismatch):
+		// The job and robot both exist, but completing it right now
+		// conflicts with the job's real current state (already done/
+		// failed, or genuinely not this job's assigned robot) - a real
+		// conflict with server-side state, not a client input error.
+		return http.StatusConflict
+	default:
+		// Decode/validation failures reaching this point would already
+		// have been caught earlier in handleCompleteJob; an error making
+		// it here that isn't one of the sentinels above is treated the
+		// same way the rest of this file treats an unrecognized engine
+		// error (see handleJobs/handleSubmitJob).
+		return http.StatusBadRequest
+	}
 }
 
 type robotRequest struct {
