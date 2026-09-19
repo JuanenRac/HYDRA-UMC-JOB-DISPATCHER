@@ -156,7 +156,7 @@ Marks an assigned (or `"unknown"` - see `POST /jobs/detect-stale` below) job as 
 {"id": "weld-42", "success": true, "robotId": "arm-3"}
 ```
 
-`robotId` is required (I17) and must match the job's own real `AssignedRobot` - without it, any caller naming just a job ID and a success flag could report completion for a job assigned to a DIFFERENT robot, silently corrupting that other robot's own `Load`/`Available` bookkeeping.
+`robotId` is required and must match the job's own real `AssignedRobot` - without it, any caller naming just a job ID and a success flag could report completion for a job assigned to a DIFFERENT robot, silently corrupting that other robot's own `Load`/`Available` bookkeeping.
 
 **Responses**
 
