@@ -36,7 +36,7 @@ semantic-versioning judgment calls:
   `POST /jobs/submit`) - `POST /jobs/complete` was the one handler still
   flattening everything to `400`.
 
-## [0.1.6] - I17: CompleteJob now verifies the reporting robot, not just a job ID and a success flag
+## [0.1.6] - CompleteJob now verifies the reporting robot, not just a job ID and a success flag
 
 - **The gap.** `POST /jobs/complete` accepted just `{"id", "success"}` -
   ANY caller naming a real job ID could report its completion, with no
@@ -99,17 +99,17 @@ semantic-versioning judgment calls:
 - `docs/API.md` updated: the `Status` enum, `POST /jobs/complete`'s
   accepted states, and the new endpoint's full reference.
 
-## [0.1.4] - H018/H019: a mid-task fault silently cleared on completion, and a non-durable assignment emitted anyway
+## [0.1.4] - a mid-task fault silently cleared on completion, and a non-durable assignment emitted anyway
 
-- **H018 (P0):** `CompleteJob` unconditionally set `robot.Available = true`
+- `CompleteJob` unconditionally set `robot.Available = true`
   on every completion, success or failure. A robot that self-reported
   `Available=false` mid-task (a real fault/negative heartbeat, correctly
-  refused by JOB-02's own guard from overriding the scheduler's active
+  refused by the scheduler's own existing guard from overriding its active
   reservation) had that signal silently discarded the instant its job
   ended - it came back fully available with no memory anything was ever
   wrong. `CompleteJob` now leaves such a robot unavailable; only a fresh,
   genuinely positive heartbeat (via `UpsertRobot`) re-arms it.
-- **H019 (P0):** `DispatchOnce` emitted an assignment - and kept the
+- `DispatchOnce` emitted an assignment - and kept the
   in-memory Assigned/Available state - even when the underlying
   `SaveJob`/`SaveRobot` write failed, combining the failure into
   `LastPersistError()` for a caller to notice only later, out of band. A
@@ -138,10 +138,9 @@ and the 4 roadmap phases are aspirational with no code behind them yet.
 Documents the real, current state of what's implemented vs. planned; no
 behavior changed.
 
-## [0.1.2] - JOB-01/JOB-02: defensive copies and a real reservation guard
+## [0.1.2] - Defensive copies and a real reservation guard
 
-- **JOB-01 (P1):**
-  `Job.DependsOn` was only ever struct-shallow-copied - a slice's backing
+- `Job.DependsOn` was only ever struct-shallow-copied - a slice's backing
   array is shared across a plain `*j` dereference. A caller mutating a
   `[]string` it got back from `Job()`/`Jobs()`/`SubmitJob`, or later
   mutating a `[]string` it originally passed into `AddJob`/`SubmitJob`,
@@ -149,7 +148,7 @@ behavior changed.
   entirely and never going through persistence. Every read/write boundary
   (`addJobLocked`, `SubmitJob`'s retry path, `Job()`, `Jobs()`) now goes
   through a real, allocated copy (`cloneJob`/`cloneStrings`).
-- **JOB-02 (P0):** `Robot.Available` doubled as
+- `Robot.Available` doubled as
   both the robot's own self-reported heartbeat readiness AND the
   scheduler's real reservation flag. A heartbeat/re-registration declaring
   `Available=true` could silently reopen a robot `DispatchOnce` had
