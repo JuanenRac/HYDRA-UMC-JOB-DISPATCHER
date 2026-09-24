@@ -162,7 +162,7 @@ func (s *Server) handleSubmitJob(w http.ResponseWriter, r *http.Request) {
 type completeRequest struct {
 	ID      string `json:"id"`
 	Success bool   `json:"success"`
-	// RobotID is I17's own real fix: without it, ANY caller naming just a
+	// RobotID is this project's own real fix: without it, ANY caller naming just a
 	// job ID and a success flag could report completion for a job
 	// assigned to a DIFFERENT robot, silently corrupting that other
 	// robot's own Load/Available bookkeeping. Required - see
