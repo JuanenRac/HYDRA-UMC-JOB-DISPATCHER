@@ -38,6 +38,11 @@ const (
 	// reconnects and reports what actually happened) - silence alone
 	// must never be read as either outcome.
 	StatusUnknown JobStatus = "unknown"
+	// StatusCancelled means an operator withdrew this job before any robot
+	// was given it (see CancelJob). It is terminal and never dispatched.
+	// A job that depends on a cancelled job can never become eligible, so it
+	// surfaces as Unreachable, the same as when a dependency failed.
+	StatusCancelled JobStatus = "cancelled"
 )
 
 // Job is one unit of work in the global mission queue.
@@ -291,6 +296,12 @@ var (
 	ErrUnknownJob     = errors.New("job ID does not exist")
 	ErrUnknownRobot   = errors.New("robot ID does not exist")
 	ErrJobNotAssigned = errors.New("job is not in the assigned state")
+	// ErrJobInFlight is returned by CancelJob for a job a robot may be
+	// executing right now (Assigned, or Unknown after a stale heartbeat).
+	// The dispatcher cannot stop physical work, so it never pretends to.
+	ErrJobInFlight = errors.New("job may be running on a robot; it can only be ended by that robot's own report")
+	// ErrJobFinished is returned by CancelJob for a job that already ended.
+	ErrJobFinished = errors.New("job already finished")
 	ErrRobotMismatch  = errors.New("robot ID does not match the job's assigned robot")
 	ErrInvalidJob     = errors.New("invalid job")
 )
@@ -558,7 +569,7 @@ func (e *Engine) computeStatus(j *Job) JobStatus {
 		if !ok {
 			continue
 		}
-		if d.Status == StatusFailed || d.Status == StatusUnreachable {
+		if d.Status == StatusFailed || d.Status == StatusUnreachable || d.Status == StatusCancelled {
 			return StatusUnreachable
 		}
 		if d.Status != StatusDone {
@@ -799,6 +810,38 @@ func (e *Engine) CompleteJob(jobID string, success bool, robotID string) error {
 	robotErr := e.persistRobotLocked(robot)
 	refreshErr := e.refreshBlocked()
 	e.recordPersistOutcome(jobErr, robotErr, refreshErr)
+	return nil
+}
+
+// CancelJob withdraws a job that no robot has been given: Pending, Blocked or
+// Unreachable becomes Cancelled and is never dispatched, also not after a
+// restart (the status is persisted). Cancelling an already cancelled job is a
+// no-op, so a retried request is safe. A job that is Assigned (or Unknown
+// after a stale heartbeat) may be running on a robot right now; the
+// dispatcher cannot stop physical work, so it refuses with ErrJobInFlight and
+// leaves the outcome to that robot's own CompleteJob report. Jobs that depend
+// on the cancelled one become Unreachable.
+func (e *Engine) CancelJob(jobID string) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	j, ok := e.jobs[jobID]
+	if !ok {
+		return fmt.Errorf("%w: %q", ErrUnknownJob, jobID)
+	}
+	switch j.Status {
+	case StatusCancelled:
+		return nil
+	case StatusAssigned, StatusUnknown:
+		return fmt.Errorf("%w: job %q is %q", ErrJobInFlight, jobID, j.Status)
+	case StatusDone, StatusFailed:
+		return fmt.Errorf("%w: job %q is %q", ErrJobFinished, jobID, j.Status)
+	}
+	j.Status = StatusCancelled
+	j.AssignedRobot = ""
+	jobErr := e.persistJobLocked(j)
+	refreshErr := e.refreshBlocked()
+	e.recordPersistOutcome(jobErr, refreshErr)
 	return nil
 }
 

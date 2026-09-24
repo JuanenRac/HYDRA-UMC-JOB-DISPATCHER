@@ -385,3 +385,25 @@ func TestHandleHealth_ReportsADegradedStore(t *testing.T) {
 		t.Fatal("expected a real lastPersistError message")
 	}
 }
+
+func TestHandleCancelJob_CancelsUnknownsAndRefusesInFlight(t *testing.T) {
+	s := New(dispatcher.NewEngine())
+	post(t, s, "/robots", robotRequest{ID: "robot-a", Available: true})
+	post(t, s, "/jobs", map[string]any{"id": "queued"})
+
+	if rec := post(t, s, "/jobs/cancel", cancelRequest{ID: "queued"}); rec.Code != http.StatusOK {
+		t.Fatalf("cancelling a queued job: status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	if rec := post(t, s, "/jobs/cancel", cancelRequest{ID: "no-such-job"}); rec.Code != http.StatusNotFound {
+		t.Fatalf("unknown job: status = %d, want 404", rec.Code)
+	}
+	if rec := post(t, s, "/jobs/cancel", cancelRequest{}); rec.Code != http.StatusBadRequest {
+		t.Fatalf("missing id: status = %d, want 400", rec.Code)
+	}
+
+	post(t, s, "/jobs", map[string]any{"id": "running"})
+	post(t, s, "/dispatch", map[string]any{})
+	if rec := post(t, s, "/jobs/cancel", cancelRequest{ID: "running"}); rec.Code != http.StatusConflict {
+		t.Fatalf("an assigned job: status = %d, want 409, body = %s", rec.Code, rec.Body.String())
+	}
+}

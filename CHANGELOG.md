@@ -18,6 +18,19 @@ semantic-versioning judgment calls:
 
 ---
 
+## [0.1.8] - Cancellation and restart tests at every stage
+
+- **`POST /jobs/cancel` and `Engine.CancelJob`:** a job no robot has been given
+  (pending, blocked or unreachable) can be withdrawn; it becomes `cancelled`, is never
+  dispatched, and stays cancelled across a restart. Cancelling twice is safe. A job that
+  may be running (assigned, or unknown after a stale heartbeat) answers 409: the
+  dispatcher cannot stop physical work, so only that robot's own report ends it.
+  Jobs that depend on a cancelled job become unreachable.
+- New restart tests at each stage: an assigned job is not dispatched again, a completion
+  reported after a restart is honoured and durable, a failed dependency keeps its
+  dependents unreachable, a dedup key still deduplicates, and an unknown job stays
+  unknown until its robot reports.
+
 ## [0.1.7] - POST /jobs/complete now returns distinct HTTP statuses per failure mode
 
 - **The gap.** Every failure from `dispatcher.Engine.CompleteJob` - an

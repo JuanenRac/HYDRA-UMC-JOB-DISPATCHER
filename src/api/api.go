@@ -32,6 +32,7 @@ func New(engine *dispatcher.Engine) *Server {
 	s.mux.HandleFunc("/jobs", s.handleJobs)
 	s.mux.HandleFunc("/jobs/submit", s.handleSubmitJob)
 	s.mux.HandleFunc("/jobs/complete", s.handleCompleteJob)
+	s.mux.HandleFunc("/jobs/cancel", s.handleCancelJob)
 	s.mux.HandleFunc("/robots", s.handleRobots)
 	s.mux.HandleFunc("/dispatch", s.handleDispatch)
 	s.mux.HandleFunc("/jobs/detect-stale", s.handleDetectStale)
@@ -221,6 +222,42 @@ func completeJobErrorStatus(err error) int {
 		// error (see handleJobs/handleSubmitJob).
 		return http.StatusBadRequest
 	}
+}
+
+type cancelRequest struct {
+	ID string `json:"id"`
+}
+
+// handleCancelJob withdraws a job no robot has been given. A job that may be
+// running on a robot answers 409: only that robot's own report can end it.
+func (s *Server) handleCancelJob(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", "POST")
+		writeError(w, http.StatusMethodNotAllowed, errors.New("use POST"))
+		return
+	}
+	var req cancelRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if req.ID == "" {
+		writeError(w, http.StatusBadRequest, errors.New("\"id\" is required"))
+		return
+	}
+	if err := s.engine.CancelJob(req.ID); err != nil {
+		status := http.StatusBadRequest
+		switch {
+		case errors.Is(err, dispatcher.ErrUnknownJob):
+			status = http.StatusNotFound
+		case errors.Is(err, dispatcher.ErrJobInFlight), errors.Is(err, dispatcher.ErrJobFinished):
+			status = http.StatusConflict
+		}
+		writeError(w, status, err)
+		return
+	}
+	updated, _ := s.engine.Job(req.ID)
+	writeJSON(w, http.StatusOK, updated)
 }
 
 type robotRequest struct {
