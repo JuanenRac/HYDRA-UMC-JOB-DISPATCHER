@@ -74,8 +74,8 @@ type Robot struct {
 	Tool      string // currently attached URTC tool head, e.g. "PnP", "Laser", "" if none
 	Available bool   // false while it is executing an assigned job
 	Load      int    // completed-job counter this session, used to balance ties (lower = preferred)
-	// H018: set when a heartbeat reports Available=false WHILE this robot
-	// has an active assignment - JOB-02's own guard in UpsertRobot already
+	// set when a heartbeat reports Available=false WHILE this robot
+	// has an active assignment - this project's own guard in UpsertRobot already
 	// refuses to let that heartbeat touch Available directly (the
 	// scheduler's reservation must win over a racing heartbeat), but
 	// silently dropping it entirely lost the real signal outright: a robot
@@ -350,7 +350,7 @@ func (e *Engine) addJobLocked(j Job) (*Job, error) {
 // cloneStrings returns a fresh copy of s, sharing no backing array with
 // it - nil in, nil out. Used at every boundary where a []string crosses
 // between caller-owned memory and Engine's own internal state (see
-// cloneJob and JOB-01's own fix below).
+// cloneJob and this project's own fix below).
 func cloneStrings(s []string) []string {
 	if s == nil {
 		return nil
@@ -363,7 +363,7 @@ func cloneStrings(s []string) []string {
 // cloneJob returns a deep copy of *j safe to hand to a caller (or store
 // as a caller's own input) without sharing DependsOn's backing array.
 //
-// JOB-01 (P1): a
+// a
 // Job's DependsOn slice was copied only at the struct level (a plain
 // `*j` dereference, or `existing.DependsOn = j.DependsOn`) - a shallow
 // copy of a struct containing a slice copies the slice HEADER only, so
@@ -482,11 +482,11 @@ func (e *Engine) UpsertRobot(r Robot) {
 		existing.Location = r.Location
 		existing.Tool = r.Tool
 		// This call arriving at all is itself a real heartbeat, whether or
-		// not JOB-02's own guard below lets it change Available - recorded
+		// not this project's own guard below lets it change Available - recorded
 		// unconditionally so DetectStaleAssignments sees this robot as
 		// genuinely alive right now.
 		existing.lastHeartbeatAt = e.now()
-		// JOB-02 (P0): Available doubles as both the robot's own self-reported
+		// Available doubles as both the robot's own self-reported
 		// readiness AND the scheduler's real reservation flag (DispatchOnce
 		// sets it false the instant it assigns a job). A heartbeat/
 		// re-registration declaring Available=true must never override an
@@ -500,7 +500,7 @@ func (e *Engine) UpsertRobot(r Robot) {
 		// whatever a robot's own heartbeat currently declares.
 		if !e.robotHasActiveAssignmentLocked(r.ID) {
 			existing.Available = r.Available
-			// H018: a valid heartbeat received while genuinely idle is the
+			// a valid heartbeat received while genuinely idle is the
 			// only thing that may clear a prior mid-task fault signal - see
 			// CompleteJob's own comment for why finishing the job itself
 			// must not do this. A fresh Available=false here re-arms it
@@ -508,7 +508,7 @@ func (e *Engine) UpsertRobot(r Robot) {
 			// and correct: still not available).
 			existing.selfReportedUnavailable = !r.Available
 		} else if !r.Available {
-			// JOB-02's own guard above correctly refuses to let this
+			// this project's own guard above correctly refuses to let this
 			// heartbeat flip Available while the scheduler's reservation
 			// owns it - but the negative signal itself is real and must
 			// not just vanish. Recorded here so CompleteJob can refuse to
@@ -533,7 +533,7 @@ func (e *Engine) UpsertRobot(r Robot) {
 // robotHasActiveAssignmentLocked reports whether robotID is the
 // AssignedRobot of a job still in StatusAssigned - the scheduler's own
 // real, current reservation of that robot, independent of whatever the
-// robot's own heartbeat currently declares. See JOB-02's fix in
+// robot's own heartbeat currently declares. See 's fix in
 // UpsertRobot. Caller must hold e.mu.
 func (e *Engine) robotHasActiveAssignmentLocked(robotID string) bool {
 	for _, j := range e.jobs {
@@ -649,7 +649,7 @@ func (e *Engine) DispatchOnce() []Assignment {
 		prevRobotAvailable := robot.Available
 		robot.Available = false
 		persisted = true
-		// H019: Store's own two SaveJob/SaveRobot calls are not a joint
+		// Store's own two SaveJob/SaveRobot calls are not a joint
 		// transaction, so this used to emit the assignment (and keep the
 		// in-memory Assigned/Available state) even when either write
 		// failed, only combining the failure into persistErr for the
@@ -727,7 +727,7 @@ func (e *Engine) bestRobotFor(j *Job) *Robot {
 // multi-step mission, while a Failed result may instead make one or more
 // later stages Unreachable.
 //
-// I17: `robotID` must match the job's own real `AssignedRobot` - the
+// `robotID` must match the job's own real `AssignedRobot` - the
 // HTTP handler had no way at all to tell a genuine completion report
 // from the robot the dispatcher actually assigned this job to apart
 // from ANY caller simply naming a job ID and a success flag, so a wrong
@@ -767,10 +767,10 @@ func (e *Engine) CompleteJob(jobID string, success bool, robotID string) error {
 	} else {
 		j.Status = StatusFailed
 	}
-	// H018: finishing THIS job only ever ends the scheduler's own
+	// finishing THIS job only ever ends the scheduler's own
 	// reservation on the robot - it must never be read as "the robot
 	// itself is healthy again". A heartbeat reporting Available=false
-	// while this job was active (dropped by UpsertRobot's JOB-02 guard,
+	// while this job was active (dropped by UpsertRobot's guard,
 	// but recorded via selfReportedUnavailable) means the robot itself
 	// already said it isn't ready; unconditionally flipping Available
 	// back to true here used to silently discard that real signal the

@@ -160,7 +160,7 @@ func TestCompleteJob_RejectsNotAssigned(t *testing.T) {
 	}
 }
 
-// I17: without this, ANY caller naming just a job ID and a success flag
+// without this, ANY caller naming just a job ID and a success flag
 // could report completion for a job assigned to a DIFFERENT robot -
 // e.g. a buggy or malicious robot-b claiming credit (and freeing itself
 // up) for work robot-a is the one actually assigned to and doing.
@@ -544,7 +544,7 @@ func TestSubmitJob_RetryUnsticksDependentFromUnreachable(t *testing.T) {
 	}
 }
 
-// JOB-01 (P1): mutating a
+// mutating a
 // DependsOn slice returned by Job() must never reach back into Engine's
 // own internal state - a shallow copy shares the slice's backing array.
 func TestJob_MutatingReturnedDependsOnDoesNotCorruptInternalState(t *testing.T) {
@@ -648,7 +648,7 @@ func TestSubmitJob_RetriedJobReturnsIndependentDependsOnCopy(t *testing.T) {
 	}
 }
 
-// JOB-02 (P0): a heartbeat
+// a heartbeat
 // declaring Available=true must never override a robot's active
 // reservation - the exact scenario from the finding: two jobs, one
 // robot, a heartbeat/upsert in between, must still produce exactly one
@@ -709,7 +709,7 @@ func TestUpsertRobot_HeartbeatStillControlsAvailabilityForAnUnreservedRobot(t *t
 	}
 }
 
-// H018 (P0): a robot that self-reports Available=false WHILE a job is
+// a robot that self-reports Available=false WHILE a job is
 // actively assigned to it (a real fault/negative heartbeat mid-task)
 // must not come back Available just because that job finishes -
 // success or failure. It must stay unavailable through the next
@@ -730,7 +730,7 @@ func TestCompleteJob_DoesNotReenableARobotThatSelfReportedUnavailableMidTask(t *
 		t.Fatalf("first dispatch = %+v, want job-1 assigned to robot-a", first)
 	}
 
-	// A real negative heartbeat arrives mid-task - JOB-02's own guard
+	// A real negative heartbeat arrives mid-task - this project's own guard
 	// correctly refuses to let it flip Available while the job is still
 	// active (the scheduler's reservation must win over a racing
 	// heartbeat), but the fault it reports must not just vanish either.
@@ -822,7 +822,7 @@ func TestDetectStaleAssignments_LeavesAFreshHeartbeatAlone(t *testing.T) {
 	e.DispatchOnce()
 
 	clock.t = clock.t.Add(30 * time.Second)
-	e.UpsertRobot(Robot{ID: "robot-a", Available: false}) // a real, recent heartbeat mid-task (JOB-02: Available itself is dropped, but this still counts as contact)
+	e.UpsertRobot(Robot{ID: "robot-a", Available: false}) // a real, recent heartbeat mid-task (Available itself is dropped, but this still counts as contact)
 	clock.t = clock.t.Add(30 * time.Second)               // 30s since that heartbeat - under a 60s timeout
 
 	unknown := e.DetectStaleAssignments(time.Minute)

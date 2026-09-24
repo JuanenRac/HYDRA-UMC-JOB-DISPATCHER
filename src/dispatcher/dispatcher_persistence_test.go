@@ -186,7 +186,7 @@ func TestCompleteJob_SoftPersistFailureIsObservableButDoesNotUndoTheTransition(t
 	}
 }
 
-// H019 (P0): unlike CompleteJob (soft - the physical work already
+// unlike CompleteJob (soft - the physical work already
 // happened by the time it's called), DispatchOnce must never emit an
 // assignment - nor leave the job Assigned in memory - unless it was
 // actually saved durably first. Store's own SaveJob/SaveRobot are two

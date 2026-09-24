@@ -85,7 +85,7 @@ func TestFullFlow_RegisterSubmitDispatchComplete(t *testing.T) {
 	}
 }
 
-// I17: the HTTP handler itself must require a real robotId, not just
+// the HTTP handler itself must require a real robotId, not just
 // forward whatever the engine happens to accept.
 func TestHandleCompleteJob_RejectsMissingRobotID(t *testing.T) {
 	s := New(dispatcher.NewEngine())
