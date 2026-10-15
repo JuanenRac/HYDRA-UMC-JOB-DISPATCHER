@@ -253,6 +253,14 @@ behavior changed.
 - New test (`TestSubmitJob_RetryUnsticksDependentFromUnreachable`) - full
   suite passing.
 
+**Validated job identity and dependency graph**
+
+- **`dispatcher.go` / `api.go`** - direct engine callers and both submit
+  routes now reject blank job IDs, self-dependencies and repeated dependency
+  IDs. Invalid request topology is returned as HTTP 400 rather than being
+  stored as work that can never become eligible.
+- Added engine and HTTP regression coverage for the rejected inputs.
+
 ## Documentation - Real HTTP API reference
 
 - **`docs/API.md`** (new) - every real endpoint (`GET`/`POST /jobs`,
@@ -262,20 +270,6 @@ behavior changed.
   code, and precisely how `Status`/`Load`/dependency-unblocking behave.
   Cross-checked against `api_test.go`'s real status-code assertions.
   Documentation-only - no code changed, no version bump.
-
-## Unreleased - validated job identity and dependency graph
-
-- **`dispatcher.go` / `api.go`** - direct engine callers and both submit
-  routes now reject blank job IDs, self-dependencies and repeated dependency
-  IDs. Invalid request topology is returned as HTTP 400 rather than being
-  stored as work that can never become eligible.
-- Added engine and HTTP regression coverage for the rejected inputs.
-
----
-
-## [0.1.0]
-
-- Build version synchronized with `hydra-umc.project.json` and the repository-native version source.
 
 ## [0.0.9] - Real CM5 deployment
 
