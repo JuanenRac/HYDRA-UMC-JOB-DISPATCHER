@@ -4,7 +4,7 @@
 
 # 📋 HYDRA-UMC-JOB-DISPATCHER
 
-<p align="center"><a href="README.md">🇺🇸 English</a> | <a href="README_spa.md">🇪🇸 Español</a> | <a href="README_fra.md">🇫🇷 Français</a> | <a href="README_ita.md">🇮🇹 Italiano</a> | 🇩🇪 <b>Deutsch</b> | <a href="README_zho.md">🇨🇳 简体中文</a> | <a href="README_jpn.md">🇯🇵 日本語</a></p>
+<p align="center"><a href="README.md">🇺🇸 English</a> | <a href="README_spa.md">🇪🇸 Español</a> | <a href="README_fra.md">🇫🇷 Français</a> | <a href="README_ita.md">🇮🇹 Italiano</a> | 🇩🇪 <b>Deutsch</b> | <a href="README_zho.md">🇨🇳 简体中文</a> | <a href="README_jpn.md">🇯🇵 日本語</a> | <a href="README_por.md">🇵🇹 Português</a></p>
 
 ### ⚙️ Prioritätsbasierte Missions-Warteschlange für heterogene Roboterflotten
 
@@ -16,7 +16,7 @@
 
 ---
 
-**Ehrlichkeitscheck - was heute wirklich läuft:** die Scheduling-Engine (`src/dispatcher/dispatcher.go`) - nach Priorität geordnete Warteschlange, werkzeugbewusstes Routing, mehrstufige Abhängigkeitsverfolgung und idempotente Einreichung über `DedupKey` - sowie die einfache JSON/HTTP-API, die sie umschließt (`src/api/api.go`), sind real und getestet (60 bestandene Tests über `src/dispatcher`, `src/api`, `src/sqlitestore`, `go test ./...`). Die optionale SQLite-Persistenz (`src/sqlitestore/sqlitestore.go`, reines Go, kein CGO) ist tatsächlich Ende-zu-Ende gegen einen echten, beendeten und neu gestarteten Prozess verifiziert, nicht nur isoliert unitgetestet. Was eine bekannte, dokumentierte Lücke ist: das werkzeugbewusste Routing prüft `RequiredTool`/`Robot.Tool` durch exakten String-Abgleich gegen das, was die eigene `POST /robots`-Registrierung eines Roboters behauptet - es spricht noch nicht mit einem echten URTC über CAN, um zu bestätigen, dass der Werkzeugkopf physisch angebracht ist, sodass ein Roboter, der über sein eigenes Werkzeug lügt (oder dessen Kopf abgefallen ist), heute nicht von einem ehrlichen zu unterscheiden ist. Die 4 Roadmap-Phasen (TSN-Synchronisation, 3D-Pfadplanung, Dispatch-Optimierung, KI-gestützte Dauerschätzung) sind angestrebte Zukunftsarbeit ohne jeglichen Code dahinter bisher. Siehe `CHANGELOG.md` für das, was bisher genau ausgeliefert wurde.
+**Ehrlichkeitscheck - was heute wirklich läuft:** die Scheduling-Engine (`src/dispatcher/dispatcher.go`) - nach Priorität geordnete Warteschlange, werkzeugbewusstes Routing, mehrstufige Abhängigkeitsverfolgung und idempotente Einreichung über `DedupKey` - sowie die einfache JSON/HTTP-API, die sie umschließt (`src/api/api.go`), sind real und getestet (90 bestandene Tests über `src/dispatcher`, `src/api`, `src/sqlitestore`, `go test ./...`). Die optionale SQLite-Persistenz (`src/sqlitestore/sqlitestore.go`, reines Go, kein CGO) ist tatsächlich Ende-zu-Ende gegen einen echten, beendeten und neu gestarteten Prozess verifiziert, nicht nur isoliert unitgetestet. Was eine bekannte, dokumentierte Lücke ist: das werkzeugbewusste Routing prüft `RequiredTool`/`Robot.Tool` durch exakten String-Abgleich gegen das, was die eigene `POST /robots`-Registrierung eines Roboters behauptet - es spricht noch nicht mit einem echten URTC über CAN, um zu bestätigen, dass der Werkzeugkopf physisch angebracht ist, sodass ein Roboter, der über sein eigenes Werkzeug lügt (oder dessen Kopf abgefallen ist), heute nicht von einem ehrlichen zu unterscheiden ist. Die 4 Roadmap-Phasen (TSN-Synchronisation, 3D-Pfadplanung, Dispatch-Optimierung, KI-gestützte Dauerschätzung) sind angestrebte Zukunftsarbeit ohne jeglichen Code dahinter bisher. Siehe `CHANGELOG.md` für das, was bisher genau ausgeliefert wurde.
 
 ---
 
@@ -32,6 +32,7 @@ Er stellt sicher, dass hochpriore Aufgaben (z. B. "Notfall-Defektbehebung") den 
 * 🔄 **Mehrstufige Missionen:** Verwaltet Abhängigkeiten zwischen Aufgaben (z. B. muss "Pick" vor "Place" erfolgen).
 * 📡 **Persistenz:** echter, optionaler SQLite-gestützter Missionsstatus (`-db PATH`, `src/sqlitestore`, reines Go - kein CGO) - die Warteschlange uebersteht einen echten Prozessneustart, Ende-zu-Ende verifiziert; ohne Angabe bleibt alles rein im Speicher. `GET /health` meldet einen degradierten Speicher statt stillschweigend zu versagen. Siehe [`docs/API.md`](docs/API.md#persistence).
 * 🔁 **Idempotente Einreichung (v0):** Echte, optionale `DedupKey`-basierte Deduplizierung über `POST /jobs/submit` - eine erneute Einreichung eines laufenden oder bereits abgeschlossenen Jobs wird unverändert zurückgegeben, und ein Wiederholungsversuch nach einem echten Fehler nutzt dieselbe Job-ID weiter, statt die Arbeit zweimal auszuführen. Die Prioritätsreihenfolge ist über wiederholte Läufe hinweg deterministisch, abgedeckt durch einen expliziten Regressionstest.
+* 🧯 **Standardmäßig sicher, und ein Roboter, der nicht mehr antwortet, bekommt keine Arbeit (v0):** Die API lauscht auf `127.0.0.1:8090`, sofern nichts anderes angegeben ist, und eine andere Adresse verlangt ein Bearer-Token (`-token` / `JOB_DISPATCHER_TOKEN`; dann verlangt alles außer `GET /health` es) oder ein ausdrückliches `-allow-anonymous`; der HTTP-Server hat Zeitlimits, und Anfragekörper über 64 KB werden mit `413` abgelehnt. Ein Roboter, der länger als `-robot-timeout` (Standard 2 Minuten) schweigt, bekommt keine neue Arbeit, ein Job kann eine bevorzugte `location` nennen (`POST /jobs`, `POST /jobs/submit`; Roboter an diesem Ort werden bevorzugt, nie verlangt), und der letzte Herzschlag jedes Roboters wird gespeichert (eine Datenbank der Vorversion wird an Ort und Stelle migriert), sodass ein Neustart einen verstummten Roboter nicht mehr verbirgt. *(implementiert)*
 
 ---
 
@@ -105,11 +106,11 @@ kompilierbares Skelett.
 ```bash
 # Windows
 build.bat
-run.bat -addr :8090
+run.bat -addr 127.0.0.1:8090
 
 # Linux / macOS
 ./build.sh
-./run.sh -addr :8090
+./run.sh -addr 127.0.0.1:8090
 ```
 
 `build.sh`/`build.bat` erhöhen die Version in `version.go` (ökosystemweite

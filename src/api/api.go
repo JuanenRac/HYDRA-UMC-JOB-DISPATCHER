@@ -12,19 +12,32 @@
 package api
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/JuanenRac/hydra-umc-job-dispatcher/src/dispatcher"
 )
 
+// MaxBodyBytes is the largest request body any route reads. Every request here is a few hundred
+// bytes of JSON; decoding without a limit let anything that could reach the port make the process
+// allocate as much memory as it was sent.
+const MaxBodyBytes = 64 * 1024
+
 // Server wraps a dispatcher.Engine with HTTP handlers.
 type Server struct {
 	engine *dispatcher.Engine
 	mux    *http.ServeMux
+	token  string
 }
+
+// RequireToken makes every route except GET /health demand `Authorization: Bearer <token>`
+// (compared in constant time). An empty token leaves the API open, as before - the caller
+// (main.go) refuses that combination on an address other than loopback.
+func (s *Server) RequireToken(token string) { s.token = token }
 
 // New builds a Server ready to be used as an http.Handler.
 func New(engine *dispatcher.Engine) *Server {
@@ -41,7 +54,34 @@ func New(engine *dispatcher.Engine) *Server {
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if s.token != "" && r.URL.Path != "/health" && !s.authorized(r) {
+		w.Header().Set("WWW-Authenticate", "Bearer")
+		writeError(w, http.StatusUnauthorized, errors.New("a valid Authorization: Bearer token is required"))
+		return
+	}
+	if r.Body != nil {
+		r.Body = http.MaxBytesReader(w, r.Body, MaxBodyBytes)
+	}
 	s.mux.ServeHTTP(w, r)
+}
+
+func (s *Server) authorized(r *http.Request) bool {
+	header := r.Header.Get("Authorization")
+	if !strings.HasPrefix(header, "Bearer ") {
+		return false
+	}
+	given := strings.TrimSpace(strings.TrimPrefix(header, "Bearer "))
+	return subtle.ConstantTimeCompare([]byte(given), []byte(s.token)) == 1
+}
+
+// bodyErrorStatus is the status for a body that could not be decoded: 413 when it was over the
+// limit, 400 otherwise.
+func bodyErrorStatus(err error) int {
+	var tooLarge *http.MaxBytesError
+	if errors.As(err, &tooLarge) {
+		return http.StatusRequestEntityTooLarge
+	}
+	return http.StatusBadRequest
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -60,6 +100,7 @@ type jobRequest struct {
 	ID           string   `json:"id"`
 	Priority     int      `json:"priority"`
 	RequiredTool string   `json:"requiredTool"`
+	Location     string   `json:"location"`
 	DependsOn    []string `json:"dependsOn"`
 }
 
@@ -70,7 +111,7 @@ func (s *Server) handleJobs(w http.ResponseWriter, r *http.Request) {
 	case http.MethodPost:
 		var req jobRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeError(w, http.StatusBadRequest, err)
+			writeError(w, bodyErrorStatus(err), err)
 			return
 		}
 		if req.ID == "" {
@@ -81,6 +122,7 @@ func (s *Server) handleJobs(w http.ResponseWriter, r *http.Request) {
 			ID:           req.ID,
 			Priority:     req.Priority,
 			RequiredTool: req.RequiredTool,
+			Location:     req.Location,
 			DependsOn:    req.DependsOn,
 		}
 		if err := s.engine.AddJob(job); err != nil {
@@ -107,6 +149,7 @@ type submitRequest struct {
 	ID           string   `json:"id"`
 	Priority     int      `json:"priority"`
 	RequiredTool string   `json:"requiredTool"`
+	Location     string   `json:"location"`
 	DependsOn    []string `json:"dependsOn"`
 	DedupKey     string   `json:"dedupKey"`
 }
@@ -130,7 +173,7 @@ func (s *Server) handleSubmitJob(w http.ResponseWriter, r *http.Request) {
 	}
 	var req submitRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, err)
+		writeError(w, bodyErrorStatus(err), err)
 		return
 	}
 	if req.ID == "" {
@@ -141,6 +184,7 @@ func (s *Server) handleSubmitJob(w http.ResponseWriter, r *http.Request) {
 		ID:           req.ID,
 		Priority:     req.Priority,
 		RequiredTool: req.RequiredTool,
+		Location:     req.Location,
 		DependsOn:    req.DependsOn,
 		DedupKey:     req.DedupKey,
 	}
@@ -179,7 +223,7 @@ func (s *Server) handleCompleteJob(w http.ResponseWriter, r *http.Request) {
 	}
 	var req completeRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, err)
+		writeError(w, bodyErrorStatus(err), err)
 		return
 	}
 	if req.RobotID == "" {
@@ -238,7 +282,7 @@ func (s *Server) handleCancelJob(w http.ResponseWriter, r *http.Request) {
 	}
 	var req cancelRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, err)
+		writeError(w, bodyErrorStatus(err), err)
 		return
 	}
 	if req.ID == "" {
@@ -274,7 +318,7 @@ func (s *Server) handleRobots(w http.ResponseWriter, r *http.Request) {
 	case http.MethodPost:
 		var req robotRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeError(w, http.StatusBadRequest, err)
+			writeError(w, bodyErrorStatus(err), err)
 			return
 		}
 		if req.ID == "" {
@@ -350,7 +394,7 @@ func (s *Server) handleDetectStale(w http.ResponseWriter, r *http.Request) {
 	}
 	var req detectStaleRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, err)
+		writeError(w, bodyErrorStatus(err), err)
 		return
 	}
 	if req.TimeoutSeconds <= 0 {

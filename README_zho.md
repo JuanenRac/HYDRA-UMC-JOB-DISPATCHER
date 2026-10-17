@@ -4,7 +4,7 @@
 
 # 📋 HYDRA-UMC-JOB-DISPATCHER
 
-<p align="center"><a href="README.md">🇺🇸 English</a> | <a href="README_spa.md">🇪🇸 Español</a> | <a href="README_fra.md">🇫🇷 Français</a> | <a href="README_ita.md">🇮🇹 Italiano</a> | <a href="README_deu.md">🇩🇪 Deutsch</a> | 🇨🇳 <b>简体中文</b> | <a href="README_jpn.md">🇯🇵 日本語</a></p>
+<p align="center"><a href="README.md">🇺🇸 English</a> | <a href="README_spa.md">🇪🇸 Español</a> | <a href="README_fra.md">🇫🇷 Français</a> | <a href="README_ita.md">🇮🇹 Italiano</a> | <a href="README_deu.md">🇩🇪 Deutsch</a> | 🇨🇳 <b>简体中文</b> | <a href="README_jpn.md">🇯🇵 日本語</a> | <a href="README_por.md">🇵🇹 Português</a></p>
 
 ### ⚙️ 面向异构机器人车队的基于优先级的任务队列
 
@@ -16,7 +16,7 @@
 
 ---
 
-**诚实核查 - 今天真正能运行的部分：** 调度引擎(`src/dispatcher/dispatcher.go`)——按优先级排序的队列、工具感知路由、多阶段依赖跟踪，以及通过 `DedupKey` 实现的幂等提交——以及包装它的简单 JSON/HTTP API(`src/api/api.go`)都是真实的并经过测试(`src/dispatcher`、`src/api`、`src/sqlitestore` 共 60 个测试通过，`go test ./...`)。可选的 SQLite 持久化(`src/sqlitestore/sqlitestore.go`，纯 Go 实现，不使用 CGO)已针对一个真实被杀死并重新启动的进程完成端到端验证，而不仅仅是孤立的单元测试。一个已知且已记录的差距：工具感知路由是通过精确字符串匹配来检查 `RequiredTool`/`Robot.Tool` 的，依据的只是机器人自身通过 `POST /robots` 声明的内容——它尚未通过 CAN 总线与真实的 URTC 通信以确认工具头是否真的物理连接，因此一个谎报自身工具的机器人(或工具头已经脱落的机器人)目前与如实汇报的机器人是无法区分的。路线图中的 4 个阶段(TSN 同步、3D 路径规划、调度优化、AI 驱动的时长估算)都是尚无任何代码支撑的愿景性未来工作。具体已交付的内容请见 `CHANGELOG.md`。
+**诚实核查 - 今天真正能运行的部分：** 调度引擎(`src/dispatcher/dispatcher.go`)——按优先级排序的队列、工具感知路由、多阶段依赖跟踪，以及通过 `DedupKey` 实现的幂等提交——以及包装它的简单 JSON/HTTP API(`src/api/api.go`)都是真实的并经过测试(`src/dispatcher`、`src/api`、`src/sqlitestore` 共 90 个测试通过，`go test ./...`)。可选的 SQLite 持久化(`src/sqlitestore/sqlitestore.go`，纯 Go 实现，不使用 CGO)已针对一个真实被杀死并重新启动的进程完成端到端验证，而不仅仅是孤立的单元测试。一个已知且已记录的差距：工具感知路由是通过精确字符串匹配来检查 `RequiredTool`/`Robot.Tool` 的，依据的只是机器人自身通过 `POST /robots` 声明的内容——它尚未通过 CAN 总线与真实的 URTC 通信以确认工具头是否真的物理连接，因此一个谎报自身工具的机器人(或工具头已经脱落的机器人)目前与如实汇报的机器人是无法区分的。路线图中的 4 个阶段(TSN 同步、3D 路径规划、调度优化、AI 驱动的时长估算)都是尚无任何代码支撑的愿景性未来工作。具体已交付的内容请见 `CHANGELOG.md`。
 
 ---
 
@@ -35,6 +35,7 @@
 * 🔄 **多阶段任务：** 管理任务之间的依赖关系（例如"抓取"必须先于"放置"发生）。
 * 📡 **持久化：** 真实的、可选的 SQLite 持久化任务状态(`-db PATH`、`src/sqlitestore`,纯 Go,无需 CGO)——队列在真实的进程重启后依然存活,已端到端验证;未设置时则保持纯内存运行。`GET /health` 会报告存储降级,而不是静默失败。详见 [`docs/API.md`](docs/API.md#persistence)。
 * 🔁 **幂等提交（v0）：** 通过 `POST /jobs/submit` 实现真实的、可选的基于 `DedupKey` 的去重——重新提交一个进行中或已完成的任务会原样返回，而在真实失败后的重试会复用同一个任务 ID，而不是把工作执行两次。优先级顺序在重复运行之间是确定性的，由一个明确的回归测试覆盖。
+* 🧯 **默认安全，停止响应的机器人不会再被派活（v0）：** API 默认只监听 `127.0.0.1:8090`，使用其他地址需要 bearer 令牌（`-token` / `JOB_DISPATCHER_TOKEN`；设置后除 `GET /health` 外的所有路由都要求它）或显式的 `-allow-anonymous`；HTTP 服务器有超时限制，超过 64 KB 的请求体会被以 `413` 拒绝。静默时间超过 `-robot-timeout`（默认 2 分钟）的机器人不会再被分配新工作，作业可以指定首选的 `location`（`POST /jobs`、`POST /jobs/submit`；优先选择该位置的机器人，但不是硬性要求），每个机器人的最后一次心跳都会被持久化（上一版本的数据库会就地迁移），因此重启不再会掩盖已经沉默的机器人。*（已实现）*
 
 ---
 
@@ -106,11 +107,11 @@ HYDRA-UMC-JOB-DISPATCHER/
 ```bash
 # Windows
 build.bat
-run.bat -addr :8090
+run.bat -addr 127.0.0.1:8090
 
 # Linux / macOS
 ./build.sh
-./run.sh -addr :8090
+./run.sh -addr 127.0.0.1:8090
 ```
 
 `build.sh`/`build.bat` 会递增 `version.go` 中的版本号（生态系统统一的

@@ -50,6 +50,7 @@ type Job struct {
 	ID            string
 	Priority      int      // higher runs first - an "Emergency Defect Fix" gets a high value to bypass normal flow
 	RequiredTool  string   // must match a Robot's Tool exactly, e.g. "PnP", "Laser" (empty = any robot)
+	Location      string   // preferred robot Location (empty = anywhere): robots in this location are preferred, never required - another one still takes the job when none there is available
 	DependsOn     []string // job IDs that must reach StatusDone before this one is eligible
 	Status        JobStatus
 	AssignedRobot string
@@ -89,17 +90,14 @@ type Robot struct {
 	// Package-private and never persisted - see CompleteJob/UpsertRobot's
 	// own comments for exactly how it is set and cleared.
 	selfReportedUnavailable bool
-	// lastHeartbeatAt is when UpsertRobot last recorded a real heartbeat/
-	// registration for this robot - the engine's own clock (e.now()), not
-	// whatever the caller passed. Zero means "never checked in even
-	// once". Package-private and never persisted, same tradeoff as
-	// selfReportedUnavailable above: a process restart resets every
-	// robot's own freshness, so DetectStaleAssignments can only ever
-	// catch a robot that goes silent AFTER this process's own current
-	// run started, never across a restart, until the Store gains a real
-	// migration for this field. Accepted deliberately rather than
-	// bolting a schema change onto this change too.
-	lastHeartbeatAt time.Time
+	// LastHeartbeat is when UpsertRobot last recorded a real heartbeat/registration for this
+	// robot - the engine's own clock (e.now()), never a value a caller passed (UpsertRobot
+	// overwrites it). The zero time means "never checked in". It is persisted with the robot
+	// (every heartbeat already writes the robot), so a restart does not wipe it:
+	// DetectStaleAssignments still sees a robot that went silent before the restart, and a robot
+	// loaded from a database without a recorded heartbeat is not offered new work until it
+	// checks in once.
+	LastHeartbeat time.Time
 }
 
 // Assignment is the result of matching one eligible Job to one available Robot.
@@ -174,6 +172,9 @@ type Engine struct {
 	dedupIndex     map[string]string // DedupKey -> JobID, only for jobs submitted with a non-empty DedupKey
 	store          Store
 	lastPersistErr error
+	// robotFreshness is how long a robot may stay silent and still be offered new work (see
+	// SetRobotFreshness). Zero disables the check: every Available robot is eligible, as before.
+	robotFreshness time.Duration
 	// now is the engine's own clock, injectable so a test can control it
 	// exactly (see DetectStaleAssignments) - real callers always get
 	// time.Now via the constructors below.
@@ -496,7 +497,7 @@ func (e *Engine) UpsertRobot(r Robot) {
 		// not this project's own guard below lets it change Available - recorded
 		// unconditionally so DetectStaleAssignments sees this robot as
 		// genuinely alive right now.
-		existing.lastHeartbeatAt = e.now()
+		existing.LastHeartbeat = e.now()
 		// Available doubles as both the robot's own self-reported
 		// readiness AND the scheduler's real reservation flag (DispatchOnce
 		// sets it false the instant it assigns a job). A heartbeat/
@@ -530,7 +531,7 @@ func (e *Engine) UpsertRobot(r Robot) {
 		return
 	}
 	stored := r
-	stored.lastHeartbeatAt = e.now() // a first-ever registration counts as this robot's first heartbeat
+	stored.LastHeartbeat = e.now() // a first-ever registration counts as this robot's first heartbeat
 	e.robots[r.ID] = &stored
 	// Soft, not hard, unlike a job's own first-ever insert: a robot that
 	// fails to persist here re-registers on its very next heartbeat/
@@ -712,20 +713,52 @@ func (e *Engine) DispatchOnce() []Assignment {
 	return assignments
 }
 
-// bestRobotFor returns the available robot with a matching tool and the
-// lowest Load, or nil if none qualifies. Caller must hold e.mu.
+// SetRobotFreshness makes a robot that has not checked in for longer than d ineligible for new
+// work: a robot that stopped answering keeps Available=true in the registry, and without this it
+// went on receiving jobs. Zero (the default) disables the check. A robot with no recorded
+// heartbeat at all (never seen since the registry was loaded) is also ineligible while the check is on.
+func (e *Engine) SetRobotFreshness(d time.Duration) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.robotFreshness = d
+}
+
+// robotEligibleLocked reports whether r may be offered j: available, the required tool attached,
+// and (when the freshness check is on) heard from recently. Caller must hold e.mu.
+func (e *Engine) robotEligibleLocked(r *Robot, j *Job, now time.Time) bool {
+	if !r.Available {
+		return false
+	}
+	if j.RequiredTool != "" && r.Tool != j.RequiredTool {
+		return false
+	}
+	if e.robotFreshness > 0 && (r.LastHeartbeat.IsZero() || now.Sub(r.LastHeartbeat) > e.robotFreshness) {
+		return false
+	}
+	return true
+}
+
+// bestRobotFor returns the eligible robot with the lowest Load, preferring one in the job's own
+// Location when the job names one, or nil if none qualifies. Caller must hold e.mu.
 func (e *Engine) bestRobotFor(j *Job) *Robot {
-	var best *Robot
+	now := e.now()
+	var best, bestInLocation *Robot
+	better := func(r, than *Robot) bool {
+		return than == nil || r.Load < than.Load || (r.Load == than.Load && r.ID < than.ID)
+	}
 	for _, r := range e.robots {
-		if !r.Available {
+		if !e.robotEligibleLocked(r, j, now) {
 			continue
 		}
-		if j.RequiredTool != "" && r.Tool != j.RequiredTool {
-			continue
-		}
-		if best == nil || r.Load < best.Load || (r.Load == best.Load && r.ID < best.ID) {
+		if better(r, best) {
 			best = r
 		}
+		if j.Location != "" && r.Location == j.Location && better(r, bestInLocation) {
+			bestInLocation = r
+		}
+	}
+	if bestInLocation != nil {
+		return bestInLocation
 	}
 	return best
 }
@@ -853,7 +886,7 @@ func (e *Engine) CancelJob(jobID string) error {
 // DispatchOnce on; it does not run on any timer of its own.
 //
 // A robot that has never sent a single heartbeat is never flagged stale
-// by this check on its own account - see lastHeartbeatAt's own comment
+// by this check on its own account - see LastHeartbeat's own comment
 // on why a zero value can't be trusted to mean "known-stale" (it may
 // simply mean this process restarted since that robot last checked in).
 //
@@ -884,7 +917,7 @@ func (e *Engine) DetectStaleAssignments(timeout time.Duration) []string {
 		if !ok {
 			continue // the robot itself was removed entirely - a separate concern from a merely-quiet one
 		}
-		if robot.lastHeartbeatAt.IsZero() || now.Sub(robot.lastHeartbeatAt) < timeout {
+		if robot.LastHeartbeat.IsZero() || now.Sub(robot.LastHeartbeat) < timeout {
 			continue
 		}
 		j.Status = StatusUnknown

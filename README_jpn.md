@@ -4,7 +4,7 @@
 
 # 📋 HYDRA-UMC-JOB-DISPATCHER
 
-<p align="center"><a href="README.md">🇺🇸 English</a> | <a href="README_spa.md">🇪🇸 Español</a> | <a href="README_fra.md">🇫🇷 Français</a> | <a href="README_ita.md">🇮🇹 Italiano</a> | <a href="README_deu.md">🇩🇪 Deutsch</a> | <a href="README_zho.md">🇨🇳 简体中文</a> | 🇯🇵 <b>日本語</b></p>
+<p align="center"><a href="README.md">🇺🇸 English</a> | <a href="README_spa.md">🇪🇸 Español</a> | <a href="README_fra.md">🇫🇷 Français</a> | <a href="README_ita.md">🇮🇹 Italiano</a> | <a href="README_deu.md">🇩🇪 Deutsch</a> | <a href="README_zho.md">🇨🇳 简体中文</a> | 🇯🇵 <b>日本語</b> | <a href="README_por.md">🇵🇹 Português</a></p>
 
 ### ⚙️ 異種ロボットフリート向けの優先度ベースのミッションキュー
 
@@ -16,7 +16,7 @@
 
 ---
 
-**正直な現状確認 - 今日実際に動くもの:** スケジューリングエンジン(`src/dispatcher/dispatcher.go`)——優先度順キュー、ツールを考慮したルーティング、複数段階の依存関係追跡、そして `DedupKey` による冪等な投入——およびそれをラップする単純な JSON/HTTP API(`src/api/api.go`)は本物であり、テスト済みである(`src/dispatcher`、`src/api`、`src/sqlitestore` 全体で 60 件のテストが成功、`go test ./...`)。オプションの SQLite 永続化(`src/sqlitestore/sqlitestore.go`、CGO 不使用の純粋な Go)は、実際に強制終了して再起動した本物のプロセスに対してエンドツーエンドで検証されており、単に分離された単体テストではない。既知かつ文書化されているギャップ: ツールを考慮したルーティングは、ロボット自身の `POST /robots` 登録が申告する内容に対して `RequiredTool`/`Robot.Tool` の完全一致文字列比較でチェックしているだけであり、まだ CAN 経由で実際の URTC と通信してツールヘッドが物理的に装着されているかどうかを確認していない。そのため、自分のツールについて嘘をつくロボット(あるいはヘッドが外れてしまったロボット)は、今日の時点では正直なロボットと区別がつかない。ロードマップの 4 つのフェーズ(TSN 同期、3D 経路計画、ディスパッチ最適化、AI 駆動の所要時間推定)は、今のところ裏付けとなるコードが一切ない、将来に向けた願望である。これまでに何が実際に出荷されたかは `CHANGELOG.md` を参照。
+**正直な現状確認 - 今日実際に動くもの:** スケジューリングエンジン(`src/dispatcher/dispatcher.go`)——優先度順キュー、ツールを考慮したルーティング、複数段階の依存関係追跡、そして `DedupKey` による冪等な投入——およびそれをラップする単純な JSON/HTTP API(`src/api/api.go`)は本物であり、テスト済みである(`src/dispatcher`、`src/api`、`src/sqlitestore` 全体で 90 件のテストが成功、`go test ./...`)。オプションの SQLite 永続化(`src/sqlitestore/sqlitestore.go`、CGO 不使用の純粋な Go)は、実際に強制終了して再起動した本物のプロセスに対してエンドツーエンドで検証されており、単に分離された単体テストではない。既知かつ文書化されているギャップ: ツールを考慮したルーティングは、ロボット自身の `POST /robots` 登録が申告する内容に対して `RequiredTool`/`Robot.Tool` の完全一致文字列比較でチェックしているだけであり、まだ CAN 経由で実際の URTC と通信してツールヘッドが物理的に装着されているかどうかを確認していない。そのため、自分のツールについて嘘をつくロボット(あるいはヘッドが外れてしまったロボット)は、今日の時点では正直なロボットと区別がつかない。ロードマップの 4 つのフェーズ(TSN 同期、3D 経路計画、ディスパッチ最適化、AI 駆動の所要時間推定)は、今のところ裏付けとなるコードが一切ない、将来に向けた願望である。これまでに何が実際に出荷されたかは `CHANGELOG.md` を参照。
 
 ---
 
@@ -36,6 +36,7 @@
 * 🔄 **マルチステージミッション：** タスク間の依存関係を管理します（例：「ピック」は「プレース」より先に発生する必要があります）。
 * 📡 **永続性：** 実際に動作するオプションの SQLite バックエンドによるミッション状態管理（`-db PATH`、`src/sqlitestore`、純粋な Go - CGO 不要） - 実際のプロセス再起動を経てもキューは生き残ることをエンドツーエンドで検証済み。未設定の場合はメモリ上のみで動作します。`GET /health` は劣化したストアを黙って失敗させず報告します。詳細は [`docs/API.md`](docs/API.md#persistence) を参照。
 * 🔁 **冪等な送信（v0）：** `POST /jobs/submit` による実際の、任意の `DedupKey` ベースの重複排除——進行中または既に完了したジョブを再送信すると変更されずに返され、実際の失敗後の再試行は同じジョブ ID を再利用し、作業を二重に実行しません。優先順位の順序は繰り返し実行しても決定論的であり、明示的な回帰テストでカバーされています。
+* 🧯 **デフォルトで安全。応答しなくなったロボットには仕事を渡しません（v0）：** API は指定がなければ `127.0.0.1:8090` で待ち受け、別のアドレスにはベアラートークン（`-token` / `JOB_DISPATCHER_TOKEN`。設定すると `GET /health` 以外のすべてが要求します）か、明示的な `-allow-anonymous` が必要です。HTTP サーバーにはタイムアウトがあり、64 KB を超えるリクエストボディは `413` で拒否されます。`-robot-timeout`（既定 2 分）より長く無応答のロボットには新しい仕事が割り当てられず、ジョブは優先する `location` を指定でき（`POST /jobs`、`POST /jobs/submit`。その場所のロボットが優先され、必須ではありません）、各ロボットの最後のハートビートは永続化されます（旧バージョンのデータベースはその場で移行されます）。そのため再起動しても、無応答になったロボットが見えなくなりません。*（実装済み）*
 
 ---
 
@@ -109,11 +110,11 @@ HYDRA-UMC-JOB-DISPATCHER/
 ```bash
 # Windows
 build.bat
-run.bat -addr :8090
+run.bat -addr 127.0.0.1:8090
 
 # Linux / macOS
 ./build.sh
-./run.sh -addr :8090
+./run.sh -addr 127.0.0.1:8090
 ```
 
 `build.sh`/`build.bat` は `version.go` のバージョンを増加させ（エコ

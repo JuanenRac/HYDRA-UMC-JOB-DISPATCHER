@@ -22,17 +22,52 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
+	"os"
+	"strings"
+	"time"
 
 	"github.com/JuanenRac/hydra-umc-job-dispatcher/src/api"
 	"github.com/JuanenRac/hydra-umc-job-dispatcher/src/dispatcher"
 	"github.com/JuanenRac/hydra-umc-job-dispatcher/src/sqlitestore"
 )
 
+// isLoopbackAddr reports whether an address such as "127.0.0.1:8090" or "localhost:8090" only
+// listens on this machine. ":8090" (every interface) and any other host are not loopback.
+func isLoopbackAddr(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return false
+	}
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+// startupProblem is why this process must not start (empty when it may): the API can register
+// robots, submit and cancel jobs and report completions, so an address other than loopback
+// without a token would give all of that to anybody on the network.
+func startupProblem(addr, token string, allowAnonymous bool) string {
+	if token == "" && !allowAnonymous && !isLoopbackAddr(addr) {
+		return fmt.Sprintf("-addr %q is reachable from the network but no token is set: set JOB_DISPATCHER_TOKEN (or -token), listen on 127.0.0.1, or pass -allow-anonymous for an open lab dispatcher", addr)
+	}
+	return ""
+}
+
 func main() {
-	addr := flag.String("addr", ":8090", "address to listen on for the HTTP API")
+	addr := flag.String("addr", "127.0.0.1:8090", "address to listen on for the HTTP API (loopback by default: another address needs a token)")
+	token := flag.String("token", os.Getenv("JOB_DISPATCHER_TOKEN"), "bearer token every route except GET /health requires (default: the JOB_DISPATCHER_TOKEN environment variable)")
+	allowAnonymous := flag.Bool("allow-anonymous", false, "allow an address other than loopback without a token (an open lab dispatcher)")
+	robotTimeout := flag.Duration("robot-timeout", 2*time.Minute, "a robot silent for longer than this is not offered new work (0 disables the check)")
 	dbPath := flag.String("db", "", "path to a real SQLite database file for fault-tolerant mission-queue persistence (unset: purely in-memory, cleared on restart)")
 	flag.Parse()
+
+	if problem := startupProblem(*addr, *token, *allowAnonymous); problem != "" {
+		log.Fatalf("[job-dispatcher] refusing to start: %s", problem)
+	}
 
 	fmt.Printf("HYDRA-UMC-JOB-DISPATCHER v%s\n", Version)
 	fmt.Println("Priority-based mission queue: routes jobs to the best-available robot in the fleet based on location, tool and current load.")
@@ -52,9 +87,27 @@ func main() {
 		}
 		fmt.Printf("[job-dispatcher] persisting the mission queue to %s\n", *dbPath)
 	}
+	engine.SetRobotFreshness(*robotTimeout)
 	server := api.New(engine)
+	if *token != "" {
+		server.RequireToken(*token)
+		fmt.Println("[job-dispatcher] every route except GET /health requires a bearer token")
+	} else if !isLoopbackAddr(*addr) {
+		fmt.Println("[job-dispatcher] WARNING: -allow-anonymous: this API is open to the network")
+	}
 
 	fmt.Printf("[job-dispatcher] HTTP API listening on %s\n", *addr)
 	fmt.Println("[job-dispatcher] POST /robots, POST /jobs, POST /jobs/submit, POST /dispatch, POST /jobs/complete, GET /jobs, GET /robots, GET /health")
-	log.Fatal(http.ListenAndServe(*addr, server))
+	// http.ListenAndServe has no timeouts: a client that opens a connection and never finishes a
+	// request would hold it (and a goroutine) for ever.
+	httpServer := &http.Server{
+		Addr:              *addr,
+		Handler:           server,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    16 * 1024,
+	}
+	log.Fatal(httpServer.ListenAndServe())
 }

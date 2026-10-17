@@ -18,6 +18,15 @@ semantic-versioning judgment calls:
 
 ---
 
+## [0.1.9] - Safe by default, no work for a robot that stopped answering, a preferred location and a persisted heartbeat
+
+- The API listens on `127.0.0.1:8090` by default (it was `:8090`, every interface, with no authentication). Another address needs a bearer token (`-token` or `JOB_DISPATCHER_TOKEN`, required by every route except `GET /health`) or an explicit `-allow-anonymous`, and the process refuses to start without one of them.
+- The HTTP server has read, write and idle timeouts, and a request body over 64 KB is refused with `413` instead of being decoded without a limit.
+- A robot that has not checked in for longer than `-robot-timeout` (default 2 minutes) is not offered new work: it kept `Available=true` after it stopped answering and went on receiving jobs.
+- A job can name a preferred `location` (`POST /jobs`, `POST /jobs/submit`): robots in that location are preferred, never required. The README promised dispatch by location and the code ignored it.
+- The last heartbeat of every robot is persisted (`Robot.LastHeartbeat`, shown by `GET /robots`), so a restarted dispatcher still detects an assignment whose robot went silent; a SQLite database from the previous version is migrated in place (`jobs.location`, `robots.last_heartbeat_ns`).
+- 18 new tests (90 in total); the 7 READMEs, `docs/API.md` and a Portuguese README say so.
+
 ## [0.1.8] - Cancellation and restart tests at every stage
 
 - **`POST /jobs/cancel` and `Engine.CancelJob`:** a job no robot has been given

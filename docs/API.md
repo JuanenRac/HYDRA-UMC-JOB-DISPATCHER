@@ -5,7 +5,35 @@ Real, plain JSON/HTTP surface (`net/http`, no framework) implemented in
 [`src/dispatcher/dispatcher.go`](../src/dispatcher/dispatcher.go). One
 `Engine` instance, safe for concurrent use (internal mutex).
 
-No authentication - internal/same-network use.
+## Access
+
+The process listens on `127.0.0.1:8090` unless `-addr` says otherwise. An address that is
+reachable from the network (`:8090`, `0.0.0.0:8090`, a LAN address) **needs a bearer token**
+(`-token`, or the `JOB_DISPATCHER_TOKEN` environment variable) or an explicit
+`-allow-anonymous` (an open lab dispatcher), and the process refuses to start without one of
+them. With a token every route except `GET /health` answers `401` unless the request carries
+`Authorization: Bearer <token>`. The HTTP server has read/write/idle timeouts, and a request
+body over 64 KB is refused with `413` (a malformed body is `400`).
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `-addr` | `127.0.0.1:8090` | Where the API listens. |
+| `-token` | `$JOB_DISPATCHER_TOKEN` | Bearer token every route but `GET /health` requires. |
+| `-allow-anonymous` | off | Allows an address other than loopback without a token. |
+| `-robot-timeout` | `2m` | A robot silent for longer is not offered new work (`0` disables the check). |
+| `-db` | unset | SQLite file for persistence (see below). |
+
+## Choosing the robot
+
+`POST /jobs` and `POST /jobs/submit` accept an optional `location`. A job goes to the available
+robot with the required tool and the lowest load, **preferring** a robot whose `location` is
+the job's (the preference never blocks the job: when no robot there is available, another one
+takes it). A robot that has not checked in (`POST /robots`) for longer than `-robot-timeout`
+is not eligible: it kept `Available=true` in the registry after it stopped answering and went
+on receiving jobs. The last heartbeat of each robot is persisted with it (`GET /robots` shows
+`LastHeartbeat`), so a restart does not forget when a robot was last heard; a database written
+by the previous version is migrated in place, and a robot with no recorded heartbeat waits for
+its first check-in before it is offered work.
 
 ## Persistence
 

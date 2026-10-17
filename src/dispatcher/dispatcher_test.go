@@ -835,14 +835,11 @@ func TestDetectStaleAssignments_LeavesAFreshHeartbeatAlone(t *testing.T) {
 	}
 }
 
-func TestDetectStaleAssignments_NeverFlagsARobotThatHasNeverHeartbeatedSinceThisProcessStarted(t *testing.T) {
-	// Real scenario: NewEngineWithStore restores robots from disk, and
-	// lastHeartbeatAt is deliberately never persisted (see its own
-	// comment) - every restored robot starts this process's life with a
-	// zero value. Treating a zero value as "known-stale" would flag
-	// every single in-flight assignment the instant this process
-	// restarts, which is worse than useless. It must instead wait for at
-	// least one real heartbeat before it can ever judge staleness.
+func TestDetectStaleAssignments_NeverFlagsARobotWithNoRecordedHeartbeat(t *testing.T) {
+	// Real scenario: a robot restored from a database written before the heartbeat was persisted
+	// has the zero value. Treating a zero value as "known-stale" would flag every single
+	// in-flight assignment the instant such a database is first opened, which is worse than
+	// useless. It must instead wait for at least one real heartbeat before it can be judged.
 	e := NewEngine()
 	clock := &fakeClock{t: time.Unix(3000, 0)}
 	e.now = clock.now
@@ -852,7 +849,7 @@ func TestDetectStaleAssignments_NeverFlagsARobotThatHasNeverHeartbeatedSinceThis
 		t.Fatalf("AddJob: %v", err)
 	}
 	e.DispatchOnce()
-	e.robots["robot-a"].lastHeartbeatAt = time.Time{} // simulate a restart wiping this process-local field
+	e.robots["robot-a"].LastHeartbeat = time.Time{} // a robot loaded from a database that never recorded a heartbeat
 
 	clock.t = clock.t.Add(365 * 24 * time.Hour) // absurdly stale by any real clock
 	unknown := e.DetectStaleAssignments(time.Minute)

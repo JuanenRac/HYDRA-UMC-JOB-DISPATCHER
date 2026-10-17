@@ -4,7 +4,7 @@
 
 # 📋 HYDRA-UMC-JOB-DISPATCHER
 
-<p align="center">🇺🇸 <b>English</b> | <a href="README_spa.md">🇪🇸 Español</a> | <a href="README_fra.md">🇫🇷 Français</a> | <a href="README_ita.md">🇮🇹 Italiano</a> | <a href="README_deu.md">🇩🇪 Deutsch</a> | <a href="README_zho.md">🇨🇳 简体中文</a> | <a href="README_jpn.md">🇯🇵 日本語</a></p>
+<p align="center">🇺🇸 <b>English</b> | <a href="README_spa.md">🇪🇸 Español</a> | <a href="README_fra.md">🇫🇷 Français</a> | <a href="README_ita.md">🇮🇹 Italiano</a> | <a href="README_deu.md">🇩🇪 Deutsch</a> | <a href="README_zho.md">🇨🇳 简体中文</a> | <a href="README_jpn.md">🇯🇵 日本語</a> | <a href="README_por.md">🇵🇹 Português</a></p>
 
 ### ⚙️ Priority-Based Mission Queue for Heterogeneous Robot Fleets
 
@@ -16,7 +16,7 @@
 
 ---
 
-**Honesty check - what actually runs today:** the scheduling engine (`src/dispatcher/dispatcher.go`) - priority-ordered queueing, tool-aware routing, multi-stage dependency tracking, and idempotent `DedupKey` submission - and the plain JSON/HTTP API wrapping it (`src/api/api.go`) are real and tested (60 tests passing across `src/dispatcher`, `src/api`, `src/sqlitestore`, `go test ./...`). The opt-in SQLite persistence (`src/sqlitestore/sqlitestore.go`, pure Go, no CGO) is genuinely verified end-to-end against a real killed-and-relaunched process, not just unit-tested in isolation. What is a known, documented gap: tool-aware routing checks `RequiredTool`/`Robot.Tool` by exact string match against whatever a robot's own `POST /robots` registration claims - it does not yet talk to a real URTC over CAN to confirm the tool head is physically attached, so a robot that lies about its own tool (or one whose head fell off) is currently indistinguishable from one telling the truth. The 4 roadmap phases (TSN sync, 3D path planning, dispatch optimization, AI-driven duration estimation) are aspirational future work with no code behind them yet. See `CHANGELOG.md` for exactly what has shipped so far.
+**Honesty check - what actually runs today:** the scheduling engine (`src/dispatcher/dispatcher.go`) - priority-ordered queueing, tool-aware routing, multi-stage dependency tracking, and idempotent `DedupKey` submission - and the plain JSON/HTTP API wrapping it (`src/api/api.go`) are real and tested (90 tests passing across `src/dispatcher`, `src/api`, `src/sqlitestore`, `go test ./...`). The opt-in SQLite persistence (`src/sqlitestore/sqlitestore.go`, pure Go, no CGO) is genuinely verified end-to-end against a real killed-and-relaunched process, not just unit-tested in isolation. What is a known, documented gap: tool-aware routing checks `RequiredTool`/`Robot.Tool` by exact string match against whatever a robot's own `POST /robots` registration claims - it does not yet talk to a real URTC over CAN to confirm the tool head is physically attached, so a robot that lies about its own tool (or one whose head fell off) is currently indistinguishable from one telling the truth. The 4 roadmap phases (TSN sync, 3D path planning, dispatch optimization, AI-driven duration estimation) are aspirational future work with no code behind them yet. See `CHANGELOG.md` for exactly what has shipped so far.
 
 ---
 
@@ -32,6 +32,7 @@ It ensures that high-priority tasks (e.g., "Emergency Defect Fix") bypass the no
 * 🔄 **Multi-Stage Missions:** Manages dependencies between tasks (e.g., "Pick" must happen before "Place").
 * 📡 **Persistence:** real, opt-in SQLite-backed mission state (`-db PATH`, `src/sqlitestore`, pure Go - no CGO) - the queue survives a real process restart, verified end-to-end; unset, it stays purely in-memory. `GET /health` reports a degraded store instead of failing silently. See [`docs/API.md`](docs/API.md#persistence).
 * 🔁 **Idempotent Submission (v0):** Real, opt-in `DedupKey`-based deduplication via `POST /jobs/submit` - a retried submission of an in-flight or already-done job is returned unchanged, and a retry after a real failure reuses the same job ID instead of running the work twice. Priority ordering is deterministic across repeated runs, covered by an explicit regression test.
+* 🧯 **Safe by default, and a robot that stops answering gets no work (v0):** the API listens on `127.0.0.1:8090` unless told otherwise, and another address needs a bearer token (`-token` / `JOB_DISPATCHER_TOKEN`; everything but `GET /health` then demands it) or an explicit `-allow-anonymous`; the HTTP server has timeouts, and request bodies over 64 KB are refused with `413`. A robot silent for longer than `-robot-timeout` (default 2 minutes) is not offered new work, a job can name a preferred `location` (`POST /jobs`, `POST /jobs/submit`; robots in that location are preferred, never required), and the last heartbeat of every robot is persisted (a database from the previous version is migrated in place), so a restart no longer hides a robot that went silent. *(implemented)*
 
 ---
 
@@ -104,11 +105,11 @@ A real priority mission queue with an HTTP API, not just a skeleton that compile
 ```bash
 # Windows
 build.bat
-run.bat -addr :8090
+run.bat -addr 127.0.0.1:8090
 
 # Linux / macOS
 ./build.sh
-./run.sh -addr :8090
+./run.sh -addr 127.0.0.1:8090
 ```
 
 `build.sh`/`build.bat` bump the version in `version.go` (ecosystem-wide
