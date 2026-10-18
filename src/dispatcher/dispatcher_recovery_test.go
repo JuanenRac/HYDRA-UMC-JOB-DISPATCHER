@@ -1,6 +1,6 @@
 // HYDRA-UMC-JOB-DISPATCHER - src/dispatcher/dispatcher_recovery_test.go
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D) <electrohobby3d@gmail.com>
-// GPL-3.0 - see LICENSE
+// GPL-3.0-or-later - see LICENSE
 //
 // Fair sharing when a robot keeps failing, dependency cycles on retry, retrying a cancelled job,
 // the operator requeue and partial heartbeats.

@@ -1,6 +1,6 @@
 // HYDRA-UMC-JOB-DISPATCHER - src/dispatcher/dispatcher_selection_test.go
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D) <electrohobby3d@gmail.com>
-// GPL-3.0 - see LICENSE
+// GPL-3.0-or-later - see LICENSE
 //
 // Which robot is offered a job: a robot that stopped answering must not receive new work, and a
 // job that names a location prefers the robots there.

@@ -1,6 +1,6 @@
 // HYDRA-UMC-JOB-DISPATCHER - src/sqlitestore/sqlitestore_heartbeat_test.go
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D) <electrohobby3d@gmail.com>
-// GPL-3.0 - see LICENSE
+// GPL-3.0-or-later - see LICENSE
 //
 // The last heartbeat of a robot and the location of a job survive a restart, and a database
 // written by the version before them is migrated in place.

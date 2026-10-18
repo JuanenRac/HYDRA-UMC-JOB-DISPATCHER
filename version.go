@@ -1,6 +1,6 @@
 // HYDRA-UMC-JOB-DISPATCHER - version.go
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D) <electrohobby3d@gmail.com>
-// GPL-3.0 - see LICENSE
+// GPL-3.0-or-later - see LICENSE
 //
 // Go has no native version field in go.mod for an application binary
 // (that field is only for library module resolution), so this repo
@@ -11,4 +11,4 @@
 package main
 
 // Version is the current release version of HYDRA-UMC-JOB-DISPATCHER.
-const Version = "0.2.0"
+const Version = "0.2.1"

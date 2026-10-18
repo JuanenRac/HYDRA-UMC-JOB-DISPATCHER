@@ -2,7 +2,7 @@
 # =============================================================================
 # HYDRA-UMC-JOB-DISPATCHER - tools/build_test.py
 # Copyright (C) 2026 JuanenRac (Electro Hobby 3D) <electrohobby3d@gmail.com>
-# GPL-3.0 - see LICENSE
+# GPL-3.0-or-later - see LICENSE
 # =============================================================================
 """Run a non-versioning build check for this repository.
 

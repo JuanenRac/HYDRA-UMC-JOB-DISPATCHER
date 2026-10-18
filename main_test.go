@@ -1,6 +1,6 @@
 // HYDRA-UMC-JOB-DISPATCHER - main_test.go
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D) <electrohobby3d@gmail.com>
-// GPL-3.0 - see LICENSE
+// GPL-3.0-or-later - see LICENSE
 //
 // What the process refuses to start with: an API that can register robots and submit and cancel
 // jobs must not listen on the network without a token.

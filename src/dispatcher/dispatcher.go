@@ -1,6 +1,6 @@
 // HYDRA-UMC-JOB-DISPATCHER - dispatcher package
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D) <electrohobby3d@gmail.com>
-// GPL-3.0 - see LICENSE
+// GPL-3.0-or-later - see LICENSE
 //
 // The real priority mission queue described in the README's "DISPATCHER
 // FLOW" diagram: a global job queue, tool-aware routing against a robot

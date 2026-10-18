@@ -1,6 +1,6 @@
 // HYDRA-UMC-JOB-DISPATCHER - dispatcher package persistence tests
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D) <electrohobby3d@gmail.com>
-// GPL-3.0 - see LICENSE
+// GPL-3.0-or-later - see LICENSE
 //
 // External test package (dispatcher_test, not dispatcher) so these can
 // import both dispatcher and the real sqlitestore implementation without

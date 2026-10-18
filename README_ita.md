@@ -9,7 +9,7 @@
 ### ⚙️ Coda di missioni basata sulle priorità per flotte di robot eterogenee
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Licenza-GPL%203.0-blue.svg" alt="GPL 3.0">
+  <img src="https://img.shields.io/badge/Licenza-GPL%203.0--or--later-blue.svg" alt="GPL 3.0 or later">
   <img src="https://img.shields.io/badge/Architettura-Event--Driven-blue.svg" alt="Event-Driven">
   <img src="https://img.shields.io/badge/Tecnologia-Go%20%2F%20net%2Fhttp-00ADD8.svg" alt="Tech">
 </p>
@@ -264,4 +264,4 @@ Questo progetto fa parte dell'ecosistema robotico HYDRA-UMC dello stesso autore 
 📺 [youtube.com/@electrohobby3d](https://youtube.com/@electrohobby3d)
 
 ## 📜 LICENZA
-GPL-3.0 - Vedere LICENSE per i dettagli.
+GPL-3.0-or-later - Vedere LICENSE per i dettagli.

@@ -1,6 +1,6 @@
 // HYDRA-UMC-JOB-DISPATCHER - sqlitestore package
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D) <electrohobby3d@gmail.com>
-// GPL-3.0 - see LICENSE
+// GPL-3.0-or-later - see LICENSE
 //
 // The real dispatcher.Store implementation: SQLite via modernc.org/sqlite
 // (pure Go, no CGO) - this ecosystem cross-compiles this binary for the

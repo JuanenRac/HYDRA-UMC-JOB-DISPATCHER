@@ -18,6 +18,11 @@ semantic-versioning judgment calls:
 
 ---
 
+## [0.2.1]
+
+- Build version synchronized with `hydra-umc.project.json` and the repository-native version source.
+- The licence is written as GPL-3.0-or-later in every header and in the package metadata.
+
 ## [0.2.0] - Failed jobs weigh on the balance, operator requeue, partial heartbeats
 
 - **Fair sharing:** `Load` now counts every finished assignment, failed ones included. Before, a robot that failed every job kept the lowest load and was always chosen first, so one broken robot attracted the whole queue.
