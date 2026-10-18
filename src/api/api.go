@@ -15,6 +15,8 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -46,6 +48,8 @@ func New(engine *dispatcher.Engine) *Server {
 	s.mux.HandleFunc("/jobs/submit", s.handleSubmitJob)
 	s.mux.HandleFunc("/jobs/complete", s.handleCompleteJob)
 	s.mux.HandleFunc("/jobs/cancel", s.handleCancelJob)
+	s.mux.HandleFunc("/jobs/requeue", s.handleRequeueJob)
+	s.mux.HandleFunc("/jobs/", s.handleJobByID)
 	s.mux.HandleFunc("/robots", s.handleRobots)
 	s.mux.HandleFunc("/dispatch", s.handleDispatch)
 	s.mux.HandleFunc("/jobs/detect-stale", s.handleDetectStale)
@@ -304,11 +308,14 @@ func (s *Server) handleCancelJob(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, updated)
 }
 
+// robotRequest is a registration or a heartbeat: a field left out keeps the value the
+// registry already holds, so a minimal {"id":"arm-1"} heartbeat does not wipe the robot's tool,
+// location or availability.
 type robotRequest struct {
-	ID        string `json:"id"`
-	Location  string `json:"location"`
-	Tool      string `json:"tool"`
-	Available bool   `json:"available"`
+	ID        string  `json:"id"`
+	Location  *string `json:"location"`
+	Tool      *string `json:"tool"`
+	Available *bool   `json:"available"`
 }
 
 func (s *Server) handleRobots(w http.ResponseWriter, r *http.Request) {
@@ -325,7 +332,7 @@ func (s *Server) handleRobots(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, errors.New("\"id\" is required"))
 			return
 		}
-		s.engine.UpsertRobot(dispatcher.Robot{
+		s.engine.UpdateRobot(dispatcher.RobotUpdate{
 			ID:        req.ID,
 			Location:  req.Location,
 			Tool:      req.Tool,
@@ -343,11 +350,10 @@ func (s *Server) handleRobots(w http.ResponseWriter, r *http.Request) {
 // (see dispatcher.go's own doc comment on Engine for exactly which
 // failures land here vs. an immediate HTTP error on the call that hit
 // them) so an operator or monitoring probe can see a degraded SQLite
-// store without it being silently lost. status is always "ok": this
-// process being reachable enough to answer at all already proves the
-// one thing a liveness probe needs to know; persistenceHealthy is the
-// separate, real signal for "is the mission queue's own durability
-// currently working".
+// store without it being silently lost. status is "ok", or "degraded"
+// (with HTTP 503) while the store is failing, so a probe that only looks
+// at the status code notices a dispatcher that is losing transitions.
+// The error text itself is not exposed here: /health needs no token.
 type healthResponse struct {
 	Status             string  `json:"status"`
 	PersistenceHealthy bool    `json:"persistenceHealthy"`
@@ -361,12 +367,15 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resp := healthResponse{Status: "ok", PersistenceHealthy: true}
+	status := http.StatusOK
 	if err := s.engine.LastPersistError(); err != nil {
+		resp.Status = "degraded"
 		resp.PersistenceHealthy = false
-		msg := err.Error()
+		msg := "the persistence store reported an error (see the process log)"
 		resp.LastPersistError = &msg
+		status = http.StatusServiceUnavailable
 	}
-	writeJSON(w, http.StatusOK, resp)
+	writeJSON(w, status, resp)
 }
 
 func (s *Server) handleDispatch(w http.ResponseWriter, r *http.Request) {
@@ -406,4 +415,61 @@ func (s *Server) handleDetectStale(w http.ResponseWriter, r *http.Request) {
 		unknownJobIDs = []string{}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"unknownJobIds": unknownJobIDs})
+}
+
+type requeueRequest struct {
+	ID      string `json:"id"`
+	RobotID string `json:"robotId"`
+	Reason  string `json:"reason"`
+}
+
+// handleRequeueJob is the operator's way out of an assigned or unknown job whose robot will
+// never report: the job goes back to pending and the robot is held unavailable until its own
+// next heartbeat.
+func (s *Server) handleRequeueJob(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", "POST")
+		writeError(w, http.StatusMethodNotAllowed, errors.New("use POST"))
+		return
+	}
+	var req requeueRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, bodyErrorStatus(err), err)
+		return
+	}
+	if req.ID == "" {
+		writeError(w, http.StatusBadRequest, errors.New("\"id\" is required"))
+		return
+	}
+	if err := s.engine.RequeueJob(req.ID, req.RobotID); err != nil {
+		status := http.StatusBadRequest
+		switch {
+		case errors.Is(err, dispatcher.ErrUnknownJob):
+			status = http.StatusNotFound
+		case errors.Is(err, dispatcher.ErrJobFinished), errors.Is(err, dispatcher.ErrRobotMismatch):
+			status = http.StatusConflict
+		}
+		writeError(w, status, err)
+		return
+	}
+	log.Printf("[job-dispatcher] operator requeued job %q (robot %q, reason %q)", req.ID, req.RobotID, req.Reason)
+	updated, _ := s.engine.Job(req.ID)
+	writeJSON(w, http.StatusOK, updated)
+}
+
+// handleJobByID answers GET /jobs/{id} with one job, so a client does not have to download
+// the whole list to learn the state of one.
+func (s *Server) handleJobByID(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", "GET")
+		writeError(w, http.StatusMethodNotAllowed, errors.New("use GET"))
+		return
+	}
+	id := strings.TrimPrefix(r.URL.Path, "/jobs/")
+	job, ok := s.engine.Job(id)
+	if id == "" || !ok {
+		writeError(w, http.StatusNotFound, fmt.Errorf("unknown job %q", id))
+		return
+	}
+	writeJSON(w, http.StatusOK, job)
 }

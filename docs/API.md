@@ -61,15 +61,17 @@ its own persistence (if configured) currently working".
 {"status": "ok", "persistenceHealthy": true, "lastPersistError": null}
 ```
 
-- `status` - always `"ok"`: this process being reachable enough to
-  answer already proves the one thing a liveness probe needs.
+- `status` - `"ok"`, or `"degraded"` (with HTTP `503`) while the store is
+  failing, so a probe that only looks at the status code notices a
+  dispatcher that is losing transitions.
 - `persistenceHealthy` - `false` once a real Store write has failed and
   hasn't yet been followed by a successful one (see
   `dispatcher.Engine.LastPersistError()`'s own doc comment for exactly
   which failures this covers - a `-db`-less deployment is always `true`,
   since there is nothing to fail).
-- `lastPersistError` - the real underlying error message when
-  `persistenceHealthy` is `false`, otherwise `null`.
+- `lastPersistError` - a generic message when `persistenceHealthy` is
+  `false`, otherwise `null`. The underlying error text stays in the
+  process log: this route needs no token and the text can hold paths.
 
 ---
 
@@ -92,7 +94,11 @@ Lists every job currently known to the engine.
 ]
 ```
 
-`Status` is one of `"pending"`, `"blocked"`, `"assigned"`, `"done"`, `"failed"`, `"unreachable"`, `"unknown"` - computed by the engine, never caller-supplied (see `POST /jobs` below). `"unreachable"` means a `dependsOn` entry itself ended `"failed"` (or is itself `"unreachable"`) - unlike `"blocked"`, which just means "still waiting", an `"unreachable"` job can never become eligible on its own; it only resolves back to `"pending"`/`"blocked"` if that dependency is retried (see `POST /jobs/submit`) and eventually succeeds. `"unknown"` means the job was `"assigned"` to a robot whose heartbeat then went stale with no completion ever reported (see `POST /jobs/detect-stale` below) - the dispatcher genuinely cannot tell whether it succeeded, is still running, or was lost with the robot; it only ever resolves via a real, later `POST /jobs/complete` for that same job.
+`Status` is one of `"pending"`, `"blocked"`, `"assigned"`, `"done"`, `"failed"`, `"cancelled"`, `"unreachable"`, `"unknown"` - computed by the engine, never caller-supplied (see `POST /jobs` below). `"unreachable"` means a `dependsOn` entry itself ended `"failed"` (or is itself `"unreachable"`) - unlike `"blocked"`, which just means "still waiting", an `"unreachable"` job can never become eligible on its own; it only resolves back to `"pending"`/`"blocked"` if that dependency is retried (see `POST /jobs/submit`) and eventually succeeds. `"unknown"` means the job was `"assigned"` to a robot whose heartbeat then went stale with no completion ever reported (see `POST /jobs/detect-stale` below) - the dispatcher genuinely cannot tell whether it succeeded, is still running, or was lost with the robot; it only ever resolves via a real, later `POST /jobs/complete` for that same job.
+
+## `GET /jobs/{id}`
+
+One job, in the shape `GET /jobs` lists. `404` for an unknown id. Use it instead of downloading the whole list to learn the state of one job.
 
 ## `POST /jobs`
 
@@ -125,7 +131,7 @@ Submits a new job to the queue.
 | 400 | `{"error": "invalid job: job \"<id>\" cannot depend on itself"}` | A `dependsOn` entry equals the job's own `id`. |
 | 400 | `{"error": "invalid job: job \"<id>\" repeats dependency \"<dep>\""}` | The same `dependsOn` entry appears more than once. |
 | 409 | `{"error": "job ID already exists: \"<id>\""}` | A job with that `id` already exists. |
-| 409 | `{"error": "dependency job ID does not exist: job \"<id>\" depends on \"<dep>\""}` | A `dependsOn` entry references a job ID that was never submitted - caught at submission time, not left to silently never become eligible. |
+| 400 | `{"error": "dependency job ID does not exist: job \"<id>\" depends on \"<dep>\""}` | A `dependsOn` entry references a job ID that was never submitted - caught at submission time, not left to silently never become eligible. |
 
 ---
 
@@ -158,8 +164,9 @@ Same fields as `POST /jobs`, plus:
 | Status | Body | Meaning |
 |---|---|---|
 | 201 | the created `Job` + `"result": "created"` | No job with this `dedupKey` existed yet - a real new job was inserted, same as `POST /jobs`. |
-| 200 | the existing `Job` + `"result": "duplicate"` | A job with this `dedupKey` is already `"pending"`, `"blocked"`, `"assigned"`, or `"done"` - returned **unchanged**. The submitted `id`/`priority`/etc. are ignored; nothing new is scheduled. |
-| 200 | the reset `Job` + `"result": "retried"` | A job with this `dedupKey` previously ended `"failed"` - it is reset to `"pending"` under its **original `id`**, refreshed with this submission's `priority`/`requiredTool`/`dependsOn`. |
+| 200 | the existing `Job` + `"result": "duplicate"` | A job with this `dedupKey` is already `"pending"`, `"blocked"`, `"assigned"`, `"unknown"`, `"unreachable"` or `"done"` - returned **unchanged**. The submitted `id`/`priority`/etc. are ignored; nothing new is scheduled. |
+| 200 | the reset `Job` + `"result": "retried"` | A job with this `dedupKey` previously ended `"failed"` or `"cancelled"` - it is reset to `"pending"` under its **original `id`**, refreshed with this submission's `priority`/`requiredTool`/`location`/`dependsOn`. Dependents that were `"unreachable"` because of it go back to `"blocked"`. |
+| 400 | `"invalid job: ... (dependency cycle)"` | The retry's `dependsOn` would make the job depend on itself through other jobs; the job is left untouched. |
 | 400 | `{"error": "\"id\" is required"}` or a JSON decode error | Missing `id`, or malformed JSON body. |
 | 400 | same `"invalid job"` shapes as `POST /jobs` (whitespace-only `id`, empty/self/repeated `dependsOn` entry) | Same job-shape validation as `POST /jobs`, applied before dedup lookup. |
 | 409 | same error shapes as `POST /jobs` | No matching `dedupKey` on record and the plain insert failed (ID collision or unknown dependency), or a `"retried"` reset was attempted with an unknown `dependsOn` entry. |
@@ -192,9 +199,45 @@ Marks an assigned (or `"unknown"` - see `POST /jobs/detect-stale` below) job as 
 |---|---|---|
 | 200 | the updated `Job` | `Status` becomes `"done"` (if `success: true`) or `"failed"` (if `success: false`). Either way, every other job's `dependsOn` is re-evaluated: completing to `"done"` may flip a `"blocked"` dependent to `"pending"`; completing to `"failed"` may instead flip one or more downstream dependents (transitively, through a whole multi-step chain) to `"unreachable"` - it can never happen on its own. The robot becomes `Available` again only if it isn't already busy with a different job it picked up while this one sat `"unknown"`. |
 | 400 | `{"error": "\"robotId\" is required"}` | `robotId` was missing or empty. |
-| 400 | `{"error": "job ID does not exist"}` | Unknown `id`. |
-| 400 | `{"error": "job is not in the assigned state"}` | The job exists but was never dispatched (still `"pending"`/`"blocked"`), or is already `"done"`/`"failed"` - `"unknown"` is accepted, everything else is not. |
-| 400 | `{"error": "robot ID does not match the job's assigned robot"}` | `robotId` does not match the job's own real `AssignedRobot` - the job/robot state is left completely untouched, not partially applied. |
+| 404 | `{"error": "..."}` | Unknown job `id` (or the robot it is assigned to no longer exists). |
+| 409 | `{"error": "..."}` | The job exists but is not `"assigned"` (never dispatched, or already finished) - `"unknown"` is accepted, everything else is not. |
+| 409 | `{"error": "..."}` | `robotId` does not match the job's own real `AssignedRobot` - the job/robot state is left completely untouched, not partially applied. |
+
+Clients written before `robotId` became required (it answers `400` without it) must send it: the robot a job was given by `POST /dispatch` is in the `AssignedRobot` field of `GET /jobs/{id}`.
+
+---
+
+## `POST /jobs/cancel`
+
+Withdraws a job nobody has been given.
+
+```json
+{"id": "weld-42"}
+```
+
+| Status | Meaning |
+|---|---|
+| 200 | The updated `Job`. `"pending"`, `"blocked"` and `"unreachable"` become `"cancelled"` (terminal, never dispatched, also not after a restart); cancelling a `"cancelled"` job again is a no-op. Dependents become `"unreachable"`. |
+| 400 | `"id"` missing. |
+| 404 | Unknown job. |
+| 409 | The job is `"assigned"` or `"unknown"` (it may be running on a robot; only that robot's own report ends it, or `POST /jobs/requeue`), or it already finished. |
+
+## `POST /jobs/requeue`
+
+The operator's way out of a job whose robot will never report (a destroyed or replaced robot): an `"assigned"` or `"unknown"` job goes back to `"pending"` with no robot, ready for the next `POST /dispatch`, and the robot it was given to is held unavailable until its own next heartbeat says `available: true`, so the same dead robot is not handed the job again.
+
+```json
+{"id": "weld-42", "robotId": "arm-3", "reason": "node declared down"}
+```
+
+`robotId` is optional; when present it must be the robot the job is assigned to.
+
+| Status | Meaning |
+|---|---|
+| 200 | The updated `Job` (also when it was already `"pending"`, `"blocked"` or `"unreachable"`). |
+| 400 | `"id"` missing. |
+| 404 | Unknown job. |
+| 409 | The job already finished (`"done"`, `"failed"`, `"cancelled"`), or `robotId` is not the robot the job is assigned to. |
 
 ---
 
@@ -210,11 +253,11 @@ Lists every robot in the fleet registry.
 ]
 ```
 
-`Load` is a fairness counter: how many jobs this robot has completed this session (see `POST /dispatch` below for how it's used) - it is never set directly by `POST /robots`, only incremented internally when a job it was assigned reaches `"done"` or `"failed"`.
+`Load` is a fairness counter: how many jobs this robot has finished this session, failed ones included, so a robot that fails everything it is given does not stay the least-loaded one and keep attracting the queue (see `POST /dispatch` below for how it's used) - it is never set directly by `POST /robots`, only incremented internally when a job it was assigned reaches `"done"` or `"failed"`.
 
 ## `POST /robots`
 
-Registers a new robot, or updates an existing one's `location`/`tool`/`available` fields (its `Load` fairness counter is preserved either way - not resettable via this endpoint).
+Registers a new robot, or updates an existing one's `location`/`tool`/`available` fields (its `Load` fairness counter is preserved either way - not resettable via this endpoint). It is also the heartbeat: a field left out keeps the value the registry already holds, so a bare `{"id": "arm-3"}` heartbeat does not wipe the tool, location or availability.
 
 **Request body**
 
@@ -249,9 +292,11 @@ Each assigned job's `Status` becomes `"assigned"` and `AssignedRobot` is set; th
 
 ## `POST /jobs/detect-stale`
 
-Marks every `"assigned"` job whose robot has not sent a real heartbeat (a `POST /robots` call) within `timeoutSeconds` as `"unknown"` - see `Status`'s own description above. A caller should invoke this on the same cadence it already polls `POST /dispatch` on; it never runs on its own timer.
+Marks every `"assigned"` job whose robot has not sent a real heartbeat (a `POST /robots` call) within `timeoutSeconds` as `"unknown"` - see `Status`'s own description above. A caller may invoke this with its own timeout.
 
-A robot that has never sent a single heartbeat since this process started (for example, one restored from persistence after a restart) is never flagged stale on its own account - it must send one real heartbeat first.
+The last heartbeat of every robot is persisted, so a robot that went silent before a restart can still be flagged. A robot with no recorded heartbeat at all is never flagged stale on its own account.
+
+The process also runs this check by itself, every half of `-robot-timeout`, when that flag is not `0`; calling this route is only needed for a different timeout.
 
 Marking a job `"unknown"` does not touch its robot's `Available` field: a robot whose only job just became `"unknown"` is immediately eligible for new work on its own next heartbeat reporting `available: true`, rather than being stranded over one unresolved outcome. If that stale job's own late, genuine report later arrives via `POST /jobs/complete`, it resolves normally - without disturbing whatever newer job the robot has since picked up.
 

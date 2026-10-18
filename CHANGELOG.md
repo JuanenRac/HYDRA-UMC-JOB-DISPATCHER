@@ -18,6 +18,18 @@ semantic-versioning judgment calls:
 
 ---
 
+## [0.2.0] - Failed jobs weigh on the balance, operator requeue, partial heartbeats
+
+- **Fair sharing:** `Load` now counts every finished assignment, failed ones included. Before, a robot that failed every job kept the lowest load and was always chosen first, so one broken robot attracted the whole queue.
+- **No dependency cycles on retry:** retrying a failed job with a `dependsOn` that leads back to it is refused with `400` instead of leaving both jobs unreachable for good.
+- **Cancelled jobs can be retried** through `POST /jobs/submit` with the same `dedupKey`; their dependents go back to `blocked`. A retry also refreshes `location`.
+- **`POST /jobs/requeue`:** the operator's way out of an `assigned` or `unknown` job whose robot will never report. The job goes back to `pending` and the robot is held unavailable until its own next heartbeat.
+- **`GET /jobs/{id}`:** one job without downloading the whole list.
+- **Partial heartbeats:** `POST /robots` keeps the tool, location and availability a request leaves out, so a bare `{"id": "..."}` heartbeat no longer wipes the robot.
+- **Silent robots are detected by the process itself:** a ticker runs the stale-assignment check every half of `-robot-timeout`.
+- **`GET /health` answers `503` with `"degraded"`** while the store is failing, and no longer echoes the store's error text on a route that needs no token.
+- `docs/API.md` corrected: `/jobs/complete` answers `404`/`409`, a missing dependency on `POST /jobs` is `400`, `POST /jobs/cancel`, the `cancelled` status and the fairness counter are documented. The README no longer presents Production Reports and PATH-PLANNER-3D checks as existing. The systemd unit reads an optional environment file for the token and creates its data directory. `build.sh` and `build.bat` now both stop when the version bump fails. 8 new tests (98 in all).
+
 ## [0.1.9] - Safe by default, no work for a robot that stopped answering, a preferred location and a persisted heartbeat
 
 - The API listens on `127.0.0.1:8090` by default (it was `:8090`, every interface, with no authentication). Another address needs a bearer token (`-token` or `JOB_DISPATCHER_TOKEN`, required by every route except `GET /health`) or an explicit `-allow-anonymous`, and the process refuses to start without one of them.

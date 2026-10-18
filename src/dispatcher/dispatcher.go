@@ -421,7 +421,7 @@ func validateDependencyShape(jobID string, dependencies []string) error {
 //     that resubmits after a timed-out response, unsure whether the first
 //     attempt was received, gets back the original job instead of a
 //     second one racing it for a robot or a robot running it twice.
-//   - An existing job with the same DedupKey that is Failed is reset to
+//   - An existing job with the same DedupKey that is Failed or Cancelled is reset to
 //     Pending (SubmitRetried) under its ORIGINAL job ID, refreshed with
 //     the retry's own Priority/RequiredTool/DependsOn (e.g. a bumped
 //     Priority on a retried defect fix) - a genuine retry-after-failure
@@ -434,7 +434,7 @@ func (e *Engine) SubmitJob(j Job) (Job, SubmitResult, error) {
 	if j.DedupKey != "" {
 		if existingID, ok := e.dedupIndex[j.DedupKey]; ok {
 			existing := e.jobs[existingID]
-			if existing.Status != StatusFailed {
+			if existing.Status != StatusFailed && existing.Status != StatusCancelled {
 				return cloneJob(existing), SubmitDuplicate, nil
 			}
 			if err := validateDependencyShape(existing.ID, j.DependsOn); err != nil {
@@ -445,8 +445,12 @@ func (e *Engine) SubmitJob(j Job) (Job, SubmitResult, error) {
 					return Job{}, "", fmt.Errorf("%w: job %q depends on %q", ErrUnknownDep, existing.ID, dep)
 				}
 			}
+			if e.dependsTransitivelyLocked(j.DependsOn, existing.ID) {
+				return Job{}, "", fmt.Errorf("%w: job %q would depend on itself through %v (dependency cycle)", ErrInvalidJob, existing.ID, j.DependsOn)
+			}
 			existing.Priority = j.Priority
 			existing.RequiredTool = j.RequiredTool
+			existing.Location = j.Location
 			existing.DependsOn = cloneStrings(j.DependsOn)
 			existing.AssignedRobot = ""
 			existing.Status = e.computeStatus(existing)
@@ -481,6 +485,58 @@ func (e *Engine) SubmitJob(j Job) (Job, SubmitResult, error) {
 	return cloneJob(stored), SubmitCreated, nil
 }
 
+// dependsTransitivelyLocked reports whether any job in roots is, or (through its own
+// dependencies) depends on, the job named target. Caller must hold e.mu.
+func (e *Engine) dependsTransitivelyLocked(roots []string, target string) bool {
+	seen := make(map[string]struct{})
+	stack := append([]string(nil), roots...)
+	for len(stack) > 0 {
+		id := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if id == target {
+			return true
+		}
+		if _, done := seen[id]; done {
+			continue
+		}
+		seen[id] = struct{}{}
+		if d, ok := e.jobs[id]; ok {
+			stack = append(stack, d.DependsOn...)
+		}
+	}
+	return false
+}
+
+// RobotUpdate is a partial robot registration/heartbeat: a nil field keeps the value the
+// registry already holds (a brand new robot starts from the zero value).
+type RobotUpdate struct {
+	ID        string
+	Location  *string
+	Tool      *string
+	Available *bool
+}
+
+// UpdateRobot applies a partial heartbeat. A lightweight heartbeat that only names the robot
+// no longer wipes its tool, location or availability.
+func (e *Engine) UpdateRobot(u RobotUpdate) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	r := Robot{ID: u.ID}
+	if existing, ok := e.robots[u.ID]; ok {
+		r.Location, r.Tool = existing.Location, existing.Tool
+	}
+	if u.Location != nil {
+		r.Location = *u.Location
+	}
+	if u.Tool != nil {
+		r.Tool = *u.Tool
+	}
+	if u.Available != nil {
+		r.Available = *u.Available
+	}
+	e.upsertRobotLocked(r, u.Available != nil)
+}
+
 // UpsertRobot registers a new robot or updates an existing one's fields
 // (location/tool/availability). Load is only ever changed internally by
 // CompleteJob, never overwritten by a caller-supplied Robot value, so an
@@ -489,7 +545,12 @@ func (e *Engine) SubmitJob(j Job) (Job, SubmitResult, error) {
 func (e *Engine) UpsertRobot(r Robot) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	e.upsertRobotLocked(r, true)
+}
 
+// upsertRobotLocked is UpsertRobot's body. availabilityGiven false means the caller did not
+// state availability (a partial heartbeat): an existing robot keeps it untouched.
+func (e *Engine) upsertRobotLocked(r Robot, availabilityGiven bool) {
 	if existing, ok := e.robots[r.ID]; ok {
 		existing.Location = r.Location
 		existing.Tool = r.Tool
@@ -510,7 +571,9 @@ func (e *Engine) UpsertRobot(r Robot) {
 		// (robotHasActiveAssignmentLocked, derived from real job state, not
 		// a separate flag that could itself drift) always wins over
 		// whatever a robot's own heartbeat currently declares.
-		if !e.robotHasActiveAssignmentLocked(r.ID) {
+		if !availabilityGiven {
+			// nothing to change about availability
+		} else if !e.robotHasActiveAssignmentLocked(r.ID) {
 			existing.Available = r.Available
 			// a valid heartbeat received while genuinely idle is the
 			// only thing that may clear a prior mid-task fault signal - see
@@ -765,7 +828,7 @@ func (e *Engine) bestRobotFor(j *Job) *Robot {
 
 // CompleteJob marks an Assigned (or Unknown - see DetectStaleAssignments)
 // job Done or Failed, frees its robot (Available again, Load incremented
-// on success so future ties favour a less-used robot) if that robot
+// so future ties favour a less-used robot) if that robot
 // isn't already busy with something else, and re-evaluates every
 // Blocked/Unreachable job: a Done result may unblock a later stage of a
 // multi-step mission, while a Failed result may instead make one or more
@@ -805,9 +868,12 @@ func (e *Engine) CompleteJob(jobID string, success bool, robotID string) error {
 		return fmt.Errorf("%w: %q", ErrUnknownRobot, j.AssignedRobot)
 	}
 
+	// Load counts every finished assignment, failed ones included: a robot that
+	// fails everything it is given must not stay the least-loaded one and keep
+	// attracting the whole queue.
+	robot.Load++
 	if success {
 		j.Status = StatusDone
-		robot.Load++
 	} else {
 		j.Status = StatusFailed
 	}
@@ -875,6 +941,42 @@ func (e *Engine) CancelJob(jobID string) error {
 	jobErr := e.persistJobLocked(j)
 	refreshErr := e.refreshBlocked()
 	e.recordPersistOutcome(jobErr, refreshErr)
+	return nil
+}
+
+// RequeueJob is the operator's way out of a job nobody will ever report on: an Assigned or
+// Unknown job goes back to Pending (no robot, ready for the next dispatch pass) and the robot
+// it was given to is marked unavailable until its own next heartbeat says otherwise, so the
+// same dead robot is not handed the job again. `robotID`, when not empty, must be the robot
+// the job is assigned to (a stale caller cannot requeue a job that has moved on). A job that
+// is already Pending, Blocked or Unreachable is returned as it is.
+func (e *Engine) RequeueJob(jobID, robotID string) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	j, ok := e.jobs[jobID]
+	if !ok {
+		return fmt.Errorf("%w: %q", ErrUnknownJob, jobID)
+	}
+	switch j.Status {
+	case StatusPending, StatusBlocked, StatusUnreachable:
+		return nil
+	case StatusDone, StatusFailed, StatusCancelled:
+		return fmt.Errorf("%w: job %q is %q", ErrJobFinished, jobID, j.Status)
+	}
+	if robotID != "" && robotID != j.AssignedRobot {
+		return fmt.Errorf("%w: job %q is assigned to %q, not %q", ErrRobotMismatch, jobID, j.AssignedRobot, robotID)
+	}
+	var robotErr error
+	if robot, ok := e.robots[j.AssignedRobot]; ok {
+		robot.Available = false
+		robot.selfReportedUnavailable = true
+		robotErr = e.persistRobotLocked(robot)
+	}
+	j.AssignedRobot = ""
+	j.Status = e.computeStatus(j)
+	jobErr := e.persistJobLocked(j)
+	e.recordPersistOutcome(robotErr, jobErr)
 	return nil
 }
 

@@ -97,7 +97,20 @@ func main() {
 	}
 
 	fmt.Printf("[job-dispatcher] HTTP API listening on %s\n", *addr)
-	fmt.Println("[job-dispatcher] POST /robots, POST /jobs, POST /jobs/submit, POST /dispatch, POST /jobs/complete, GET /jobs, GET /robots, GET /health")
+	fmt.Println("[job-dispatcher] POST /robots, POST /jobs, POST /jobs/submit, POST /dispatch, POST /jobs/complete, POST /jobs/cancel, POST /jobs/requeue, POST /jobs/detect-stale, GET /jobs, GET /jobs/{id}, GET /robots, GET /health")
+	if *robotTimeout > 0 {
+		// Nothing else calls detect-stale: without this a job whose robot went silent stayed
+		// "assigned" (and the robot reserved) for ever.
+		go func() {
+			ticker := time.NewTicker(*robotTimeout / 2)
+			defer ticker.Stop()
+			for range ticker.C {
+				if ids := engine.DetectStaleAssignments(*robotTimeout); len(ids) > 0 {
+					log.Printf("[job-dispatcher] robot silent for over %s: jobs now unknown: %v", *robotTimeout, ids)
+				}
+			}
+		}()
+	}
 	// http.ListenAndServe has no timeouts: a client that opens a connection and never finishes a
 	// request would hold it (and a goroutine) for ever.
 	httpServer := &http.Server{

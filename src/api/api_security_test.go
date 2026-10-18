@@ -80,8 +80,8 @@ func TestBody_AMalformedBodyIsStill400(t *testing.T) {
 
 func TestLocation_TravelsThroughTheAPI(t *testing.T) {
 	s := New(dispatcher.NewEngine())
-	post(t, s, "/robots", robotRequest{ID: "far", Location: "cell-2", Available: true})
-	post(t, s, "/robots", robotRequest{ID: "near", Location: "cell-1", Available: true})
+	post(t, s, "/robots", robotBody{ID: "far", Location: "cell-2", Available: true})
+	post(t, s, "/robots", robotBody{ID: "near", Location: "cell-1", Available: true})
 	if rec := post(t, s, "/jobs", jobRequest{ID: "job-1", Location: "cell-1"}); rec.Code != http.StatusCreated {
 		t.Fatalf("POST /jobs = %d, body = %s", rec.Code, rec.Body.String())
 	}

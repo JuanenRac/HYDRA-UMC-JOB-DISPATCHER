@@ -16,7 +16,7 @@
 
 ---
 
-**诚实核查 - 今天真正能运行的部分：** 调度引擎(`src/dispatcher/dispatcher.go`)——按优先级排序的队列、工具感知路由、多阶段依赖跟踪，以及通过 `DedupKey` 实现的幂等提交——以及包装它的简单 JSON/HTTP API(`src/api/api.go`)都是真实的并经过测试(`src/dispatcher`、`src/api`、`src/sqlitestore` 共 90 个测试通过，`go test ./...`)。可选的 SQLite 持久化(`src/sqlitestore/sqlitestore.go`，纯 Go 实现，不使用 CGO)已针对一个真实被杀死并重新启动的进程完成端到端验证，而不仅仅是孤立的单元测试。一个已知且已记录的差距：工具感知路由是通过精确字符串匹配来检查 `RequiredTool`/`Robot.Tool` 的，依据的只是机器人自身通过 `POST /robots` 声明的内容——它尚未通过 CAN 总线与真实的 URTC 通信以确认工具头是否真的物理连接，因此一个谎报自身工具的机器人(或工具头已经脱落的机器人)目前与如实汇报的机器人是无法区分的。路线图中的 4 个阶段(TSN 同步、3D 路径规划、调度优化、AI 驱动的时长估算)都是尚无任何代码支撑的愿景性未来工作。具体已交付的内容请见 `CHANGELOG.md`。
+**诚实核查 - 今天真正能运行的部分：** 调度引擎(`src/dispatcher/dispatcher.go`)——按优先级排序的队列、工具感知路由、多阶段依赖跟踪，以及通过 `DedupKey` 实现的幂等提交——以及包装它的简单 JSON/HTTP API(`src/api/api.go`)都是真实的并经过测试(`src/dispatcher`、`src/api`、`src/sqlitestore` 共 98 个测试通过，`go test ./...`)。可选的 SQLite 持久化(`src/sqlitestore/sqlitestore.go`，纯 Go 实现，不使用 CGO)已针对一个真实被杀死并重新启动的进程完成端到端验证，而不仅仅是孤立的单元测试。一个已知且已记录的差距：工具感知路由是通过精确字符串匹配来检查 `RequiredTool`/`Robot.Tool` 的，依据的只是机器人自身通过 `POST /robots` 声明的内容——它尚未通过 CAN 总线与真实的 URTC 通信以确认工具头是否真的物理连接，因此一个谎报自身工具的机器人(或工具头已经脱落的机器人)目前与如实汇报的机器人是无法区分的。路线图中的 4 个阶段(TSN 同步、3D 路径规划、调度优化、AI 驱动的时长估算)都是尚无任何代码支撑的愿景性未来工作。具体已交付的内容请见 `CHANGELOG.md`。
 
 ---
 
@@ -49,7 +49,7 @@ flowchart LR
     SCHED --> R1["Robot A (PnP)"]
     SCHED --> R2["Robot B (Laser)"]
     R1 -- Success/Fail --> SCHED
-    SCHED --> LOG["Production Reports"]
+    SCHED -.-> LOG["Production Reports （计划中）"]
 ```
 
 ---
@@ -60,7 +60,7 @@ flowchart LR
 * **为何任务分配会通过 URTC 检查工具可用性。** 需要特定刀头的任务只能被分发给实际装有相应 URTC 控制刀头且处于空闲状态的机器人——在分发前（而非在拾取失败后）进行此项检查，可以避免机器人到达一个它实际上无法使用的工位。`src/dispatcher.Engine.DispatchOnce` 现在已通过精确匹配 `RequiredTool`/`Robot.Tool` 来实现这一点；它尚未通过 CAN 与真实的 URTC 通信以确认刀头确实已物理连接（引擎只知道机器人注册时声明的内容——见 `src/api` 的 `POST /robots`）。
 * **调度器如今真实可用，持久化现在也是。** `src/dispatcher` 实现了 README 中 "DISPATCHER FLOW" 图所描述的真实算法：一个按优先级排序的全局队列、工具感知的路由，以及多阶段依赖关系（一个任务会保持 `blocked` 状态，直到其 `DependsOn` 中的每个任务都达到 `done`）。`Engine` 的状态一直保持在导出的方法背后，正是为了日后能用真实的存储替换这些方法背后的内容，而无需改动每个调用者——`NewEngineWithStore`(`src/sqlitestore`)正是这个存储：可选、纯 Go 实现的 SQLite,针对一个真实的、被终止后重新启动的进程完成了端到端验证。详见 [`docs/API.md`](docs/API.md#persistence)。
 * **为何 HTTP API 是普通的 JSON/HTTP，而非 gRPC。** 这是一个面向人员/运维的控制平面（提交任务、注册机器人、查询发生了什么）——`hydra.common.v1`（生态系统共享的 gRPC 契约，见 `HYDRA-UMC-ORCHESTRATOR/proto/`）仍保留给节点对节点的流量，符合该 proto 自身已文档化的范围。
-* **这如何融入生态系统的其余部分。** 作为 HYDRA-UMC-ORCHESTRATOR 下的同级服务——将任务级决策转化为具体的、按机器人分配的工作，并对照 URTC 工具可用性和 HYDRA-UMC-PATH-PLANNER-3D 自身的路线进行检查。
+* **这如何融入生态系统的其余部分。** 作为 HYDRA-UMC-ORCHESTRATOR 下的同级服务——将任务级决策转化为具体的、按机器人分配的工作。（对照 URTC 工具可用性和 HYDRA-UMC-PATH-PLANNER-3D 路线检查分配，目前仅为计划，尚未实现。）
 * **为何 `POST /jobs/submit` 是一个新路由，而不是修改 `POST /jobs`。** `AddJob()`/`POST /jobs` 始终执行插入，并在 ID 冲突时报错——这个底层契约保持不变。`SubmitJob()`/`POST /jobs/submit` 通过 `Job.DedupKey` 在其之上叠加了真实的、可选的去重——这与整个生态系统中使用的模式相同（在不变的底层原语旁边添加一个受保护的新入口点，而不是把行为改动强加在它身上）。
 * **为何失败后的重试复用同一个任务 ID，而不是新建一个。** 另一种做法——每次重试都生成一个新任务——会把同一个逻辑工作单元的历史分散到多个 ID 上，调用方也无法分辨“这次失败了一次、正在重试”和“这是一项无关的新工作”。将原始任务重置为 `Pending`，可以让它整个生命周期（包括失败的那次尝试）都保留在同一个 ID 之下。
 

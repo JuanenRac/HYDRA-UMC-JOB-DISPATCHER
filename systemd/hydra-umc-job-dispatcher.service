@@ -3,12 +3,9 @@
 # Copyright (C) 2026 JuanenRac (Electro Hobby 3D) <electrohobby3d@gmail.com>
 # GPL-3.0-or-later - see LICENSE
 # =============================================================================
-# Loopback-only, same as HYDRA-UMC-DATALAKE/HYDRA-UMC-ANOMALY-DETECTOR: this
-# repo's own README already documents a real multi-cell fleet as a future
-# goal, but no cross-node authentication exists for this HTTP API yet - real
-# gap, deliberately not invented here. Binding 127.0.0.1 keeps today's
-# single-CM5 deployment safe without pretending that design question is
-# settled.
+# Loopback-only by default. Another address needs a bearer token: put
+# JOB_DISPATCHER_TOKEN=... in /etc/hydra-umc/job-dispatcher.env (read below) and
+# change --addr.
 [Unit]
 Description=HYDRA-UMC-JOB-DISPATCHER real priority mission queue
 After=network-online.target
@@ -19,6 +16,8 @@ Type=simple
 User=hydra-umc-job-dispatcher
 Group=hydra-umc-job-dispatcher
 WorkingDirectory=/opt/hydra-umc/job-dispatcher
+EnvironmentFile=-/etc/hydra-umc/job-dispatcher.env
+ExecStartPre=+/usr/bin/install -d -o hydra-umc-job-dispatcher -g hydra-umc-job-dispatcher /opt/hydra-umc/job-dispatcher/data
 ExecStart=/opt/hydra-umc/job-dispatcher/hydra-umc-job-dispatcher --addr 127.0.0.1:8090 --db /opt/hydra-umc/job-dispatcher/data/job-dispatcher.sqlite3
 Restart=on-failure
 RestartSec=5

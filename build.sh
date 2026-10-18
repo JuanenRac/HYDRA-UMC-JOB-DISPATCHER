@@ -37,7 +37,7 @@ trap '[ -t 0 ] && read -r -p "Press Enter to close..." _' EXIT
 echo "=== HYDRA-UMC-JOB-DISPATCHER build ==="
 # HYDRA_UMC_SCRIPT_STANDARD_VERSION_STEP
 printf '%s\n' "[1/3] Incrementing project version and synchronising its manifest..."
-python3 bump_version.py || echo "WARNING: could not bump version, continuing build anyway."
+python3 bump_version.py || { echo "NATIVE VERSION BUMP FAILED."; exit 1; }
 # HYDRA_UMC_SCRIPT_STANDARD_VERSION_CAPTURE_BEFORE
 HYDRA_UMC_VERSION_BEFORE="$(python3 -c 'import json, pathlib, sys; print(json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))["version"])' "$(dirname "$0")/hydra-umc.project.json")"
 python3 "$(dirname "$0")/bump_manifest_version.py" --sync || exit 1

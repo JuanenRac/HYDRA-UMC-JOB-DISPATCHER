@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 	"net/http/httptest"
 	"testing"
 
@@ -41,7 +42,7 @@ func get(t *testing.T, h http.Handler, path string) *httptest.ResponseRecorder {
 func TestFullFlow_RegisterSubmitDispatchComplete(t *testing.T) {
 	s := New(dispatcher.NewEngine())
 
-	rec := post(t, s, "/robots", robotRequest{ID: "robot-a", Tool: "PnP", Available: true})
+	rec := post(t, s, "/robots", robotBody{ID: "robot-a", Tool: "PnP", Available: true})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("POST /robots status = %d, body = %s", rec.Code, rec.Body.String())
 	}
@@ -89,7 +90,7 @@ func TestFullFlow_RegisterSubmitDispatchComplete(t *testing.T) {
 // forward whatever the engine happens to accept.
 func TestHandleCompleteJob_RejectsMissingRobotID(t *testing.T) {
 	s := New(dispatcher.NewEngine())
-	post(t, s, "/robots", robotRequest{ID: "robot-a", Available: true})
+	post(t, s, "/robots", robotBody{ID: "robot-a", Available: true})
 	post(t, s, "/jobs", jobRequest{ID: "job-1"})
 	post(t, s, "/dispatch", nil)
 
@@ -103,8 +104,8 @@ func TestHandleCompleteJob_RejectsMissingRobotID(t *testing.T) {
 // than calling the engine directly.
 func TestHandleCompleteJob_RejectsAMismatchedRobotID(t *testing.T) {
 	s := New(dispatcher.NewEngine())
-	post(t, s, "/robots", robotRequest{ID: "robot-a", Available: true})
-	post(t, s, "/robots", robotRequest{ID: "robot-b", Available: true})
+	post(t, s, "/robots", robotBody{ID: "robot-a", Available: true})
+	post(t, s, "/robots", robotBody{ID: "robot-b", Available: true})
 	post(t, s, "/jobs", jobRequest{ID: "job-1", RequiredTool: ""})
 	rec := post(t, s, "/dispatch", nil)
 	var assignments []dispatcher.Assignment
@@ -133,7 +134,7 @@ func TestHandleCompleteJob_RejectsAMismatchedRobotID(t *testing.T) {
 // case below.
 func TestHandleCompleteJob_UnknownJobIDReturns404(t *testing.T) {
 	s := New(dispatcher.NewEngine())
-	post(t, s, "/robots", robotRequest{ID: "robot-a", Available: true})
+	post(t, s, "/robots", robotBody{ID: "robot-a", Available: true})
 
 	rec := post(t, s, "/jobs/complete", completeRequest{ID: "no-such-job", Success: true, RobotID: "robot-a"})
 	if rec.Code != http.StatusNotFound {
@@ -146,7 +147,7 @@ func TestHandleCompleteJob_UnknownJobIDReturns404(t *testing.T) {
 // request itself is well-formed and names a real job.
 func TestHandleCompleteJob_AlreadyCompletedJobReturns409(t *testing.T) {
 	s := New(dispatcher.NewEngine())
-	post(t, s, "/robots", robotRequest{ID: "robot-a", Available: true})
+	post(t, s, "/robots", robotBody{ID: "robot-a", Available: true})
 	post(t, s, "/jobs", jobRequest{ID: "job-1"})
 	post(t, s, "/dispatch", nil)
 
@@ -232,7 +233,7 @@ func TestHandleSubmitJob_DuplicateDedupKeyReturns200Unchanged(t *testing.T) {
 
 func TestHandleSubmitJob_RetryAfterFailureRunsExactlyOnce(t *testing.T) {
 	s := New(dispatcher.NewEngine())
-	post(t, s, "/robots", robotRequest{ID: "robot-a", Available: true})
+	post(t, s, "/robots", robotBody{ID: "robot-a", Available: true})
 
 	rec := post(t, s, "/jobs/submit", submitRequest{ID: "job-1", DedupKey: "req-abc"})
 	var created submitResponse
@@ -319,7 +320,7 @@ func TestHandleDetectStale_ReportsNoneStaleRightAfterDispatch(t *testing.T) {
 	// timeout logic itself), but a real assignment made moments ago must
 	// never be reported stale against any real, sane timeout.
 	s := New(dispatcher.NewEngine())
-	post(t, s, "/robots", robotRequest{ID: "robot-a", Tool: "PnP", Available: true})
+	post(t, s, "/robots", robotBody{ID: "robot-a", Tool: "PnP", Available: true})
 	post(t, s, "/jobs", jobRequest{ID: "job-1", RequiredTool: "PnP"})
 	post(t, s, "/dispatch", nil)
 
@@ -371,7 +372,7 @@ func TestHandleHealth_ReportsADegradedStore(t *testing.T) {
 	}
 	s := New(engine)
 
-	post(t, s, "/robots", robotRequest{ID: "robot-a", Available: true})
+	post(t, s, "/robots", robotBody{ID: "robot-a", Available: true})
 
 	rec := get(t, s, "/health")
 	var resp healthResponse
@@ -388,7 +389,7 @@ func TestHandleHealth_ReportsADegradedStore(t *testing.T) {
 
 func TestHandleCancelJob_CancelsUnknownsAndRefusesInFlight(t *testing.T) {
 	s := New(dispatcher.NewEngine())
-	post(t, s, "/robots", robotRequest{ID: "robot-a", Available: true})
+	post(t, s, "/robots", robotBody{ID: "robot-a", Available: true})
 	post(t, s, "/jobs", map[string]any{"id": "queued"})
 
 	if rec := post(t, s, "/jobs/cancel", cancelRequest{ID: "queued"}); rec.Code != http.StatusOK {
@@ -405,5 +406,70 @@ func TestHandleCancelJob_CancelsUnknownsAndRefusesInFlight(t *testing.T) {
 	post(t, s, "/dispatch", map[string]any{})
 	if rec := post(t, s, "/jobs/cancel", cancelRequest{ID: "running"}); rec.Code != http.StatusConflict {
 		t.Fatalf("an assigned job: status = %d, want 409, body = %s", rec.Code, rec.Body.String())
+	}
+}
+
+// robotBody is what tests post to /robots: plain values, every field always sent.
+type robotBody struct {
+	ID        string `json:"id"`
+	Location  string `json:"location"`
+	Tool      string `json:"tool"`
+	Available bool   `json:"available"`
+}
+
+func TestHandleHealth_Is503WhileTheStoreIsFailing(t *testing.T) {
+	engine, err := dispatcher.NewEngineWithStore(brokenStore{})
+	if err != nil {
+		t.Fatalf("NewEngineWithStore: %v", err)
+	}
+	s := New(engine)
+	if rec := get(t, s, "/health"); rec.Code != http.StatusOK {
+		t.Fatalf("healthy /health = %d, want 200", rec.Code)
+	}
+	post(t, s, "/robots", robotBody{ID: "robot-a", Available: true})
+	rec := get(t, s, "/health")
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("degraded /health = %d, want 503", rec.Code)
+	}
+	if strings.Contains(rec.Body.String(), "disk-full") {
+		t.Fatalf("/health needs no token and must not echo the store's error text: %s", rec.Body.String())
+	}
+}
+
+func TestHandleJobByIDAndRequeue(t *testing.T) {
+	s := New(dispatcher.NewEngine())
+	post(t, s, "/robots", map[string]any{"id": "robot-a", "available": true})
+	post(t, s, "/jobs", map[string]any{"id": "j1"})
+	post(t, s, "/dispatch", nil)
+	if rec := get(t, s, "/jobs/j1"); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "robot-a") {
+		t.Fatalf("GET /jobs/j1 = %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := get(t, s, "/jobs/nope"); rec.Code != http.StatusNotFound {
+		t.Fatalf("GET /jobs/nope = %d, want 404", rec.Code)
+	}
+	if rec := post(t, s, "/jobs/requeue", requeueRequest{ID: "j1", RobotID: "other"}); rec.Code != http.StatusConflict {
+		t.Fatalf("requeue naming another robot = %d, want 409", rec.Code)
+	}
+	if rec := post(t, s, "/jobs/requeue", requeueRequest{ID: "j1", RobotID: "robot-a", Reason: "node lost"}); rec.Code != http.StatusOK {
+		t.Fatalf("requeue = %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := post(t, s, "/jobs/requeue", requeueRequest{ID: "zzz"}); rec.Code != http.StatusNotFound {
+		t.Fatalf("requeue of an unknown job = %d, want 404", rec.Code)
+	}
+	if rec := post(t, s, "/jobs/requeue", requeueRequest{}); rec.Code != http.StatusBadRequest {
+		t.Fatalf("requeue without id = %d, want 400", rec.Code)
+	}
+}
+
+func TestHandleRobots_ABareHeartbeatKeepsTheRobot(t *testing.T) {
+	s := New(dispatcher.NewEngine())
+	post(t, s, "/robots", map[string]any{"id": "arm-1", "tool": "PnP", "location": "cell-1", "available": true})
+	rec := post(t, s, "/robots", map[string]any{"id": "arm-1"})
+	var robots []dispatcher.Robot
+	if err := json.Unmarshal(rec.Body.Bytes(), &robots); err != nil || len(robots) != 1 {
+		t.Fatalf("decoding: %v %s", err, rec.Body.String())
+	}
+	if robots[0].Tool != "PnP" || robots[0].Location != "cell-1" || !robots[0].Available {
+		t.Fatalf("robot after a bare heartbeat = %+v", robots[0])
 	}
 }
