@@ -20,6 +20,17 @@
 
 ---
 
+## 📋 ひと目で
+
+| | |
+|---|---|
+| バージョン | `0.2.1` |
+| 成熟度 | 確立 |
+| テスト | 98 |
+| 技術 | Go / priority queue / HTTP API / SQLite (modernc.org/sqlite, pure Go) |
+| 対象 | HYDRA-UMC セルの Raspberry Pi CM5 |
+| 実機での確認 | まだです：このバージョンについて実機での動作記録はありません |
+
 ## 1. 🛠️ 技術概要
 
 **HYDRA-UMC-JOB-DISPATCHER** は、オーケストレーターのタスク割り当て
