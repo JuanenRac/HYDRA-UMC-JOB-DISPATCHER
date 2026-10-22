@@ -282,16 +282,6 @@ behavior changed.
   stored as work that can never become eligible.
 - Added engine and HTTP regression coverage for the rejected inputs.
 
-## Documentation - Real HTTP API reference
-
-- **`docs/API.md`** (new) - every real endpoint (`GET`/`POST /jobs`,
-  `POST /jobs/complete`, `GET`/`POST /robots`, `POST /dispatch`)
-  documented from the actual handler code in `api.go` and the scheduling
-  semantics in `dispatcher.go`: request/response bodies, every status
-  code, and precisely how `Status`/`Load`/dependency-unblocking behave.
-  Cross-checked against `api_test.go`'s real status-code assertions.
-  Documentation-only - no code changed, no version bump.
-
 ## [0.0.9] - Real CM5 deployment
 
 - **`systemd/hydra-umc-job-dispatcher.service`** (new) - loopback-only
@@ -385,3 +375,15 @@ behavior changed.
 - **`main.go`** - minimal real entry point (prints identity/version/role, exits 0). No dispatch logic yet - job queueing/scheduling across the cell's available robots lands in a later pass.
 - **`version.go`** - version identity (`Version` constant).
 - **`build.sh` / `build.bat`**, **`run.sh` / `run.bat`** - `go build` and run the resulting binary.
+
+## Earlier history
+
+### Documentation - Real HTTP API reference
+
+- **`docs/API.md`** (new) - every real endpoint (`GET`/`POST /jobs`,
+  `POST /jobs/complete`, `GET`/`POST /robots`, `POST /dispatch`)
+  documented from the actual handler code in `api.go` and the scheduling
+  semantics in `dispatcher.go`: request/response bodies, every status
+  code, and precisely how `Status`/`Load`/dependency-unblocking behave.
+  Cross-checked against `api_test.go`'s real status-code assertions.
+  Documentation-only - no code changed, no version bump.
