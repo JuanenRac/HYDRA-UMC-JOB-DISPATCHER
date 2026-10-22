@@ -20,6 +20,7 @@ semantic-versioning judgment calls:
 
 ## [Unreleased]
 
+- The banner follows the animated style of the ecosystem banners, with the name, the kind and the technologies of the project.
 - Tests only: completion fencing (unknown job or robot, wrong robot, duplicate report), the stale-heartbeat boundary and the robots it skips, the operator requeue (a failed dependency keeps the job unreachable, a silent robot is not handed the job back), dependency fall-out, and a store that fails halfway through a dispatch pass are now asserted.
 - Added `tools/hydra_project_tool.py`: the same `validate`, `test`, `version`, `status` and `bump` commands in every repository. The checks run with `HYDRA_UMC_CI=1` and fail if the version changes; only `bump` changes it.
 
