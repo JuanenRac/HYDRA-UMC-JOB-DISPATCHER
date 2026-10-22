@@ -48,6 +48,8 @@ and the queue is reloaded, in its original order, the next time this
 process starts. See [`GET /health`](#get-health) below for how a
 degraded store surfaces.
 
+A completion, a cancellation, a requeue and the stale-heartbeat sweep change several records together (the job, its robot and the jobs that depended on it); they are written to SQLite in **one transaction**, so a crash in the middle leaves either all of it or none. The database runs in WAL mode (`synchronous=NORMAL`), which avoids an extra `fsync` per write on an SD card or eMMC. A heartbeat recorded more than one minute **ahead** of the dispatcher's clock (the clock stepped back since, for example a board without a battery clock that booted with a wrong date) is not trusted: that robot is not offered work until it checks in again, and an assignment whose robot has only such a heartbeat is treated as stale.
+
 ---
 
 ## `GET /health`
@@ -77,7 +79,15 @@ its own persistence (if configured) currently working".
 
 ## `GET /jobs`
 
-Lists every job currently known to the engine.
+Lists the jobs known to the engine, oldest submission first. Without parameters it returns all of them.
+
+| Parameter | Meaning |
+|---|---|
+| `status` | Only the jobs in that status (`pending`, `blocked`, `assigned`, `done`, `failed`, `unreachable`, `unknown`, `cancelled`); another value is a `400`. |
+| `limit` | At most this many jobs (a positive whole number). |
+| `offset` | Skip this many jobs first. |
+
+The `X-Total-Count` header says how many jobs matched the `status` filter, whatever `limit` and `offset` cut, so a client can read a long queue in pieces. A machine-readable description of every route is in [`openapi.yaml`](openapi.yaml).
 
 **Response** - `200`, a JSON array of `Job`:
 
@@ -89,10 +99,16 @@ Lists every job currently known to the engine.
     "RequiredTool": "Laser",
     "DependsOn": ["prep-42"],
     "Status": "blocked",
-    "AssignedRobot": ""
+    "AssignedRobot": "",
+    "SubmittedAtMs": 1735689600000,
+    "AssignedAtMs": 0,
+    "CompletedAtMs": 0,
+    "Attempt": 0
   }
 ]
 ```
+
+`SubmittedAtMs`, `AssignedAtMs` and `CompletedAtMs` are unix milliseconds of the dispatcher's clock (`0`: it has not happened yet): when the job was submitted (or retried), when it was last given to a robot (cleared by a requeue) and when it ended (done, failed or cancelled). Queue time and cycle time are the differences. `Attempt` counts how many times the job has been given to a robot; see `POST /jobs/complete`.
 
 `Status` is one of `"pending"`, `"blocked"`, `"assigned"`, `"done"`, `"failed"`, `"cancelled"`, `"unreachable"`, `"unknown"` - computed by the engine, never caller-supplied (see `POST /jobs` below). `"unreachable"` means a `dependsOn` entry itself ended `"failed"` (or is itself `"unreachable"`) - unlike `"blocked"`, which just means "still waiting", an `"unreachable"` job can never become eligible on its own; it only resolves back to `"pending"`/`"blocked"` if that dependency is retried (see `POST /jobs/submit`) and eventually succeeds. `"unknown"` means the job was `"assigned"` to a robot whose heartbeat then went stale with no completion ever reported (see `POST /jobs/detect-stale` below) - the dispatcher genuinely cannot tell whether it succeeded, is still running, or was lost with the robot; it only ever resolves via a real, later `POST /jobs/complete` for that same job.
 
@@ -188,8 +204,10 @@ Marks an assigned (or `"unknown"` - see `POST /jobs/detect-stale` below) job as 
 **Request body**
 
 ```json
-{"id": "weld-42", "success": true, "robotId": "arm-3"}
+{"id": "weld-42", "success": true, "robotId": "arm-3", "attempt": 1}
 ```
+
+`attempt` is optional: the `Attempt` the job had when the robot received it. A report for an older assignment than the current one (the job was requeued and given again) is a `409` and changes nothing, so the late report of an abandoned assignment cannot close the new one. Omitted or `0`, it is not checked.
 
 `robotId` is required and must match the job's own real `AssignedRobot` - without it, any caller naming just a job ID and a success flag could report completion for a job assigned to a DIFFERENT robot, silently corrupting that other robot's own `Load`/`Available` bookkeeping.
 
@@ -201,7 +219,7 @@ Marks an assigned (or `"unknown"` - see `POST /jobs/detect-stale` below) job as 
 | 400 | `{"error": "\"robotId\" is required"}` | `robotId` was missing or empty. |
 | 404 | `{"error": "..."}` | Unknown job `id` (or the robot it is assigned to no longer exists). |
 | 409 | `{"error": "..."}` | The job exists but is not `"assigned"` (never dispatched, or already finished) - `"unknown"` is accepted, everything else is not. |
-| 409 | `{"error": "..."}` | `robotId` does not match the job's own real `AssignedRobot` - the job/robot state is left completely untouched, not partially applied. |
+| 409 | `{"error": "..."}` | `robotId` does not match the job's own real `AssignedRobot`, or `attempt` is not the job's current one - the job/robot state is left completely untouched, not partially applied. |
 
 Clients written before `robotId` became required (it answers `400` without it) must send it: the robot a job was given by `POST /dispatch` is in the `AssignedRobot` field of `GET /jobs/{id}`.
 
@@ -271,6 +289,10 @@ Registers a new robot, or updates an existing one's `location`/`tool`/`available
 |---|---|---|
 | 200 | the full updated robot list (same shape as `GET /robots`) | Registered/updated. |
 | 400 | `{"error": "\"id\" is required"}` or a JSON decode error | Missing `id`, or malformed JSON body. |
+
+## `DELETE /robots/{id}`
+
+Forgets a robot (decommissioned, or registered by mistake). Answers `200` with the registry without it, `404` for an unknown robot and `409` while a job is still `assigned` or `unknown` on it (the outcome of that job would have nobody to be reported by; end it with `POST /jobs/complete` or `POST /jobs/requeue` first). A robot that is still alive registers itself again with its next heartbeat. Requires the token when one is set, like every route except `GET /health`.
 
 ---
 

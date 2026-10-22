@@ -28,7 +28,7 @@
 |---|---|
 | Versione | `0.2.2` |
 | Maturità | Funzionale |
-| Test | 121 |
+| Test | 143 |
 | Tecnologia | Go / priority queue / HTTP API / SQLite (modernc.org/sqlite, pure Go) |
 | Destinazione | Il Raspberry Pi CM5 di una cella HYDRA-UMC |
 | Su hardware reale | Non ancora: per questa versione non risulta alcuna esecuzione su hardware reale |
@@ -46,6 +46,7 @@ Garantisce che i compiti ad alta priorità (ad esempio, «Riparazione difetti di
 * 📡 **Persistenza:** stato della missione reale e opzionale basato su SQLite (`-db PATH`, `src/sqlitestore`, Go puro - senza CGO) - la coda sopravvive a un vero riavvio del processo, verificato end-to-end; se non impostato, resta puramente in memoria. `GET /health` segnala uno storage degradato invece di fallire silenziosamente. Vedi [`docs/API.md`](docs/API.md#persistence).
 * 🔁 **Invio Idempotente (v0):** Deduplicazione reale e opzionale basata su `DedupKey` tramite `POST /jobs/submit` - un reinvio di un job in corso o già completato viene restituito invariato, e un nuovo tentativo dopo un fallimento reale riutilizza lo stesso ID del job invece di eseguire il lavoro due volte. L'ordine di priorità è deterministico attraverso esecuzioni ripetute, coperto da un test di regressione esplicito.
 * 🧯 **Sicuro per impostazione predefinita, e un robot che smette di rispondere non riceve lavoro (v0):** l'API ascolta su `127.0.0.1:8090` salvo diversa indicazione, e un altro indirizzo richiede un token bearer (`-token` / `JOB_DISPATCHER_TOKEN`; allora tutto tranne `GET /health` lo richiede) o un `-allow-anonymous` esplicito; il server HTTP ha timeout e i corpi di richiesta oltre 64 KB sono rifiutati con `413`. Un robot silenzioso per più di `-robot-timeout` (2 minuti per impostazione predefinita) non riceve nuovo lavoro, un lavoro può indicare una `location` preferita (`POST /jobs`, `POST /jobs/submit`; i robot in quella posizione sono preferiti, mai richiesti), e l'ultimo heartbeat di ogni robot è persistito (un database della versione precedente viene migrato sul posto), quindi un riavvio non nasconde più un robot rimasto in silenzio. *(implementato)*
+* 🗂️ **Scritture atomiche, paginazione e lavori tracciabili:** un completamento, un annullamento, un reinserimento o uno scorrimento dei battiti scaduti viene scritto in SQLite in un'unica transazione (il database funziona in modalità WAL); `GET /jobs` si può filtrare e paginare (`status`, `limit`, `offset`, `X-Total-Count`); ogni lavoro porta `SubmittedAtMs`, `AssignedAtMs`, `CompletedAtMs` e un contatore `Attempt` che il rapporto di completamento può rimandare (`attempt`) così il rapporto tardivo di un'assegnazione abbandonata viene rifiutato; `DELETE /robots/{id}` dimentica un robot senza lavoro; un battito di robot con data futura non è considerato attendibile. Una descrizione leggibile dalle macchine è in `docs/openapi.yaml`. *(implementato)*
 
 ---
 
@@ -86,7 +87,8 @@ HYDRA-UMC-JOB-DISPATCHER/
 │   ├── api/           # Handler JSON/HTTP semplici che avvolgono il motore
 │   └── sqlitestore/  # Persistenza SQLite opzionale in Go puro (-db PATH)
 ├── docs/
-│   └── API.md         # Riferimento reale degli endpoint HTTP (richieste, risposte, codici di stato)
+│   ├── API.md         # Riferimento reale degli endpoint HTTP (richieste, risposte, codici di stato)
+│   └── openapi.yaml   # Descrizione OpenAPI leggibile dalle macchine delle stesse rotte
 ├── images/            # Media e diagrammi
 ├── systemd/
 │   └── hydra-umc-job-dispatcher.service # Unità systemd della coda missioni a priorità sulla CM5 locale

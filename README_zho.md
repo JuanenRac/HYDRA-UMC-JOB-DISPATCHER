@@ -28,7 +28,7 @@
 |---|---|
 | 版本 | `0.2.2` |
 | 成熟度 | 可用 |
-| 测试 | 121 |
+| 测试 | 143 |
 | 技术栈 | Go / priority queue / HTTP API / SQLite (modernc.org/sqlite, pure Go) |
 | 目标 | HYDRA-UMC 工作单元的 Raspberry Pi CM5 |
 | 真实硬件 | 尚未：此版本没有在真实硬件上运行的记录 |
@@ -49,6 +49,7 @@
 * 📡 **持久化：** 真实的、可选的 SQLite 持久化任务状态(`-db PATH`、`src/sqlitestore`,纯 Go,无需 CGO)——队列在真实的进程重启后依然存活,已端到端验证;未设置时则保持纯内存运行。`GET /health` 会报告存储降级,而不是静默失败。详见 [`docs/API.md`](docs/API.md#persistence)。
 * 🔁 **幂等提交（v0）：** 通过 `POST /jobs/submit` 实现真实的、可选的基于 `DedupKey` 的去重——重新提交一个进行中或已完成的任务会原样返回，而在真实失败后的重试会复用同一个任务 ID，而不是把工作执行两次。优先级顺序在重复运行之间是确定性的，由一个明确的回归测试覆盖。
 * 🧯 **默认安全，停止响应的机器人不会再被派活（v0）：** API 默认只监听 `127.0.0.1:8090`，使用其他地址需要 bearer 令牌（`-token` / `JOB_DISPATCHER_TOKEN`；设置后除 `GET /health` 外的所有路由都要求它）或显式的 `-allow-anonymous`；HTTP 服务器有超时限制，超过 64 KB 的请求体会被以 `413` 拒绝。静默时间超过 `-robot-timeout`（默认 2 分钟）的机器人不会再被分配新工作，作业可以指定首选的 `location`（`POST /jobs`、`POST /jobs/submit`；优先选择该位置的机器人，但不是硬性要求），每个机器人的最后一次心跳都会被持久化（上一版本的数据库会就地迁移），因此重启不再会掩盖已经沉默的机器人。*（已实现）*
+* 🗂️ **原子写入、分页与可追踪的任务：** 完成、取消、重新排队或清扫过期心跳都在一个事务中写入 SQLite（数据库使用 WAL 模式）；`GET /jobs` 可以过滤并分页（`status`、`limit`、`offset`、`X-Total-Count`）；每个任务带有 `SubmittedAtMs`、`AssignedAtMs`、`CompletedAtMs` 以及完成报告可回传的 `Attempt` 计数器（`attempt`），因此被放弃的分配迟到的报告会被拒绝；`DELETE /robots/{id}` 会忘记没有任务的机器人；日期在未来的机器人心跳不被信任。机器可读的描述见 `docs/openapi.yaml`。 *(已实现)*
 
 ---
 
@@ -89,7 +90,8 @@ HYDRA-UMC-JOB-DISPATCHER/
 │   ├── api/           # 封装引擎的简单 JSON/HTTP 处理器
 │   └── sqlitestore/  # 可选的纯 Go SQLite 持久化 (-db PATH)
 ├── docs/
-│   └── API.md         # 真实的 HTTP 端点参考（请求、响应、状态码）
+│   ├── API.md         # 真实的 HTTP 端点参考（请求、响应、状态码）
+│   └── openapi.yaml   # 相同路由的机器可读 OpenAPI 描述
 ├── images/            # 媒体与图示
 ├── systemd/
 │   └── hydra-umc-job-dispatcher.service # CM5 本地优先级任务队列的 systemd 单元

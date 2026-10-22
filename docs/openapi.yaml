@@ -1,0 +1,321 @@
+openapi: 3.0.3
+info:
+  title: HYDRA-UMC-JOB-DISPATCHER
+  description: >-
+    Priority mission queue for the robots of a HYDRA-UMC cell. This file describes the same
+    routes as API.md; when they disagree, the code and API.md are the reference.
+  license:
+    name: GPL-3.0-or-later
+  version: "1"
+servers:
+  - url: http://127.0.0.1:8090
+security:
+  - bearer: []
+paths:
+  /health:
+    get:
+      summary: Health of the process and of its store
+      security: []
+      responses:
+        "200":
+          description: The store is healthy.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+        "503":
+          description: The store reported an error ("degraded").
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+  /jobs:
+    get:
+      summary: List jobs, oldest submission first
+      parameters:
+        - { name: status, in: query, required: false, schema: { $ref: "#/components/schemas/Status" } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1 } }
+        - { name: offset, in: query, required: false, schema: { type: integer, minimum: 0 } }
+      responses:
+        "200":
+          description: The jobs; X-Total-Count is how many matched the status filter.
+          headers:
+            X-Total-Count: { schema: { type: integer } }
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Job" } }
+        "400": { $ref: "#/components/responses/Error" }
+    post:
+      summary: Submit a job (an ID collision is a 409)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/JobRequest" }
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Job" }
+        "400": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /jobs/submit:
+    post:
+      summary: Idempotent submission with a dedupKey
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - { $ref: "#/components/schemas/JobRequest" }
+                - type: object
+                  properties:
+                    dedupKey: { type: string }
+      responses:
+        "200":
+          description: An in-flight or finished job with that dedupKey exists, or a failed or cancelled one was retried.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SubmitResponse" }
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SubmitResponse" }
+        "400": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /jobs/{id}:
+    get:
+      summary: One job
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: The job.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Job" }
+        "404": { $ref: "#/components/responses/Error" }
+  /jobs/complete:
+    post:
+      summary: A robot reports the outcome of its job
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id, robotId, success]
+              properties:
+                id: { type: string }
+                robotId: { type: string }
+                success: { type: boolean }
+                attempt:
+                  type: integer
+                  minimum: 0
+                  description: The Attempt of the assignment the report is about; 0 or omitted is not checked.
+      responses:
+        "200":
+          description: The updated job.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Job" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409":
+          description: The job is not assigned, the robot is not the assigned one, or the attempt is not the current one.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorBody" }
+  /jobs/cancel:
+    post:
+      summary: Withdraw a job no robot has been given
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id]
+              properties:
+                id: { type: string }
+      responses:
+        "200":
+          description: The cancelled job.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Job" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /jobs/requeue:
+    post:
+      summary: Operator way out of an assigned or unknown job whose robot will never report
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id]
+              properties:
+                id: { type: string }
+                robotId: { type: string, description: When given, must be the assigned robot. }
+                reason: { type: string }
+      responses:
+        "200":
+          description: The job, back to pending.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Job" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /jobs/detect-stale:
+    post:
+      summary: Mark assigned jobs whose robot went silent as unknown
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [timeoutSeconds]
+              properties:
+                timeoutSeconds: { type: number, exclusiveMinimum: 0 }
+      responses:
+        "200":
+          description: The jobs just marked unknown.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  unknownJobIds: { type: array, items: { type: string } }
+        "400": { $ref: "#/components/responses/Error" }
+  /robots:
+    get:
+      summary: The fleet registry
+      responses:
+        "200":
+          description: The robots.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Robot" } }
+    post:
+      summary: Register a robot or send a heartbeat; a field left out keeps its value
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id]
+              properties:
+                id: { type: string }
+                location: { type: string }
+                tool: { type: string }
+                available: { type: boolean }
+      responses:
+        "200":
+          description: The whole registry.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Robot" } }
+        "400": { $ref: "#/components/responses/Error" }
+  /robots/{id}:
+    delete:
+      summary: Forget a robot that has no job assigned
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: The registry without the robot.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Robot" } }
+        "404": { $ref: "#/components/responses/Error" }
+        "409":
+          description: A job is still assigned to the robot (assigned or unknown).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorBody" }
+  /dispatch:
+    post:
+      summary: Run one scheduling pass
+      responses:
+        "200":
+          description: The assignments made in this pass.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    JobID: { type: string }
+                    RobotID: { type: string }
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+  responses:
+    Error:
+      description: An error.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorBody" }
+  schemas:
+    ErrorBody:
+      type: object
+      properties:
+        error: { type: string }
+    Status:
+      type: string
+      enum: [pending, blocked, assigned, done, failed, unreachable, unknown, cancelled]
+    Health:
+      type: object
+      properties:
+        status: { type: string, enum: [ok, degraded] }
+        persistenceHealthy: { type: boolean }
+        lastPersistError: { type: string, nullable: true }
+    JobRequest:
+      type: object
+      required: [id]
+      properties:
+        id: { type: string }
+        priority: { type: integer }
+        requiredTool: { type: string }
+        location: { type: string }
+        dependsOn: { type: array, items: { type: string } }
+    Job:
+      type: object
+      properties:
+        ID: { type: string }
+        Priority: { type: integer }
+        RequiredTool: { type: string }
+        Location: { type: string }
+        DependsOn: { type: array, items: { type: string } }
+        Status: { $ref: "#/components/schemas/Status" }
+        AssignedRobot: { type: string }
+        DedupKey: { type: string }
+        SubmittedAtMs: { type: integer, format: int64, description: Unix milliseconds; 0 when it has not happened. }
+        AssignedAtMs: { type: integer, format: int64 }
+        CompletedAtMs: { type: integer, format: int64 }
+        Attempt: { type: integer, description: How many times the job has been given to a robot. }
+    SubmitResponse:
+      allOf:
+        - { $ref: "#/components/schemas/Job" }
+        - type: object
+          properties:
+            result: { type: string, enum: [created, duplicate, retried] }
+    Robot:
+      type: object
+      properties:
+        ID: { type: string }
+        Location: { type: string }
+        Tool: { type: string }
+        Available: { type: boolean }
+        Load: { type: integer }
+        LastHeartbeat: { type: string, format: date-time }

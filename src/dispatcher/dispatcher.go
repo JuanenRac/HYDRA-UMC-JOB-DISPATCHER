@@ -61,6 +61,17 @@ type Job struct {
 	// check is the only guard, unchanged. See SubmitJob.
 	DedupKey string
 
+	// SubmittedAtMs, AssignedAtMs and CompletedAtMs are unix milliseconds of the engine's own clock
+	// (0 = it has not happened): when the job was submitted (or retried), when it was last given to
+	// a robot and when it ended. They let a client compute queue time, cycle time and SLA.
+	SubmittedAtMs int64
+	AssignedAtMs  int64
+	CompletedAtMs int64
+	// Attempt counts how many times the job has been given to a robot (0 = never). A robot (or
+	// ORCHESTRATOR) that sends it back with its completion report is refused when a newer
+	// assignment exists, so a late report of an abandoned attempt cannot close the new one.
+	Attempt int
+
 	seq int64 // internal submission order, used only as a stable tie-breaker
 }
 
@@ -141,6 +152,19 @@ type Store interface {
 	LoadAll() ([]JobRecord, []Robot, error)
 }
 
+// BatchStore is implemented by a Store that can write several records in ONE transaction. The
+// Engine uses it for the operations that change a job, its robot and the jobs that depend on it
+// together (a completion, a cancellation, a requeue, the stale-heartbeat sweep), so a crash in
+// the middle can never leave the database with a job done and its robot still reserved.
+type BatchStore interface {
+	SaveBatch(jobs []JobRecord, robots []Robot) error
+}
+
+// RobotDeleter is implemented by a Store that can forget a robot (see Engine.RemoveRobot).
+type RobotDeleter interface {
+	DeleteRobot(id string) error
+}
+
 // Engine holds all queue/registry state and implements the scheduling
 // algorithm. Safe for concurrent use.
 //
@@ -179,6 +203,68 @@ type Engine struct {
 	// exactly (see DetectStaleAssignments) - real callers always get
 	// time.Now via the constructors below.
 	now func() time.Time
+	// pending collects the writes of one operation so they are committed together (see
+	// beginBatchLocked); nil outside such an operation.
+	pending *pendingWrites
+}
+
+type pendingWrites struct {
+	jobs   map[string]*Job
+	robots map[string]*Robot
+}
+
+// maxHeartbeatFutureSkew is how far ahead of the engine's clock a recorded heartbeat may be before
+// it is not trusted. A heartbeat loaded from the database after the clock stepped backwards (a CM5
+// without a battery clock that booted in 1970, a manual correction) would otherwise look fresh for
+// as long as the clock needs to catch up.
+const maxHeartbeatFutureSkew = time.Minute
+
+func heartbeatFromFuture(now, heartbeat time.Time) bool {
+	return heartbeat.Sub(now) > maxHeartbeatFutureSkew
+}
+
+// beginBatchLocked starts collecting persist calls instead of writing each one at once. Caller must
+// hold e.mu and call commitBatchLocked before releasing it.
+func (e *Engine) beginBatchLocked() {
+	if e.store == nil {
+		return
+	}
+	e.pending = &pendingWrites{jobs: map[string]*Job{}, robots: map[string]*Robot{}}
+}
+
+// commitBatchLocked writes everything collected since beginBatchLocked: in one transaction when
+// the store supports it (BatchStore), one record at a time otherwise. It returns the first error.
+func (e *Engine) commitBatchLocked() error {
+	p := e.pending
+	e.pending = nil
+	if p == nil || (len(p.jobs) == 0 && len(p.robots) == 0) {
+		return nil
+	}
+	jobs := make([]JobRecord, 0, len(p.jobs))
+	for _, j := range p.jobs {
+		jobs = append(jobs, JobRecord{Job: *j, Seq: j.seq})
+	}
+	sort.Slice(jobs, func(i, k int) bool { return jobs[i].Seq < jobs[k].Seq })
+	robots := make([]Robot, 0, len(p.robots))
+	for _, r := range p.robots {
+		robots = append(robots, *r)
+	}
+	sort.Slice(robots, func(i, k int) bool { return robots[i].ID < robots[k].ID })
+	if bs, ok := e.store.(BatchStore); ok {
+		return bs.SaveBatch(jobs, robots)
+	}
+	var first error
+	for _, r := range robots {
+		if err := e.store.SaveRobot(r); err != nil && first == nil {
+			first = err
+		}
+	}
+	for _, j := range jobs {
+		if err := e.store.SaveJob(j); err != nil && first == nil {
+			first = err
+		}
+	}
+	return first
 }
 
 // NewEngine returns an empty, ready-to-use, purely in-memory Engine - no
@@ -248,6 +334,10 @@ func (e *Engine) persistJobLocked(j *Job) error {
 	if e.store == nil {
 		return nil
 	}
+	if e.pending != nil {
+		e.pending.jobs[j.ID] = j
+		return nil
+	}
 	return e.store.SaveJob(JobRecord{Job: *j, Seq: j.seq})
 }
 
@@ -255,6 +345,10 @@ func (e *Engine) persistJobLocked(j *Job) error {
 // hold e.mu.
 func (e *Engine) persistRobotLocked(r *Robot) error {
 	if e.store == nil {
+		return nil
+	}
+	if e.pending != nil {
+		e.pending.robots[r.ID] = r
 		return nil
 	}
 	return e.store.SaveRobot(*r)
@@ -304,6 +398,11 @@ var (
 	// ErrJobFinished is returned by CancelJob for a job that already ended.
 	ErrJobFinished = errors.New("job already finished")
 	ErrRobotMismatch  = errors.New("robot ID does not match the job's assigned robot")
+	// ErrRobotBusy is returned by RemoveRobot for a robot that still has a job assigned to it.
+	ErrRobotBusy = errors.New("robot still has a job assigned to it")
+	// ErrAttemptMismatch is returned by CompleteJobAttempt when the report belongs to an older
+	// assignment of the job than the current one.
+	ErrAttemptMismatch = errors.New("attempt does not match the job's current assignment")
 	ErrInvalidJob     = errors.New("invalid job")
 )
 
@@ -344,6 +443,8 @@ func (e *Engine) addJobLocked(j Job) (*Job, error) {
 	stored := j
 	stored.DependsOn = cloneStrings(j.DependsOn)
 	stored.seq = e.nextSeq
+	stored.SubmittedAtMs = e.now().UnixMilli()
+	stored.AssignedAtMs, stored.CompletedAtMs, stored.Attempt = 0, 0, 0
 	stored.Status = e.computeStatus(&stored)
 	// Persisted BEFORE this brand-new job enters e.jobs - a failure here
 	// leaves Engine's state exactly as it was before this call (safe for
@@ -453,6 +554,8 @@ func (e *Engine) SubmitJob(j Job) (Job, SubmitResult, error) {
 			existing.Location = j.Location
 			existing.DependsOn = cloneStrings(j.DependsOn)
 			existing.AssignedRobot = ""
+			existing.SubmittedAtMs = e.now().UnixMilli()
+			existing.AssignedAtMs, existing.CompletedAtMs = 0, 0
 			existing.Status = e.computeStatus(existing)
 			existingErr := e.persistJobLocked(existing)
 			// BUG: a retried job going back to Pending/Blocked
@@ -752,11 +855,16 @@ func (e *Engine) DispatchOnce() []Assignment {
 			persistErr = err
 			continue
 		}
+		prevAssignedAt := j.AssignedAtMs
 		j.Status = StatusAssigned
 		j.AssignedRobot = robot.ID
+		j.Attempt++
+		j.AssignedAtMs = e.now().UnixMilli()
 		if err := e.persistJobLocked(j); err != nil {
 			j.Status = StatusPending
 			j.AssignedRobot = ""
+			j.Attempt--
+			j.AssignedAtMs = prevAssignedAt
 			robot.Available = prevRobotAvailable
 			persistErr = err
 			// Best-effort compensating write - if this also fails, the
@@ -795,7 +903,7 @@ func (e *Engine) robotEligibleLocked(r *Robot, j *Job, now time.Time) bool {
 	if j.RequiredTool != "" && r.Tool != j.RequiredTool {
 		return false
 	}
-	if e.robotFreshness > 0 && (r.LastHeartbeat.IsZero() || now.Sub(r.LastHeartbeat) > e.robotFreshness) {
+	if e.robotFreshness > 0 && (r.LastHeartbeat.IsZero() || heartbeatFromFuture(now, r.LastHeartbeat) || now.Sub(r.LastHeartbeat) > e.robotFreshness) {
 		return false
 	}
 	return true
@@ -846,6 +954,14 @@ func (e *Engine) bestRobotFor(j *Job) *Robot {
 // "which attempt is this" ambiguity to resolve yet; only which ROBOT is
 // reporting.
 func (e *Engine) CompleteJob(jobID string, success bool, robotID string) error {
+	return e.CompleteJobAttempt(jobID, success, robotID, 0)
+}
+
+// CompleteJobAttempt is CompleteJob with the attempt number of the assignment the report is
+// about (Job.Attempt as the robot received it). A report for an older attempt than the current
+// one is refused with ErrAttemptMismatch, so the late report of an abandoned assignment cannot
+// close the one that replaced it. attempt 0 means "not stated" and is not checked.
+func (e *Engine) CompleteJobAttempt(jobID string, success bool, robotID string, attempt int) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
@@ -863,15 +979,21 @@ func (e *Engine) CompleteJob(jobID string, success bool, robotID string) error {
 	if robotID != j.AssignedRobot {
 		return fmt.Errorf("%w: job %q is assigned to %q, not %q", ErrRobotMismatch, jobID, j.AssignedRobot, robotID)
 	}
+	if attempt != 0 && attempt != j.Attempt {
+		return fmt.Errorf("%w: job %q is on attempt %d, the report is for attempt %d", ErrAttemptMismatch, jobID, j.Attempt, attempt)
+	}
 	robot, ok := e.robots[j.AssignedRobot]
 	if !ok {
 		return fmt.Errorf("%w: %q", ErrUnknownRobot, j.AssignedRobot)
 	}
 
+	// The job, its robot and every dependent whose status changes are written in one transaction.
+	e.beginBatchLocked()
 	// Load counts every finished assignment, failed ones included: a robot that
 	// fails everything it is given must not stay the least-loaded one and keep
 	// attracting the whole queue.
 	robot.Load++
+	j.CompletedAtMs = e.now().UnixMilli()
 	if success {
 		j.Status = StatusDone
 	} else {
@@ -908,7 +1030,7 @@ func (e *Engine) CompleteJob(jobID string, success bool, robotID string) error {
 	jobErr := e.persistJobLocked(j)
 	robotErr := e.persistRobotLocked(robot)
 	refreshErr := e.refreshBlocked()
-	e.recordPersistOutcome(jobErr, robotErr, refreshErr)
+	e.recordPersistOutcome(jobErr, robotErr, refreshErr, e.commitBatchLocked())
 	return nil
 }
 
@@ -936,11 +1058,13 @@ func (e *Engine) CancelJob(jobID string) error {
 	case StatusDone, StatusFailed:
 		return fmt.Errorf("%w: job %q is %q", ErrJobFinished, jobID, j.Status)
 	}
+	e.beginBatchLocked()
 	j.Status = StatusCancelled
 	j.AssignedRobot = ""
+	j.CompletedAtMs = e.now().UnixMilli()
 	jobErr := e.persistJobLocked(j)
 	refreshErr := e.refreshBlocked()
-	e.recordPersistOutcome(jobErr, refreshErr)
+	e.recordPersistOutcome(jobErr, refreshErr, e.commitBatchLocked())
 	return nil
 }
 
@@ -967,6 +1091,7 @@ func (e *Engine) RequeueJob(jobID, robotID string) error {
 	if robotID != "" && robotID != j.AssignedRobot {
 		return fmt.Errorf("%w: job %q is assigned to %q, not %q", ErrRobotMismatch, jobID, j.AssignedRobot, robotID)
 	}
+	e.beginBatchLocked()
 	var robotErr error
 	if robot, ok := e.robots[j.AssignedRobot]; ok {
 		robot.Available = false
@@ -974,9 +1099,10 @@ func (e *Engine) RequeueJob(jobID, robotID string) error {
 		robotErr = e.persistRobotLocked(robot)
 	}
 	j.AssignedRobot = ""
+	j.AssignedAtMs = 0
 	j.Status = e.computeStatus(j)
 	jobErr := e.persistJobLocked(j)
-	e.recordPersistOutcome(robotErr, jobErr)
+	e.recordPersistOutcome(robotErr, jobErr, e.commitBatchLocked())
 	return nil
 }
 
@@ -1011,6 +1137,7 @@ func (e *Engine) DetectStaleAssignments(timeout time.Duration) []string {
 	now := e.now()
 	var newlyUnknown []string
 	var persistErr error
+	e.beginBatchLocked()
 	for _, j := range e.jobs {
 		if j.Status != StatusAssigned {
 			continue
@@ -1019,7 +1146,9 @@ func (e *Engine) DetectStaleAssignments(timeout time.Duration) []string {
 		if !ok {
 			continue // the robot itself was removed entirely - a separate concern from a merely-quiet one
 		}
-		if robot.LastHeartbeat.IsZero() || now.Sub(robot.LastHeartbeat) < timeout {
+		// a heartbeat from the future (the clock stepped backwards since) says nothing about
+		// the robot being alive now, so it is treated as silence
+		if robot.LastHeartbeat.IsZero() || (now.Sub(robot.LastHeartbeat) < timeout && !heartbeatFromFuture(now, robot.LastHeartbeat)) {
 			continue
 		}
 		j.Status = StatusUnknown
@@ -1028,10 +1157,75 @@ func (e *Engine) DetectStaleAssignments(timeout time.Duration) []string {
 			persistErr = err
 		}
 	}
+	commitErr := e.commitBatchLocked()
 	if len(newlyUnknown) > 0 {
-		e.recordPersistOutcome(persistErr)
+		e.recordPersistOutcome(persistErr, commitErr)
 	}
 	return newlyUnknown
+}
+
+// RemoveRobot forgets a robot (it was decommissioned or registered by mistake). A robot that
+// still has a job Assigned or Unknown is refused with ErrRobotBusy: the job's outcome would have
+// nobody to be reported by. When the store can forget robots (RobotDeleter) the record is deleted
+// first, so a failed delete leaves everything as it was and is returned to the caller.
+func (e *Engine) RemoveRobot(id string) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if _, ok := e.robots[id]; !ok {
+		return fmt.Errorf("%w: %q", ErrUnknownRobot, id)
+	}
+	for _, j := range e.jobs {
+		if (j.Status == StatusAssigned || j.Status == StatusUnknown) && j.AssignedRobot == id {
+			return fmt.Errorf("%w: job %q is %q on robot %q", ErrRobotBusy, j.ID, j.Status, id)
+		}
+	}
+	if deleter, ok := e.store.(RobotDeleter); ok && e.store != nil {
+		if err := deleter.DeleteRobot(id); err != nil {
+			return fmt.Errorf("deleting robot %q: %w", id, err)
+		}
+	}
+	delete(e.robots, id)
+	return nil
+}
+
+// JobsPage returns the jobs in submission order, optionally only those in `status` (empty = all),
+// skipping `offset` and returning at most `limit` (0 = no limit), and how many jobs matched in
+// total. It lets a client read a long queue in pieces instead of downloading it all.
+func (e *Engine) JobsPage(status JobStatus, offset, limit int) ([]Job, int) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	matching := make([]*Job, 0, len(e.jobs))
+	for _, j := range e.jobs {
+		if status == "" || j.Status == status {
+			matching = append(matching, j)
+		}
+	}
+	sort.Slice(matching, func(i, k int) bool { return matching[i].seq < matching[k].seq })
+	total := len(matching)
+	if offset < 0 {
+		offset = 0
+	}
+	if offset > total {
+		offset = total
+	}
+	matching = matching[offset:]
+	if limit > 0 && limit < len(matching) {
+		matching = matching[:limit]
+	}
+	out := make([]Job, 0, len(matching))
+	for _, j := range matching {
+		out = append(out, cloneJob(j))
+	}
+	return out, total
+}
+
+// ValidStatus reports whether s names a job status.
+func ValidStatus(s JobStatus) bool {
+	switch s {
+	case StatusPending, StatusBlocked, StatusAssigned, StatusDone, StatusFailed, StatusUnreachable, StatusUnknown, StatusCancelled:
+		return true
+	}
+	return false
 }
 
 // Job returns a copy of one job's current state.

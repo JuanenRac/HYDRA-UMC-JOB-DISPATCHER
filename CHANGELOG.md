@@ -4,6 +4,12 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+- A completion, cancellation, requeue or stale sweep is written to SQLite in one transaction, and the database runs in WAL mode: a crash can no longer leave a job done with its robot still reserved.
+- A robot heartbeat dated more than a minute in the future (the clock stepped back) is no longer taken as proof of life: the robot gets no work until it checks in again.
+- `GET /jobs` accepts `status`, `limit` and `offset` and answers `X-Total-Count`; without parameters it returns everything, as before.
+- Every job carries `SubmittedAtMs`, `AssignedAtMs`, `CompletedAtMs` and an `Attempt` counter (existing databases are migrated in place); `POST /jobs/complete` accepts an optional `attempt` and answers 409 for an abandoned assignment.
+- `DELETE /robots/{id}` forgets a robot that has no job assigned.
+- `docs/openapi.yaml` describes every route in OpenAPI.
 - Building no longer changes the version; raising it is the explicit `bump` command (`python tools/hydra_project_tool.py bump`). The build scripts only report the version they built, and CI fails if a build script runs a bump.
 - The banner follows the animated style of the ecosystem banners, with the name, the kind and the technologies of the project.
 - Tests only: completion fencing (unknown job or robot, wrong robot, duplicate report), the stale-heartbeat boundary and the robots it skips, the operator requeue (a failed dependency keeps the job unreachable, a silent robot is not handed the job back), dependency fall-out, and a store that fails halfway through a dispatch pass are now asserted.

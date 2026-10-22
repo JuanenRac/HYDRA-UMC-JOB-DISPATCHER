@@ -28,7 +28,7 @@
 |---|---|
 | Versión | `0.2.2` |
 | Madurez | Funcional |
-| Tests | 121 |
+| Tests | 143 |
 | Tecnología | Go / priority queue / HTTP API / SQLite (modernc.org/sqlite, pure Go) |
 | Destino | La Raspberry Pi CM5 de una celda HYDRA-UMC |
 | En hardware real | Todavía no: no consta ninguna ejecución en hardware real para esta versión |
@@ -46,6 +46,7 @@ Asegura que las tareas de alta prioridad (ej. "Reparación de Defecto de Emergen
 * 📡 **Persistencia:** estado de misión real y opcional respaldado por SQLite (`-db PATH`, `src/sqlitestore`, Go puro - sin CGO) - la cola sobrevive a un reinicio real del proceso, verificado de extremo a extremo; sin configurar, todo permanece en memoria. `GET /health` reporta un almacén degradado en vez de fallar en silencio. Ver [`docs/API.md`](docs/API.md#persistence).
 * 🔁 **Envío Idempotente (v0):** Deduplicación real y opcional basada en `DedupKey` vía `POST /jobs/submit` - un reenvío de un job en curso o ya terminado se devuelve sin cambios, y un reintento tras un fallo real reutiliza el mismo ID de job en vez de ejecutar el trabajo dos veces. El orden por prioridad es determinista entre ejecuciones repetidas, cubierto por un test de regresión explícito.
 * 🧯 **Seguro por defecto, y un robot que deja de responder no recibe trabajo (v0):** la API escucha en `127.0.0.1:8090` salvo que se indique otra cosa, y otra dirección exige un token bearer (`-token` / `JOB_DISPATCHER_TOKEN`; entonces todo salvo `GET /health` lo pide) o un `-allow-anonymous` explícito; el servidor HTTP tiene tiempos límite y los cuerpos de petición de más de 64 KB se rechazan con `413`. Un robot callado durante más de `-robot-timeout` (2 minutos por defecto) no recibe trabajo nuevo, un trabajo puede indicar una `location` preferida (`POST /jobs`, `POST /jobs/submit`; se prefieren los robots de esa ubicación, nunca se exige), y el último latido de cada robot se persiste (una base de datos de la versión anterior se migra en el sitio), así que un reinicio ya no oculta un robot que se calló. *(implementado)*
+* 🗂️ **Escrituras atómicas, paginación y trabajos trazables:** una finalización, cancelación, reencolado o barrido de latidos caducados se escribe en SQLite en una sola transacción (la base funciona en modo WAL); `GET /jobs` se puede filtrar y paginar (`status`, `limit`, `offset`, `X-Total-Count`); cada trabajo lleva `SubmittedAtMs`, `AssignedAtMs`, `CompletedAtMs` y un contador `Attempt` que el informe de finalización puede devolver (`attempt`) para que se rechace el informe tardío de una asignación abandonada; `DELETE /robots/{id}` olvida un robot sin trabajo; no se fía de un latido de robot con fecha futura. Hay una descripción legible por máquinas en `docs/openapi.yaml`. *(implementado)*
 
 ---
 
@@ -86,7 +87,8 @@ HYDRA-UMC-JOB-DISPATCHER/
 │   ├── api/           # Handlers JSON/HTTP planos que envuelven el motor
 │   └── sqlitestore/  # Persistencia SQLite opcional en Go puro (-db PATH)
 ├── docs/
-│   └── API.md         # Referencia real de endpoints HTTP (peticiones, respuestas, codigos de estado)
+│   ├── API.md         # Referencia real de endpoints HTTP (peticiones, respuestas, codigos de estado)
+│   └── openapi.yaml   # Descripción OpenAPI legible por máquinas de las mismas rutas
 ├── images/            # Medios y diagramas
 ├── systemd/
 │   └── hydra-umc-job-dispatcher.service # Unidad systemd de la cola de misiones por prioridad en la CM5 local

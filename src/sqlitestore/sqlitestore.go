@@ -16,6 +16,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -43,6 +44,19 @@ func Open(path string) (*Store, error) {
 	// that a connection pool would otherwise invite.
 	db.SetMaxOpenConns(1)
 
+	if path != ":memory:" && !strings.HasPrefix(path, "file::memory:") {
+		// WAL: a commit appends to a log instead of rewriting the journal, and with
+		// synchronous=NORMAL it does not wait for a second fsync (a power cut can lose the last
+		// commits, never corrupt the file) - what an SD card or eMMC needs; busy_timeout makes a
+		// second process (a backup tool) wait instead of failing at once.
+		for _, pragma := range []string{"PRAGMA journal_mode = WAL", "PRAGMA synchronous = NORMAL", "PRAGMA busy_timeout = 5000"} {
+			if _, err := db.Exec(pragma); err != nil {
+				db.Close()
+				return nil, fmt.Errorf("configuring sqlite database %q: %w", path, err)
+			}
+		}
+	}
+
 	if _, err := db.Exec(schema); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("migrating sqlite database %q: %w", path, err)
@@ -69,7 +83,11 @@ CREATE TABLE IF NOT EXISTS jobs (
 	assigned_robot TEXT NOT NULL,
 	dedup_key      TEXT NOT NULL,
 	seq            INTEGER NOT NULL,
-	location       TEXT NOT NULL DEFAULT ''
+	location       TEXT NOT NULL DEFAULT '',
+	submitted_at_ms INTEGER NOT NULL DEFAULT 0,
+	assigned_at_ms  INTEGER NOT NULL DEFAULT 0,
+	completed_at_ms INTEGER NOT NULL DEFAULT 0,
+	attempt         INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS robots (
 	id        TEXT PRIMARY KEY,
@@ -86,6 +104,10 @@ CREATE TABLE IF NOT EXISTS robots (
 var migrations = []struct{ table, column, ddl string }{
 	{"jobs", "location", "ALTER TABLE jobs ADD COLUMN location TEXT NOT NULL DEFAULT ''"},
 	{"robots", "last_heartbeat_ns", "ALTER TABLE robots ADD COLUMN last_heartbeat_ns INTEGER NOT NULL DEFAULT 0"},
+	{"jobs", "submitted_at_ms", "ALTER TABLE jobs ADD COLUMN submitted_at_ms INTEGER NOT NULL DEFAULT 0"},
+	{"jobs", "assigned_at_ms", "ALTER TABLE jobs ADD COLUMN assigned_at_ms INTEGER NOT NULL DEFAULT 0"},
+	{"jobs", "completed_at_ms", "ALTER TABLE jobs ADD COLUMN completed_at_ms INTEGER NOT NULL DEFAULT 0"},
+	{"jobs", "attempt", "ALTER TABLE jobs ADD COLUMN attempt INTEGER NOT NULL DEFAULT 0"},
 }
 
 func migrate(db *sql.DB) error {
@@ -121,15 +143,63 @@ func migrate(db *sql.DB) error {
 	return nil
 }
 
+// execer is what SaveJob and SaveRobot need: a *sql.DB for a single write, a *sql.Tx inside SaveBatch.
+type execer interface {
+	Exec(query string, args ...any) (sql.Result, error)
+}
+
 // SaveJob implements dispatcher.Store.
 func (s *Store) SaveJob(record dispatcher.JobRecord) error {
+	return saveJob(s.db, record)
+}
+
+// SaveRobot implements dispatcher.Store.
+func (s *Store) SaveRobot(r dispatcher.Robot) error {
+	return saveRobot(s.db, r)
+}
+
+// SaveBatch implements dispatcher.BatchStore: every robot and job is written in ONE transaction,
+// so a crash or an error leaves either all of them or none.
+func (s *Store) SaveBatch(jobs []dispatcher.JobRecord, robots []dispatcher.Robot) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("starting a transaction: %w", err)
+	}
+	for _, r := range robots {
+		if err := saveRobot(tx, r); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+	}
+	for _, j := range jobs {
+		if err := saveJob(tx, j); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("committing %d jobs and %d robots: %w", len(jobs), len(robots), err)
+	}
+	return nil
+}
+
+// DeleteRobot implements dispatcher.RobotDeleter.
+func (s *Store) DeleteRobot(id string) error {
+	if _, err := s.db.Exec(`DELETE FROM robots WHERE id = ?`, id); err != nil {
+		return fmt.Errorf("deleting robot %q: %w", id, err)
+	}
+	return nil
+}
+
+func saveJob(db execer, record dispatcher.JobRecord) error {
 	dependsOnJSON, err := json.Marshal(record.DependsOn)
 	if err != nil {
 		return fmt.Errorf("encoding DependsOn for job %q: %w", record.ID, err)
 	}
-	_, err = s.db.Exec(
-		`INSERT INTO jobs (id, priority, required_tool, depends_on, status, assigned_robot, dedup_key, seq, location)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	_, err = db.Exec(
+		`INSERT INTO jobs (id, priority, required_tool, depends_on, status, assigned_robot, dedup_key, seq, location,
+			submitted_at_ms, assigned_at_ms, completed_at_ms, attempt)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
 			priority = excluded.priority,
 			required_tool = excluded.required_tool,
@@ -138,8 +208,13 @@ func (s *Store) SaveJob(record dispatcher.JobRecord) error {
 			assigned_robot = excluded.assigned_robot,
 			dedup_key = excluded.dedup_key,
 			seq = excluded.seq,
-			location = excluded.location`,
+			location = excluded.location,
+			submitted_at_ms = excluded.submitted_at_ms,
+			assigned_at_ms = excluded.assigned_at_ms,
+			completed_at_ms = excluded.completed_at_ms,
+			attempt = excluded.attempt`,
 		record.ID, record.Priority, record.RequiredTool, string(dependsOnJSON), string(record.Status), record.AssignedRobot, record.DedupKey, record.Seq, record.Location,
+		record.SubmittedAtMs, record.AssignedAtMs, record.CompletedAtMs, record.Attempt,
 	)
 	if err != nil {
 		return fmt.Errorf("saving job %q: %w", record.ID, err)
@@ -147,13 +222,12 @@ func (s *Store) SaveJob(record dispatcher.JobRecord) error {
 	return nil
 }
 
-// SaveRobot implements dispatcher.Store.
-func (s *Store) SaveRobot(r dispatcher.Robot) error {
+func saveRobot(db execer, r dispatcher.Robot) error {
 	available := 0
 	if r.Available {
 		available = 1
 	}
-	_, err := s.db.Exec(
+	_, err := db.Exec(
 		`INSERT INTO robots (id, location, tool, available, load, last_heartbeat_ns)
 		 VALUES (?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
@@ -184,7 +258,8 @@ func (s *Store) LoadAll() ([]dispatcher.JobRecord, []dispatcher.Robot, error) {
 }
 
 func (s *Store) loadJobs() ([]dispatcher.JobRecord, error) {
-	rows, err := s.db.Query(`SELECT id, priority, required_tool, depends_on, status, assigned_robot, dedup_key, seq, location FROM jobs`)
+	rows, err := s.db.Query(`SELECT id, priority, required_tool, depends_on, status, assigned_robot, dedup_key, seq, location,
+		submitted_at_ms, assigned_at_ms, completed_at_ms, attempt FROM jobs`)
 	if err != nil {
 		return nil, fmt.Errorf("loading jobs: %w", err)
 	}
@@ -197,7 +272,8 @@ func (s *Store) loadJobs() ([]dispatcher.JobRecord, error) {
 			dependsOnJSON string
 			status        string
 		)
-		if err := rows.Scan(&record.ID, &record.Priority, &record.RequiredTool, &dependsOnJSON, &status, &record.AssignedRobot, &record.DedupKey, &record.Seq, &record.Location); err != nil {
+		if err := rows.Scan(&record.ID, &record.Priority, &record.RequiredTool, &dependsOnJSON, &status, &record.AssignedRobot, &record.DedupKey, &record.Seq, &record.Location,
+			&record.SubmittedAtMs, &record.AssignedAtMs, &record.CompletedAtMs, &record.Attempt); err != nil {
 			return nil, fmt.Errorf("scanning job row: %w", err)
 		}
 		if err := json.Unmarshal([]byte(dependsOnJSON), &record.DependsOn); err != nil {
@@ -249,4 +325,8 @@ func heartbeatNanos(t time.Time) int64 {
 	return t.UnixNano()
 }
 
-var _ dispatcher.Store = (*Store)(nil)
+var (
+	_ dispatcher.Store        = (*Store)(nil)
+	_ dispatcher.BatchStore   = (*Store)(nil)
+	_ dispatcher.RobotDeleter = (*Store)(nil)
+)

@@ -18,6 +18,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -51,6 +53,7 @@ func New(engine *dispatcher.Engine) *Server {
 	s.mux.HandleFunc("/jobs/requeue", s.handleRequeueJob)
 	s.mux.HandleFunc("/jobs/", s.handleJobByID)
 	s.mux.HandleFunc("/robots", s.handleRobots)
+	s.mux.HandleFunc("/robots/", s.handleRobotByID)
 	s.mux.HandleFunc("/dispatch", s.handleDispatch)
 	s.mux.HandleFunc("/jobs/detect-stale", s.handleDetectStale)
 	s.mux.HandleFunc("/health", s.handleHealth)
@@ -111,7 +114,7 @@ type jobRequest struct {
 func (s *Server) handleJobs(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		writeJSON(w, http.StatusOK, s.engine.Jobs())
+		s.handleListJobs(w, r)
 	case http.MethodPost:
 		var req jobRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -143,6 +146,60 @@ func (s *Server) handleJobs(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Allow", "GET, POST")
 		writeError(w, http.StatusMethodNotAllowed, errors.New("use GET to list jobs or POST to submit one"))
 	}
+}
+
+// handleListJobs answers GET /jobs. Without parameters it returns every job, as it always did.
+// ?status=, ?limit= and ?offset= narrow it; X-Total-Count says how many jobs matched, so a client
+// can read a long queue in pieces.
+func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query()
+	status := dispatcher.JobStatus(query.Get("status"))
+	if status != "" && !dispatcher.ValidStatus(status) {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("unknown status %q", status))
+		return
+	}
+	limit, offset := 0, 0
+	for name, target := range map[string]*int{"limit": &limit, "offset": &offset} {
+		if raw := query.Get(name); raw != "" {
+			n, err := strconv.Atoi(raw)
+			if err != nil || n < 0 || (name == "limit" && n == 0) {
+				writeError(w, http.StatusBadRequest, fmt.Errorf("%q must be a positive whole number", name))
+				return
+			}
+			*target = n
+		}
+	}
+	jobs, total := s.engine.JobsPage(status, offset, limit)
+	w.Header().Set("X-Total-Count", strconv.Itoa(total))
+	writeJSON(w, http.StatusOK, jobs)
+}
+
+// handleRobotByID answers DELETE /robots/{id}: the robot is forgotten, unless a job is still
+// assigned to it (409).
+func (s *Server) handleRobotByID(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		w.Header().Set("Allow", "DELETE")
+		writeError(w, http.StatusMethodNotAllowed, errors.New("use DELETE"))
+		return
+	}
+	id, err := url.PathUnescape(strings.TrimPrefix(r.URL.Path, "/robots/"))
+	if err != nil || id == "" {
+		writeError(w, http.StatusBadRequest, errors.New("a robot id is required"))
+		return
+	}
+	if err := s.engine.RemoveRobot(id); err != nil {
+		status := http.StatusInternalServerError
+		switch {
+		case errors.Is(err, dispatcher.ErrUnknownRobot):
+			status = http.StatusNotFound
+		case errors.Is(err, dispatcher.ErrRobotBusy):
+			status = http.StatusConflict
+		}
+		writeError(w, status, err)
+		return
+	}
+	log.Printf("[job-dispatcher] robot %q removed", id)
+	writeJSON(w, http.StatusOK, s.engine.Robots())
 }
 
 // submitRequest is jobRequest plus an optional idempotency key. A separate
@@ -217,6 +274,9 @@ type completeRequest struct {
 	// robot's own Load/Available bookkeeping. Required - see
 	// dispatcher.Engine.CompleteJob's own doc comment.
 	RobotID string `json:"robotId"`
+	// Attempt is the optional Job.Attempt the report is about; a report for an older assignment
+	// than the current one is a 409. Omitted or 0 means "not stated".
+	Attempt int `json:"attempt"`
 }
 
 func (s *Server) handleCompleteJob(w http.ResponseWriter, r *http.Request) {
@@ -234,7 +294,11 @@ func (s *Server) handleCompleteJob(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, errors.New("\"robotId\" is required"))
 		return
 	}
-	if err := s.engine.CompleteJob(req.ID, req.Success, req.RobotID); err != nil {
+	if req.Attempt < 0 {
+		writeError(w, http.StatusBadRequest, errors.New("\"attempt\" must not be negative"))
+		return
+	}
+	if err := s.engine.CompleteJobAttempt(req.ID, req.Success, req.RobotID, req.Attempt); err != nil {
 		writeError(w, completeJobErrorStatus(err), err)
 		return
 	}
@@ -256,7 +320,7 @@ func completeJobErrorStatus(err error) int {
 		// The named job (or the robot it's assigned to) doesn't exist at
 		// all - a missing resource, not a malformed request.
 		return http.StatusNotFound
-	case errors.Is(err, dispatcher.ErrJobNotAssigned), errors.Is(err, dispatcher.ErrRobotMismatch):
+	case errors.Is(err, dispatcher.ErrJobNotAssigned), errors.Is(err, dispatcher.ErrRobotMismatch), errors.Is(err, dispatcher.ErrAttemptMismatch):
 		// The job and robot both exist, but completing it right now
 		// conflicts with the job's real current state (already done/
 		// failed, or genuinely not this job's assigned robot) - a real

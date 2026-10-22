@@ -149,3 +149,88 @@ func TestEdge_DetectStaleRejectsNegativeAndZeroTimeouts(t *testing.T) {
 		}
 	}
 }
+
+func TestListJobs_FiltersPagesAndCounts(t *testing.T) {
+	engine := dispatcher.NewEngine()
+	s := New(engine)
+	for _, id := range []string{"a", "b", "c"} {
+		if rec := raw(t, s, http.MethodPost, "/jobs", `{"id":"`+id+`"}`); rec.Code != http.StatusCreated {
+			t.Fatalf("submit %s = %d", id, rec.Code)
+		}
+	}
+	rec := raw(t, s, http.MethodGet, "/jobs?status=pending&limit=2&offset=1", "")
+	var jobs []dispatcher.Job
+	if err := json.Unmarshal(rec.Body.Bytes(), &jobs); err != nil || rec.Code != http.StatusOK {
+		t.Fatalf("%d %v", rec.Code, err)
+	}
+	if len(jobs) != 2 || jobs[0].ID != "b" || rec.Header().Get("X-Total-Count") != "3" {
+		t.Fatalf("jobs = %+v total = %q, want b,c of 3", jobs, rec.Header().Get("X-Total-Count"))
+	}
+	if rec := raw(t, s, http.MethodGet, "/jobs", ""); rec.Header().Get("X-Total-Count") != "3" || !strings.Contains(rec.Body.String(), `"ID":"c"`) {
+		t.Fatal("without parameters the whole list must come back, as before")
+	}
+	for _, bad := range []string{"?status=nonsense", "?limit=0", "?limit=-1", "?limit=x", "?offset=-3"} {
+		if rec := raw(t, s, http.MethodGet, "/jobs"+bad, ""); rec.Code != http.StatusBadRequest {
+			t.Errorf("GET /jobs%s = %d, want 400", bad, rec.Code)
+		}
+	}
+}
+
+func TestDeleteRobot_RemovesIdleRobotsAndRefusesBusyOnes(t *testing.T) {
+	engine := dispatcher.NewEngine()
+	s := New(engine)
+	raw(t, s, http.MethodPost, "/robots", `{"id":"busy","available":true}`)
+	raw(t, s, http.MethodPost, "/robots", `{"id":"idle","available":true}`)
+	raw(t, s, http.MethodPost, "/jobs", `{"id":"j"}`)
+	var assignments []dispatcher.Assignment
+	_ = json.Unmarshal(raw(t, s, http.MethodPost, "/dispatch", "").Body.Bytes(), &assignments)
+	busy, idle := assignments[0].RobotID, "busy"
+	if busy == "busy" {
+		idle = "idle"
+	}
+	if rec := raw(t, s, http.MethodDelete, "/robots/"+busy, ""); rec.Code != http.StatusConflict {
+		t.Fatalf("deleting a robot with a job = %d, want 409", rec.Code)
+	}
+	if rec := raw(t, s, http.MethodDelete, "/robots/ghost", ""); rec.Code != http.StatusNotFound {
+		t.Fatalf("deleting an unknown robot = %d, want 404", rec.Code)
+	}
+	if rec := raw(t, s, http.MethodDelete, "/robots/"+idle, ""); rec.Code != http.StatusOK || strings.Contains(rec.Body.String(), `"ID":"`+idle+`"`) {
+		t.Fatalf("deleting the idle robot = %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := raw(t, s, http.MethodGet, "/robots/"+idle, ""); rec.Code != http.StatusMethodNotAllowed || rec.Header().Get("Allow") != "DELETE" {
+		t.Fatalf("GET /robots/{id} = %d Allow %q", rec.Code, rec.Header().Get("Allow"))
+	}
+	if rec := raw(t, s, http.MethodDelete, "/robots/", ""); rec.Code != http.StatusBadRequest {
+		t.Fatalf("DELETE /robots/ = %d, want 400", rec.Code)
+	}
+}
+
+func TestDeleteRobot_NeedsTheTokenWhenOneIsSet(t *testing.T) {
+	engine := dispatcher.NewEngine()
+	s := New(engine)
+	s.RequireToken("a-secret-token-123")
+	engine.UpsertRobot(dispatcher.Robot{ID: "r"})
+	if rec := raw(t, s, http.MethodDelete, "/robots/r", ""); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("DELETE without a token = %d, want 401", rec.Code)
+	}
+	if len(engine.Robots()) != 1 {
+		t.Fatal("an unauthorized delete removed the robot")
+	}
+}
+
+func TestComplete_AStaleAttemptIsAConflictAndZeroIsNotChecked(t *testing.T) {
+	engine := dispatcher.NewEngine()
+	s := New(engine)
+	raw(t, s, http.MethodPost, "/robots", `{"id":"r","available":true}`)
+	raw(t, s, http.MethodPost, "/jobs", `{"id":"x"}`)
+	raw(t, s, http.MethodPost, "/dispatch", "")
+	if rec := raw(t, s, http.MethodPost, "/jobs/complete", `{"id":"x","robotId":"r","success":true,"attempt":9}`); rec.Code != http.StatusConflict {
+		t.Fatalf("a report for another attempt = %d, want 409", rec.Code)
+	}
+	if rec := raw(t, s, http.MethodPost, "/jobs/complete", `{"id":"x","robotId":"r","success":true,"attempt":-1}`); rec.Code != http.StatusBadRequest {
+		t.Fatalf("a negative attempt = %d, want 400", rec.Code)
+	}
+	if rec := raw(t, s, http.MethodPost, "/jobs/complete", `{"id":"x","robotId":"r","success":true,"attempt":1}`); rec.Code != http.StatusOK {
+		t.Fatalf("the current attempt = %d, want 200", rec.Code)
+	}
+}
