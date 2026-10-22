@@ -16,7 +16,7 @@
 
 ---
 
-**Controllo di onestà - cosa funziona davvero oggi:** il motore di scheduling (`src/dispatcher/dispatcher.go`) - coda ordinata per priorità, routing consapevole dello strumento, tracciamento delle dipendenze multi-fase, e invio idempotente tramite `DedupKey` - e la semplice API JSON/HTTP che lo avvolge (`src/api/api.go`) sono reali e testati (98 test superati tra `src/dispatcher`, `src/api`, `src/sqlitestore`, `go test ./...`). La persistenza SQLite opzionale (`src/sqlitestore/sqlitestore.go`, Go puro, senza CGO) è genuinamente verificata end-to-end contro un vero processo terminato e rilanciato, non solo testata in isolamento. Ciò che è una lacuna nota e documentata: il routing consapevole dello strumento verifica `RequiredTool`/`Robot.Tool` tramite corrispondenza esatta di stringa rispetto a ciò che dichiara la registrazione `POST /robots` di un robot - non parla ancora con un vero URTC via CAN per confermare che la testa utensile sia fisicamente montata, quindi un robot che mentisse sul proprio strumento (o a cui fosse caduta la testa) è oggi indistinguibile da uno che dice la verità. Le 4 fasi della roadmap (sincronizzazione TSN, pianificazione di percorsi 3D, ottimizzazione del dispatching, stima della durata basata su IA) sono lavoro futuro aspirazionale senza alcun codice dietro per ora. Vedi `CHANGELOG.md` per ciò che è stato consegnato esattamente finora.
+**Controllo di onestà - cosa funziona davvero oggi:** il motore di scheduling (`src/dispatcher/dispatcher.go`) - coda ordinata per priorità, routing consapevole dello strumento, tracciamento delle dipendenze multi-fase, e invio idempotente tramite `DedupKey` - e la semplice API JSON/HTTP che lo avvolge (`src/api/api.go`) sono reali e testati (121 test superati tra `src/dispatcher`, `src/api`, `src/sqlitestore`, `go test ./...`). La persistenza SQLite opzionale (`src/sqlitestore/sqlitestore.go`, Go puro, senza CGO) è genuinamente verificata end-to-end contro un vero processo terminato e rilanciato, non solo testata in isolamento. Ciò che è una lacuna nota e documentata: il routing consapevole dello strumento verifica `RequiredTool`/`Robot.Tool` tramite corrispondenza esatta di stringa rispetto a ciò che dichiara la registrazione `POST /robots` di un robot - non parla ancora con un vero URTC via CAN per confermare che la testa utensile sia fisicamente montata, quindi un robot che mentisse sul proprio strumento (o a cui fosse caduta la testa) è oggi indistinguibile da uno che dice la verità. Le 4 fasi della roadmap (sincronizzazione TSN, pianificazione di percorsi 3D, ottimizzazione del dispatching, stima della durata basata su IA) sono lavoro futuro aspirazionale senza alcun codice dietro per ora. Vedi `CHANGELOG.md` per ciò che è stato consegnato esattamente finora.
 
 ---
 
@@ -28,7 +28,7 @@
 |---|---|
 | Versione | `0.2.2` |
 | Maturità | Funzionale |
-| Test | 98 |
+| Test | 121 |
 | Tecnologia | Go / priority queue / HTTP API / SQLite (modernc.org/sqlite, pure Go) |
 | Destinazione | Il Raspberry Pi CM5 di una cella HYDRA-UMC |
 | Su hardware reale | Non ancora: per questa versione non risulta alcuna esecuzione su hardware reale |

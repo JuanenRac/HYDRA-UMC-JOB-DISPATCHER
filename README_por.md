@@ -16,7 +16,7 @@
 
 ---
 
-**Verificação de honestidade - o que realmente funciona hoje:** o motor de escalonamento (`src/dispatcher/dispatcher.go`) - fila ordenada por prioridade, encaminhamento por ferramenta, acompanhamento de dependências de várias etapas e submissão idempotente por `DedupKey` - e a API JSON/HTTP simples que o envolve (`src/api/api.go`) são reais e testados (98 testes a passar em `src/dispatcher`, `src/api`, `src/sqlitestore`, `go test ./...`). A persistência SQLite opcional (`src/sqlitestore/sqlitestore.go`, Go puro, sem CGO) está genuinamente verificada de ponta a ponta contra um processo real terminado e relançado, não apenas testada de forma isolada. O que é uma lacuna conhecida e documentada: o encaminhamento por ferramenta compara `RequiredTool`/`Robot.Tool` por igualdade exata de texto com o que o registo `POST /robots` de cada robô afirma - ainda não fala com um URTC real por CAN para confirmar que a cabeça de ferramenta está fisicamente montada, pelo que um robô que mente sobre a sua ferramenta (ou um cuja cabeça caiu) é hoje indistinguível de um que diz a verdade. As 4 fases do roteiro (sincronização TSN, planeamento de caminhos 3D, otimização do despacho, estimativa de duração por IA) são trabalho futuro aspiracional, ainda sem código por trás. Veja o `CHANGELOG.md` para saber exatamente o que já foi entregue.
+**Verificação de honestidade - o que realmente funciona hoje:** o motor de escalonamento (`src/dispatcher/dispatcher.go`) - fila ordenada por prioridade, encaminhamento por ferramenta, acompanhamento de dependências de várias etapas e submissão idempotente por `DedupKey` - e a API JSON/HTTP simples que o envolve (`src/api/api.go`) são reais e testados (121 testes a passar em `src/dispatcher`, `src/api`, `src/sqlitestore`, `go test ./...`). A persistência SQLite opcional (`src/sqlitestore/sqlitestore.go`, Go puro, sem CGO) está genuinamente verificada de ponta a ponta contra um processo real terminado e relançado, não apenas testada de forma isolada. O que é uma lacuna conhecida e documentada: o encaminhamento por ferramenta compara `RequiredTool`/`Robot.Tool` por igualdade exata de texto com o que o registo `POST /robots` de cada robô afirma - ainda não fala com um URTC real por CAN para confirmar que a cabeça de ferramenta está fisicamente montada, pelo que um robô que mente sobre a sua ferramenta (ou um cuja cabeça caiu) é hoje indistinguível de um que diz a verdade. As 4 fases do roteiro (sincronização TSN, planeamento de caminhos 3D, otimização do despacho, estimativa de duração por IA) são trabalho futuro aspiracional, ainda sem código por trás. Veja o `CHANGELOG.md` para saber exatamente o que já foi entregue.
 
 ---
 
@@ -28,7 +28,7 @@
 |---|---|
 | Versão | `0.2.2` |
 | Maturidade | Funcional |
-| Testes | 98 |
+| Testes | 121 |
 | Tecnologia | Go / priority queue / HTTP API / SQLite (modernc.org/sqlite, pure Go) |
 | Destino | O Raspberry Pi CM5 de uma célula HYDRA-UMC |
 | Em hardware real | Ainda não: não há registo de execução em hardware real para esta versão |
