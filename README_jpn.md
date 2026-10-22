@@ -101,7 +101,7 @@ HYDRA-UMC-JOB-DISPATCHER/
 ├── go.mod / go.sum    # Go モジュール定義
 ├── version.go         # const Version = "X.Y.Z"(go.mod にはアプリバージョンフィールドがありません)
 ├── main.go            # エントリポイント：エンジンを HTTP API に接続してリッスン
-├── bump_version.py    # オドメーター式バージョンインクリメント、build.sh/.bat が実行
+├── bump_version.py    # オドメーター式バージョンインクリメント（明示的な `bump` コマンドのみが実行）
 ├── bump_manifest_version.py # hydra-umc.project.json のバージョンをネイティブ側と同期（--sync）
 ├── build.sh/.bat      # バージョンを増加させ、その後 `go build` を実行
 ├── run.sh/.bat        # コンパイル済みバイナリを実行
@@ -130,10 +130,7 @@ run.bat -addr 127.0.0.1:8090
 ./run.sh -addr 127.0.0.1:8090
 ```
 
-`build.sh`/`build.bat` は `version.go` のバージョンを増加させ（エコ
-システム全体で統一されたオドメーター規則、`bump_version.py` を参照——
-`go.mod` にはアプリケーションバイナリ向けのネイティブなバージョン
-フィールドがありません）、その後 `go build` を実行します。
+`build.sh`/`build.bat` はバージョンを変更せず（上げるのは `python tools/hydra_project_tool.py bump` だけです）、その後 `go build` を実行します。
 `run.sh`/`run.bat` は生成されたバイナリを直接実行します。
 
 ```bash

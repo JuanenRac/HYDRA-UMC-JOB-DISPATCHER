@@ -97,9 +97,9 @@ HYDRA-UMC-JOB-DISPATCHER/
 ├── go.mod / go.sum    # Définition du module Go
 ├── version.go         # const Version = "X.Y.Z" (go.mod n'a pas ce champ)
 ├── main.go            # Point d'entrée : relie le moteur à l'API HTTP et écoute
-├── bump_version.py    # Incrément de version type compteur kilométrique
+├── bump_version.py    # Incrément de version type compteur kilométrique (exécuté seulement par la commande `bump` explicite)
 ├── bump_manifest_version.py # Synchronise la version de hydra-umc.project.json avec la version native (--sync)
-├── build.sh/.bat      # Incrémente la version puis `go build`
+├── build.sh/.bat      # Valide et compile (compiler ne change jamais la version)
 ├── run.sh/.bat        # Exécute le binaire compilé
 └── README.md
 ```
@@ -127,9 +127,7 @@ run.bat -addr 127.0.0.1:8090
 ./run.sh -addr 127.0.0.1:8090
 ```
 
-`build.sh`/`build.bat` incrémentent la version dans `version.go` (règle du
-compteur kilométrique de l'écosystème, voir `bump_version.py` - `go.mod`
-n'a pas de champ de version natif pour les binaires d'application) puis
+`build.sh`/`build.bat` ne changent jamais la version (seule `python tools/hydra_project_tool.py bump` la fait monter) puis
 exécutent `go build`. `run.sh`/`run.bat` exécutent directement le binaire
 résultant.
 

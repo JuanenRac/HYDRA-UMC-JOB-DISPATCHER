@@ -100,9 +100,9 @@ HYDRA-UMC-JOB-DISPATCHER/
 ├── go.mod / go.sum    # Go 模块定义
 ├── version.go         # const Version = "X.Y.Z"（go.mod 没有应用版本字段）
 ├── main.go            # 入口点：将引擎连接到 HTTP API 并监听
-├── bump_version.py    # 里程表式版本递增，由 build.sh/.bat 运行
+├── bump_version.py    # 里程表式版本递增（仅由显式 `bump` 命令运行）
 ├── bump_manifest_version.py # 将 hydra-umc.project.json 的版本与原生版本同步（--sync）
-├── build.sh/.bat      # 递增版本号，然后执行 `go build`
+├── build.sh/.bat      # 然后执行 `go build`
 ├── run.sh/.bat        # 运行编译后的二进制文件
 └── README.md
 ```
@@ -127,9 +127,7 @@ run.bat -addr 127.0.0.1:8090
 ./run.sh -addr 127.0.0.1:8090
 ```
 
-`build.sh`/`build.bat` 会递增 `version.go` 中的版本号（生态系统统一的
-里程表规则，见 `bump_version.py`——`go.mod` 没有面向应用二进制文件的原生
-版本字段），然后执行 `go build`。`run.sh`/`run.bat` 直接执行生成的二进
+`build.sh`/`build.bat` 不会更改版本号（只有 `python tools/hydra_project_tool.py bump` 才会提升），然后执行 `go build`。`run.sh`/`run.bat` 直接执行生成的二进
 制文件。
 
 ```bash
