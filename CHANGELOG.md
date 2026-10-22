@@ -1,22 +1,6 @@
 # Changelog
 
-All notable work on **HYDRA-UMC-JOB-DISPATCHER** is summarized here, newest first.
-This file intentionally omits calendar dates from individual entries.
-
-## Versioning scheme
-
-`version.go`'s `Version` constant is bumped automatically by
-`bump_version.py`, run from `build.sh`/`build.bat` before every real
-release build (`go build`).
-
-It follows the ecosystem-wide base-10 "odometer" rule rather than
-semantic-versioning judgment calls:
-
-- `PATCH` +1 on every build
-- when `PATCH` would exceed 9, it resets to 0 and `MINOR` +1 instead (e.g. `0.0.9` -> `0.1.0`, never `0.0.10`)
-- the same carry cascades into `MAJOR` if `MINOR` would exceed 9
-
----
+All notable changes to this project are documented here.
 
 ## [Unreleased]
 
