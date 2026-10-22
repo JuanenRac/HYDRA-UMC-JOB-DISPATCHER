@@ -18,6 +18,10 @@ semantic-versioning judgment calls:
 
 ---
 
+## [Unreleased]
+
+- Added `tools/hydra_project_tool.py`: the same `validate`, `test`, `version`, `status` and `bump` commands in every repository. The checks run with `HYDRA_UMC_CI=1` and fail if the version changes; only `bump` changes it.
+
 ## [0.2.2]
 
 - Maturity is functional: nothing here has been verified on real hardware yet.
