@@ -28,7 +28,7 @@
 |---|---|
 | Versione | `0.2.2` |
 | Maturità | Funzionale |
-| Test | 143 |
+| Test | 153 |
 | Tecnologia | Go / priority queue / HTTP API / SQLite (modernc.org/sqlite, pure Go) |
 | Destinazione | Il Raspberry Pi CM5 di una cella HYDRA-UMC |
 | Su hardware reale | Non ancora: per questa versione non risulta alcuna esecuzione su hardware reale |
@@ -42,6 +42,7 @@ Garantisce che i compiti ad alta priorità (ad esempio, «Riparazione difetti di
 ### Caratteristiche principali:
 * 📋 **Code dinamiche:** Priorità e pianificazione intelligente delle missioni.
 * ⚖️ **Routing consapevole degli strumenti:** Instrada automaticamente i lavori al robot con la testina URTC corretta.
+* 🧰 **Catalogo utensili configurabile (solo avvisa):** `-tools-file` (un elenco JSON dei nomi dei profili TOOL_* delle teste utensile) e/o `-tools` dichiarano gli utensili noti all'impianto. Un lavoro il cui `RequiredTool`, o un robot il cui `Tool`, non è nel catalogo viene accettato comunque e registrato una volta come avviso (con un suggerimento se cambia solo la maiuscola, perché gli utensili corrispondono esattamente). Senza catalogo non cambia nulla. *(implementato)*
 * 🔄 **Missioni multi-fase:** Gestisce le dipendenze tra i compiti (es. «Pick» deve avvenire prima di «Place»).
 * 📡 **Persistenza:** stato della missione reale e opzionale basato su SQLite (`-db PATH`, `src/sqlitestore`, Go puro - senza CGO) - la coda sopravvive a un vero riavvio del processo, verificato end-to-end; se non impostato, resta puramente in memoria. `GET /health` segnala uno storage degradato invece di fallire silenziosamente. Vedi [`docs/API.md`](docs/API.md#persistence).
 * 🔁 **Invio Idempotente (v0):** Deduplicazione reale e opzionale basata su `DedupKey` tramite `POST /jobs/submit` - un reinvio di un job in corso o già completato viene restituito invariato, e un nuovo tentativo dopo un fallimento reale riutilizza lo stesso ID del job invece di eseguire il lavoro due volte. L'ordine di priorità è deterministico attraverso esecuzioni ripetute, coperto da un test di regressione esplicito.

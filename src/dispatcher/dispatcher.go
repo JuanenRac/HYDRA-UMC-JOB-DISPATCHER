@@ -199,6 +199,8 @@ type Engine struct {
 	// robotFreshness is how long a robot may stay silent and still be offered new work (see
 	// SetRobotFreshness). Zero disables the check: every Available robot is eligible, as before.
 	robotFreshness time.Duration
+	// tools, when set, is the catalog of known tool names; it only logs a warning for an unknown one (see tools.go).
+	tools *ToolCatalog
 	// now is the engine's own clock, injectable so a test can control it
 	// exactly (see DetectStaleAssignments) - real callers always get
 	// time.Now via the constructors below.
@@ -424,6 +426,7 @@ func (e *Engine) AddJob(j Job) error {
 // addJobLocked is the shared insert path for AddJob and a first-time
 // SubmitJob call. Caller must hold e.mu.
 func (e *Engine) addJobLocked(j Job) (*Job, error) {
+	e.tools.Check(j.RequiredTool, fmt.Sprintf("RequiredTool of job %q", j.ID))
 	if strings.TrimSpace(j.ID) == "" {
 		return nil, fmt.Errorf("%w: job ID must not be empty", ErrInvalidJob)
 	}
@@ -551,6 +554,7 @@ func (e *Engine) SubmitJob(j Job) (Job, SubmitResult, error) {
 			}
 			existing.Priority = j.Priority
 			existing.RequiredTool = j.RequiredTool
+			e.tools.Check(j.RequiredTool, fmt.Sprintf("RequiredTool of job %q", existing.ID))
 			existing.Location = j.Location
 			existing.DependsOn = cloneStrings(j.DependsOn)
 			existing.AssignedRobot = ""
@@ -654,6 +658,7 @@ func (e *Engine) UpsertRobot(r Robot) {
 // upsertRobotLocked is UpsertRobot's body. availabilityGiven false means the caller did not
 // state availability (a partial heartbeat): an existing robot keeps it untouched.
 func (e *Engine) upsertRobotLocked(r Robot, availabilityGiven bool) {
+	e.tools.Check(r.Tool, fmt.Sprintf("Tool of robot %q", r.ID))
 	if existing, ok := e.robots[r.ID]; ok {
 		existing.Location = r.Location
 		existing.Tool = r.Tool
@@ -882,6 +887,13 @@ func (e *Engine) DispatchOnce() []Assignment {
 		e.recordPersistOutcome(persistErr)
 	}
 	return assignments
+}
+
+// SetToolCatalog installs the catalog of known tool names (nil removes it). Unknown tool names are only warned about.
+func (e *Engine) SetToolCatalog(c *ToolCatalog) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.tools = c
 }
 
 // SetRobotFreshness makes a robot that has not checked in for longer than d ineligible for new

@@ -28,7 +28,7 @@
 |---|---|
 | Version | `0.2.2` |
 | Maturité | Fonctionnel |
-| Tests | 143 |
+| Tests | 153 |
 | Technologie | Go / priority queue / HTTP API / SQLite (modernc.org/sqlite, pure Go) |
 | Cible | Le Raspberry Pi CM5 d'une cellule HYDRA-UMC |
 | Sur matériel réel | Pas encore : aucune exécution sur du matériel réel n'est consignée pour cette version |
@@ -42,6 +42,7 @@ Il garantit que les tâches hautement prioritaires (ex : « Réparation de défa
 ### Caractéristiques principales :
 * 📋 **Mise en file d'attente dynamique :** Priorisation et planification intelligentes des missions.
 * ⚖️ **Routage sensible aux outils :** Achemine automatiquement les travaux vers le robot disposant de la tête URTC correcte.
+* 🧰 **Catalogue d'outils configurable (avertit seulement) :** `-tools-file` (une liste JSON des noms de profils TOOL_* des têtes d'outil) et/ou `-tools` déclarent les outils que connaît l'installation. Un travail dont le `RequiredTool`, ou un robot dont le `Tool`, n'est pas dans le catalogue est accepté quand même et consigné une fois comme avertissement (avec une indication si seule la casse diffère, car les outils correspondent exactement). Sans catalogue rien ne change. *(implémenté)*
 * 🔄 **Missions en plusieurs étapes :** Gère les dépendances entre les tâches (ex : « Pick » doit avoir lieu avant « Place »).
 * 📡 **Persistance :** état de mission réel et optionnel, adossé à SQLite (`-db PATH`, `src/sqlitestore`, Go pur - sans CGO) - la file survit à un vrai redémarrage du processus, vérifié de bout en bout ; sans cette option, tout reste en mémoire. `GET /health` signale un stockage dégradé au lieu d'échouer silencieusement. Voir [`docs/API.md`](docs/API.md#persistence).
 * 🔁 **Soumission idempotente (v0) :** Déduplication réelle et facultative basée sur `DedupKey` via `POST /jobs/submit` - une resoumission d'un job en cours ou déjà terminé est renvoyée inchangée, et une nouvelle tentative après un vrai échec réutilise le même ID de job au lieu d'exécuter le travail deux fois. L'ordre de priorité est déterministe à travers des exécutions répétées, couvert par un test de régression explicite.

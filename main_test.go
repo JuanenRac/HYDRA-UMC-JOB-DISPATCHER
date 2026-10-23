@@ -36,3 +36,16 @@ func TestStartupProblem(t *testing.T) {
 		t.Errorf("-allow-anonymous says it on purpose, got %q", p)
 	}
 }
+
+func TestBuildToolCatalog(t *testing.T) {
+	if c, err := buildToolCatalog("", " "); c != nil || err != nil {
+		t.Fatalf("no tools given means no catalog, got %v, %v", c, err)
+	}
+	c, err := buildToolCatalog("", "PnP, Laser,,")
+	if err != nil || len(c.Names()) != 2 {
+		t.Fatalf("list: %v, %v", c, err)
+	}
+	if _, err := buildToolCatalog("does-not-exist.json", ""); err == nil {
+		t.Fatal("a missing catalog file must stop the start")
+	}
+}

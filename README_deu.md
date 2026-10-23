@@ -28,7 +28,7 @@
 |---|---|
 | Version | `0.2.2` |
 | Reifegrad | Funktionsfähig |
-| Tests | 143 |
+| Tests | 153 |
 | Technik | Go / priority queue / HTTP API / SQLite (modernc.org/sqlite, pure Go) |
 | Ziel | Der Raspberry Pi CM5 einer HYDRA-UMC-Zelle |
 | Auf echter Hardware | Noch nicht: für diese Version ist kein Lauf auf echter Hardware vermerkt |
@@ -42,6 +42,7 @@ Er stellt sicher, dass hochpriore Aufgaben (z. B. "Notfall-Defektbehebung") den 
 ### Hauptmerkmale:
 * 📋 **Dynamisches Queueing:** Intelligente Missionspriorisierung und -planung.
 * ⚖️ **Werkzeugbewusstes Routing:** Leitet Aufgaben automatisch an den Roboter mit dem richtigen URTC-Kopf weiter.
+* 🧰 **Konfigurierbarer Werkzeugkatalog (warnt nur):** `-tools-file` (eine JSON-Liste der TOOL_*-Profilnamen der Werkzeugköpfe) und/oder `-tools` legen fest, welche Werkzeuge die Anlage kennt. Ein Auftrag, dessen `RequiredTool`, oder ein Roboter, dessen `Tool` nicht im Katalog steht, wird trotzdem angenommen und einmal als Warnung protokolliert (mit Hinweis, wenn sich nur die Groß-/Kleinschreibung unterscheidet, da Werkzeuge exakt übereinstimmen). Ohne Katalog ändert sich nichts. *(implementiert)*
 * 🔄 **Mehrstufige Missionen:** Verwaltet Abhängigkeiten zwischen Aufgaben (z. B. muss "Pick" vor "Place" erfolgen).
 * 📡 **Persistenz:** echter, optionaler SQLite-gestützter Missionsstatus (`-db PATH`, `src/sqlitestore`, reines Go - kein CGO) - die Warteschlange uebersteht einen echten Prozessneustart, Ende-zu-Ende verifiziert; ohne Angabe bleibt alles rein im Speicher. `GET /health` meldet einen degradierten Speicher statt stillschweigend zu versagen. Siehe [`docs/API.md`](docs/API.md#persistence).
 * 🔁 **Idempotente Einreichung (v0):** Echte, optionale `DedupKey`-basierte Deduplizierung über `POST /jobs/submit` - eine erneute Einreichung eines laufenden oder bereits abgeschlossenen Jobs wird unverändert zurückgegeben, und ein Wiederholungsversuch nach einem echten Fehler nutzt dieselbe Job-ID weiter, statt die Arbeit zweimal auszuführen. Die Prioritätsreihenfolge ist über wiederholte Läufe hinweg deterministisch, abgedeckt durch einen expliziten Regressionstest.

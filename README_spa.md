@@ -28,7 +28,7 @@
 |---|---|
 | Versión | `0.2.2` |
 | Madurez | Funcional |
-| Tests | 143 |
+| Tests | 153 |
 | Tecnología | Go / priority queue / HTTP API / SQLite (modernc.org/sqlite, pure Go) |
 | Destino | La Raspberry Pi CM5 de una celda HYDRA-UMC |
 | En hardware real | Todavía no: no consta ninguna ejecución en hardware real para esta versión |
@@ -42,6 +42,7 @@ Asegura que las tareas de alta prioridad (ej. "Reparación de Defecto de Emergen
 ### Características Clave:
 * 📋 **Colas Dinámicas:** Priorización e itineración inteligente de misiones.
 * ⚖️ **Enrutamiento Consciente de Herramientas:** Enruta automáticamente los trabajos al robot con el cabezal URTC correcto.
+* 🧰 **Catálogo de herramientas configurable (solo avisa):** `-tools-file` (una lista JSON con los nombres de los perfiles TOOL_* de los cabezales) y/o `-tools` declaran las herramientas que conoce la instalación. Un trabajo cuyo `RequiredTool`, o un robot cuyo `Tool`, no está en el catálogo se acepta igualmente y se registra una vez como aviso (con una pista si solo cambia la mayúscula, porque las herramientas coinciden exactamente). Sin catálogo nada cambia. *(implementado)*
 * 🔄 **Misiones Multi-Etapa:** Gestiona dependencias entre tareas (ej. "Pick" debe ocurrir antes de "Place").
 * 📡 **Persistencia:** estado de misión real y opcional respaldado por SQLite (`-db PATH`, `src/sqlitestore`, Go puro - sin CGO) - la cola sobrevive a un reinicio real del proceso, verificado de extremo a extremo; sin configurar, todo permanece en memoria. `GET /health` reporta un almacén degradado en vez de fallar en silencio. Ver [`docs/API.md`](docs/API.md#persistence).
 * 🔁 **Envío Idempotente (v0):** Deduplicación real y opcional basada en `DedupKey` vía `POST /jobs/submit` - un reenvío de un job en curso o ya terminado se devuelve sin cambios, y un reintento tras un fallo real reutiliza el mismo ID de job en vez de ejecutar el trabajo dos veces. El orden por prioridad es determinista entre ejecuciones repetidas, cubierto por un test de regresión explícito.

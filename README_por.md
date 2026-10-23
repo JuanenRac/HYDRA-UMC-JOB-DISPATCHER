@@ -28,7 +28,7 @@
 |---|---|
 | Versão | `0.2.2` |
 | Maturidade | Funcional |
-| Testes | 143 |
+| Testes | 153 |
 | Tecnologia | Go / priority queue / HTTP API / SQLite (modernc.org/sqlite, pure Go) |
 | Destino | O Raspberry Pi CM5 de uma célula HYDRA-UMC |
 | Em hardware real | Ainda não: não há registo de execução em hardware real para esta versão |
@@ -42,6 +42,7 @@ Garante que as tarefas de alta prioridade (p. ex. "Correção urgente de defeito
 ### Funcionalidades principais:
 * 📋 **Fila dinâmica:** Priorização e escalonamento inteligentes de missões.
 * ⚖️ **Encaminhamento por ferramenta:** Encaminha automaticamente os trabalhos para o robô com a cabeça URTC correta.
+* 🧰 **Catálogo de ferramentas configurável (só avisa):** `-tools-file` (uma lista JSON com os nomes dos perfis TOOL_* das cabeças de ferramenta) e/ou `-tools` declaram as ferramentas que a instalação conhece. Um trabalho cujo `RequiredTool`, ou um robô cujo `Tool`, não está no catálogo é aceite na mesma e registado uma vez como aviso (com uma pista se só mudar a maiúscula, porque as ferramentas coincidem exatamente). Sem catálogo nada muda. *(implementado)*
 * 🔄 **Missões de várias etapas:** Gere dependências entre tarefas (p. ex. "Pegar" tem de acontecer antes de "Pousar").
 * 📡 **Persistência:** estado de missões real e opcional apoiado em SQLite (`-db CAMINHO`, `src/sqlitestore`, Go puro - sem CGO) - a fila sobrevive a um reinício real do processo, verificado de ponta a ponta; sem ele, continua puramente em memória. `GET /health` reporta um armazém degradado em vez de falhar em silêncio. Veja [`docs/API.md`](docs/API.md#persistence).
 * 🔁 **Submissão idempotente (v0):** Deduplicação real e opcional por `DedupKey` através de `POST /jobs/submit` - uma submissão repetida de um trabalho em curso ou já concluído devolve-se inalterada, e uma repetição após uma falha real reutiliza o mesmo ID de trabalho em vez de executar o trabalho duas vezes. A ordenação por prioridade é determinista entre execuções repetidas, coberta por um teste de regressão explícito.

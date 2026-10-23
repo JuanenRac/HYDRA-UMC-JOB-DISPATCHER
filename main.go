@@ -57,12 +57,31 @@ func startupProblem(addr, token string, allowAnonymous bool) string {
 	return ""
 }
 
+// buildToolCatalog joins the tools of a JSON file and of a comma-separated list. It returns nil when neither is given.
+func buildToolCatalog(file, list string) (*dispatcher.ToolCatalog, error) {
+	if file == "" && strings.TrimSpace(list) == "" {
+		return nil, nil
+	}
+	var names []string
+	if file != "" {
+		fromFile, err := dispatcher.LoadToolCatalogFile(file)
+		if err != nil {
+			return nil, err
+		}
+		names = append(names, fromFile.Names()...)
+	}
+	names = append(names, strings.Split(list, ",")...)
+	return dispatcher.NewToolCatalog(names), nil
+}
+
 func main() {
 	addr := flag.String("addr", "127.0.0.1:8090", "address to listen on for the HTTP API (loopback by default: another address needs a token)")
 	token := flag.String("token", os.Getenv("JOB_DISPATCHER_TOKEN"), "bearer token every route except GET /health requires (default: the JOB_DISPATCHER_TOKEN environment variable)")
 	allowAnonymous := flag.Bool("allow-anonymous", false, "allow an address other than loopback without a token (an open lab dispatcher)")
 	robotTimeout := flag.Duration("robot-timeout", 2*time.Minute, "a robot silent for longer than this is not offered new work (0 disables the check)")
 	dbPath := flag.String("db", "", "path to a real SQLite database file for fault-tolerant mission-queue persistence (unset: purely in-memory, cleared on restart)")
+	toolsFile := flag.String("tools-file", os.Getenv("JOB_DISPATCHER_TOOLS_FILE"), "JSON file listing the known tool names (the TOOL_* profiles of the tool heads); a job or robot naming another tool only gets a warning in the log (default: the JOB_DISPATCHER_TOOLS_FILE environment variable)")
+	toolsList := flag.String("tools", os.Getenv("JOB_DISPATCHER_TOOLS"), "comma-separated known tool names, added to those of -tools-file (default: the JOB_DISPATCHER_TOOLS environment variable)")
 	flag.Parse()
 
 	if problem := startupProblem(*addr, *token, *allowAnonymous); problem != "" {
@@ -88,6 +107,14 @@ func main() {
 		fmt.Printf("[job-dispatcher] persisting the mission queue to %s\n", *dbPath)
 	}
 	engine.SetRobotFreshness(*robotTimeout)
+	catalog, err := buildToolCatalog(*toolsFile, *toolsList)
+	if err != nil {
+		log.Fatalf("[job-dispatcher] %v", err)
+	}
+	if catalog != nil {
+		engine.SetToolCatalog(catalog)
+		fmt.Printf("[job-dispatcher] tool catalog: %d known tool(s); an unknown tool name is only warned about\n", len(catalog.Names()))
+	}
 	server := api.New(engine)
 	if *token != "" {
 		server.RequireToken(*token)

@@ -28,7 +28,7 @@
 |---|---|
 | Version | `0.2.2` |
 | Maturity | Functional |
-| Tests | 143 |
+| Tests | 153 |
 | Stack | Go / priority queue / HTTP API / SQLite (modernc.org/sqlite, pure Go) |
 | Target | The Raspberry Pi CM5 of a HYDRA-UMC cell |
 | On real hardware | Not yet: no run on real hardware is recorded for this version |
@@ -42,6 +42,7 @@ It ensures that high-priority tasks (e.g., "Emergency Defect Fix") bypass the no
 ### Key Features:
 * 📋 **Dynamic Queueing:** Intelligent mission prioritization and scheduling.
 * ⚖️ **Tool-Aware Routing:** Automatically routes jobs to the robot with the correct URTC head.
+* 🧰 **Configurable tool catalog (warns only):** `-tools-file` (a JSON list of the TOOL_* profile names of the tool heads) and/or `-tools` declare the tools the installation knows. A job whose `RequiredTool`, or a robot whose `Tool`, is not in the catalog is accepted all the same and logged once as a warning (with a hint when only the case differs, because tools match exactly). Without a catalog nothing changes. *(implemented)*
 * 🔄 **Multi-Stage Missions:** Manages dependencies between tasks (e.g., "Pick" must happen before "Place").
 * 📡 **Persistence:** real, opt-in SQLite-backed mission state (`-db PATH`, `src/sqlitestore`, pure Go - no CGO) - the queue survives a real process restart, verified end-to-end; unset, it stays purely in-memory. `GET /health` reports a degraded store instead of failing silently. See [`docs/API.md`](docs/API.md#persistence).
 * 🔁 **Idempotent Submission (v0):** Real, opt-in `DedupKey`-based deduplication via `POST /jobs/submit` - a retried submission of an in-flight or already-done job is returned unchanged, and a retry after a real failure reuses the same job ID instead of running the work twice. Priority ordering is deterministic across repeated runs, covered by an explicit regression test.

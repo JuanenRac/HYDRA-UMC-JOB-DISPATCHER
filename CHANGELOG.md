@@ -4,6 +4,7 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+- **Configurable tool catalog that only warns.** `-tools-file` (a JSON list of tool names or TOOL_* profiles, also `JOB_DISPATCHER_TOOLS_FILE`) and `-tools` (`JOB_DISPATCHER_TOOLS`) declare the known tools. A job whose `RequiredTool`, or a robot whose `Tool`, is not in the catalog is accepted as before and logged once as a warning, with a hint when only the case differs. Without a catalog nothing changes.
 - A completion, cancellation, requeue or stale sweep is written to SQLite in one transaction, and the database runs in WAL mode: a crash can no longer leave a job done with its robot still reserved.
 - A robot heartbeat dated more than a minute in the future (the clock stepped back) is no longer taken as proof of life: the robot gets no work until it checks in again.
 - `GET /jobs` accepts `status`, `limit` and `offset` and answers `X-Total-Count`; without parameters it returns everything, as before.
