@@ -111,11 +111,15 @@ HYDRA-UMC-JOB-DISPATCHER/
 │   └── hydra-umc-job-dispatcher.service # CM5 本地优先级任务队列的 systemd 单元
 ├── tools/
 │   ├── build_test.py  # 不递增版本号的构建/编译检查
-│   └── ci_validate.py # CI 使用的 manifest/CHANGELOG/docs 校验
+│   ├── ci_validate.py # CI 使用的 manifest/CHANGELOG/docs 校验
+│   ├── _doc_policy.py # 家族共享的文档规则 (HYDRA-UMC-SDK 的副本,保持同步)
+│   ├── _readme_parity.py # 检查八个 README 结构一致 (HYDRA-UMC-SDK 的副本,保持同步)
+│   └── hydra_project_tool.py # 每个仓库相同的命令: validate、test、ci、version、status、bump
 ├── build/             # 编译后的二进制文件（build.sh/build.bat 的输出）
 ├── go.mod / go.sum    # Go 模块定义
 ├── version.go         # const Version = "X.Y.Z"（go.mod 没有应用版本字段）
 ├── main.go            # 入口点：将引擎连接到 HTTP API 并监听
+├── main_test.go       # 进程拒绝启动的情形: 能注册机器人、提交作业的 API 不得在没有令牌时监听网络
 ├── bump_version.py    # 里程表式版本递增（仅由显式 `bump` 命令运行）
 ├── bump_manifest_version.py # 将 hydra-umc.project.json 的版本与原生版本同步（--sync）
 ├── build.sh/.bat      # 然后执行 `go build`

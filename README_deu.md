@@ -108,11 +108,15 @@ HYDRA-UMC-JOB-DISPATCHER/
 │   └── hydra-umc-job-dispatcher.service # systemd-Unit der lokalen Prioritäts-Missionswarteschlange auf der CM5
 ├── tools/
 │   ├── build_test.py  # Build-/Kompilierprüfung ohne Versionserhöhung
-│   └── ci_validate.py # Manifest-/CHANGELOG-/Doku-Validierung, von der CI genutzt
+│   ├── ci_validate.py # Manifest-/CHANGELOG-/Doku-Validierung, von der CI genutzt
+│   ├── _doc_policy.py # Von der Familie geteilte Dokumentationsregeln (Kopie der von HYDRA-UMC-SDK, synchron gehalten)
+│   ├── _readme_parity.py # Prüfung, dass die acht READMEs dieselbe Struktur haben (Kopie der von HYDRA-UMC-SDK, synchron gehalten)
+│   └── hydra_project_tool.py # Dieselben Befehle in jedem Repository: validate, test, ci, version, status, bump
 ├── build/             # Kompilierte Binärdateien (Ausgabe von build.sh/.bat)
 ├── go.mod / go.sum    # Go-Modul-Definition
 ├── version.go         # const Version = "X.Y.Z" (go.mod hat kein solches Feld)
 ├── main.go            # Einstiegspunkt: verbindet die Engine mit der HTTP-API und lauscht
+├── main_test.go       # Womit der Prozess den Start verweigert: eine API, die Roboter registrieren und Aufträge einreichen kann, darf nicht ohne Token im Netz lauschen
 ├── bump_version.py    # Versionserhöhung im Kilometerzähler-Stil (nur vom expliziten `bump`-Befehl ausgeführt)
 ├── bump_manifest_version.py # Synchronisiert die Version von hydra-umc.project.json mit der nativen (--sync)
 ├── build.sh/.bat      # dann `go build`

@@ -112,11 +112,15 @@ HYDRA-UMC-JOB-DISPATCHER/
 │   └── hydra-umc-job-dispatcher.service # CM5 上のローカル優先度ミッションキュー用 systemd ユニット
 ├── tools/
 │   ├── build_test.py  # バージョンを更新しないビルド/コンパイル確認
-│   └── ci_validate.py # CI が使用する manifest/CHANGELOG/docs の検証
+│   ├── ci_validate.py # CI が使用する manifest/CHANGELOG/docs の検証
+│   ├── _doc_policy.py # ファミリー共通のドキュメント規則 (HYDRA-UMC-SDK のコピーで、同期を維持)
+│   ├── _readme_parity.py # 8つの README が同じ構造であることの検査 (HYDRA-UMC-SDK のコピーで、同期を維持)
+│   └── hydra_project_tool.py # すべてのリポジトリで共通のコマンド: validate、test、ci、version、status、bump
 ├── build/             # コンパイル済みバイナリ(build.sh/build.bat の出力)
 ├── go.mod / go.sum    # Go モジュール定義
 ├── version.go         # const Version = "X.Y.Z"(go.mod にはアプリバージョンフィールドがありません)
 ├── main.go            # エントリポイント：エンジンを HTTP API に接続してリッスン
+├── main_test.go       # プロセスが起動を拒否する条件: ロボット登録やジョブ投入ができる API は、トークンなしでネットワークを待ち受けてはならない
 ├── bump_version.py    # オドメーター式バージョンインクリメント（明示的な `bump` コマンドのみが実行）
 ├── bump_manifest_version.py # hydra-umc.project.json のバージョンをネイティブ側と同期（--sync）
 ├── build.sh/.bat      # バージョンを増加させ、その後 `go build` を実行
