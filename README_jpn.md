@@ -26,9 +26,9 @@
 
 | | |
 |---|---|
-| バージョン | `0.2.2` |
+| バージョン | `0.2.3` |
 | 成熟度 | 機能する |
-| テスト | 153 |
+| テスト | 143 |
 | 技術 | Go / priority queue / HTTP API / SQLite (modernc.org/sqlite, pure Go) |
 | 対象 | HYDRA-UMC セルの Raspberry Pi CM5 |
 | 実機での確認 | まだです：このバージョンについて実機での動作記録はありません |

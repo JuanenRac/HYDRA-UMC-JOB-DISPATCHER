@@ -26,9 +26,9 @@
 
 | | |
 |---|---|
-| Versione | `0.2.2` |
+| Versione | `0.2.3` |
 | Maturità | Funzionale |
-| Test | 153 |
+| Test | 143 |
 | Tecnologia | Go / priority queue / HTTP API / SQLite (modernc.org/sqlite, pure Go) |
 | Destinazione | Il Raspberry Pi CM5 di una cella HYDRA-UMC |
 | Su hardware reale | Non ancora: per questa versione non risulta alcuna esecuzione su hardware reale |
