@@ -959,12 +959,11 @@ func (e *Engine) bestRobotFor(j *Job) *Robot {
 // from the robot the dispatcher actually assigned this job to apart
 // from ANY caller simply naming a job ID and a success flag, so a wrong
 // or malicious report for job X could silently steal or corrupt a
-// DIFFERENT robot's own real Load/Available bookkeeping. This does not
-// yet track retry attempt/generation numbers - DispatchOnce has no real
-// mechanism to reassign a Unknown job to a different robot today (see
-// DetectStaleAssignments's own doc comment), so there is no real
-// "which attempt is this" ambiguity to resolve yet; only which ROBOT is
-// reporting.
+// DIFFERENT robot's own real Load/Available bookkeeping. This form states no
+// attempt number, so it only checks which ROBOT is reporting; the report of a
+// client that knows the attempt of its assignment goes through
+// CompleteJobAttempt below, which also refuses the late report of an abandoned
+// assignment.
 func (e *Engine) CompleteJob(jobID string, success bool, robotID string) error {
 	return e.CompleteJobAttempt(jobID, success, robotID, 0)
 }
