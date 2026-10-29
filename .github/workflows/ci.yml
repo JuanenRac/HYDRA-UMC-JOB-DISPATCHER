@@ -82,6 +82,9 @@ jobs:
           go vet ./...
           go install honnef.co/go/tools/cmd/staticcheck@2026.2.2
           "$(go env GOPATH)/bin/staticcheck" ./...
+          # known vulnerabilities of the libraries that the code uses: it only warns (the standard library of the Go of the runner can have some that are not ours)
+          go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
+          "$(go env GOPATH)/bin/govulncheck" ./... || echo "::warning::govulncheck found known vulnerabilities; see the log"
           go mod tidy
           git diff --exit-code -- go.mod go.sum
           go test ./...
