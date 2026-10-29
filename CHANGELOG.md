@@ -2,6 +2,10 @@
 
 All notable changes to this project are documented here.
 
+## [Unreleased]
+
+- CI runs `staticcheck` and fails when `go mod tidy` would change `go.mod` or `go.sum` (both are clean today).
+
 ## [0.2.3] - Configurable tool catalog that only warns
 
 - **Configurable tool catalog that only warns.** `-tools-file` (a JSON list of tool names or TOOL_* profiles, also `JOB_DISPATCHER_TOOLS_FILE`) and `-tools` (`JOB_DISPATCHER_TOOLS`) declare the known tools. A job whose `RequiredTool`, or a robot whose `Tool`, is not in the catalog is accepted as before and logged once as a warning, with a hint when only the case differs. Without a catalog nothing changes.
