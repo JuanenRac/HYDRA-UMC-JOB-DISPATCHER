@@ -4,6 +4,7 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+- **The layout of the README is checked in the CI:** the validator runs `tools/universal_readme_check.py` and lists, as a warning, what differs from the universal layout of the README.
 - The Go module is named `github.com/JuanenRac/HYDRA-UMC-JOB-DISPATCHER`, with the same capitals as the repository and the other Go modules of the family (it was in lower case).
 - CI runs `staticcheck` and fails when `go mod tidy` would change `go.mod` or `go.sum` (both are clean today).
 
