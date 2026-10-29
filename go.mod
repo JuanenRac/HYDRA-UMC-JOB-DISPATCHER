@@ -1,4 +1,4 @@
-module github.com/JuanenRac/hydra-umc-job-dispatcher
+module github.com/JuanenRac/HYDRA-UMC-JOB-DISPATCHER
 
 go 1.21
 

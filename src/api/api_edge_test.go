@@ -15,7 +15,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/JuanenRac/hydra-umc-job-dispatcher/src/dispatcher"
+	"github.com/JuanenRac/HYDRA-UMC-JOB-DISPATCHER/src/dispatcher"
 )
 
 func raw(t *testing.T, h http.Handler, method, path, body string) *httptest.ResponseRecorder {

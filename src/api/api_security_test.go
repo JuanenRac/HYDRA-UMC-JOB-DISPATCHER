@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/JuanenRac/hydra-umc-job-dispatcher/src/dispatcher"
+	"github.com/JuanenRac/HYDRA-UMC-JOB-DISPATCHER/src/dispatcher"
 )
 
 func withToken(t *testing.T, h http.Handler, method, path, token string, body []byte) *httptest.ResponseRecorder {

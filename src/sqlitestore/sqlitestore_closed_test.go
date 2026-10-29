@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/JuanenRac/hydra-umc-job-dispatcher/src/dispatcher"
+	"github.com/JuanenRac/HYDRA-UMC-JOB-DISPATCHER/src/dispatcher"
 )
 
 // A store that has lost its database must report every failure instead of

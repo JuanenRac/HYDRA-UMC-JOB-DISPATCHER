@@ -15,7 +15,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/JuanenRac/hydra-umc-job-dispatcher/src/dispatcher"
+	"github.com/JuanenRac/HYDRA-UMC-JOB-DISPATCHER/src/dispatcher"
 )
 
 func post(t *testing.T, h http.Handler, path string, body any) *httptest.ResponseRecorder {

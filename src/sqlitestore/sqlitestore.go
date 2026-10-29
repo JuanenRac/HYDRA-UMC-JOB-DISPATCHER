@@ -21,7 +21,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"github.com/JuanenRac/hydra-umc-job-dispatcher/src/dispatcher"
+	"github.com/JuanenRac/HYDRA-UMC-JOB-DISPATCHER/src/dispatcher"
 )
 
 // Store is a dispatcher.Store backed by one real SQLite database.

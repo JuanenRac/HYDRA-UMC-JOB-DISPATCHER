@@ -28,9 +28,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/JuanenRac/hydra-umc-job-dispatcher/src/api"
-	"github.com/JuanenRac/hydra-umc-job-dispatcher/src/dispatcher"
-	"github.com/JuanenRac/hydra-umc-job-dispatcher/src/sqlitestore"
+	"github.com/JuanenRac/HYDRA-UMC-JOB-DISPATCHER/src/api"
+	"github.com/JuanenRac/HYDRA-UMC-JOB-DISPATCHER/src/dispatcher"
+	"github.com/JuanenRac/HYDRA-UMC-JOB-DISPATCHER/src/sqlitestore"
 )
 
 // isLoopbackAddr reports whether an address such as "127.0.0.1:8090" or "localhost:8090" only

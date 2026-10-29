@@ -23,7 +23,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/JuanenRac/hydra-umc-job-dispatcher/src/dispatcher"
+	"github.com/JuanenRac/HYDRA-UMC-JOB-DISPATCHER/src/dispatcher"
 )
 
 // MaxBodyBytes is the largest request body any route reads. Every request here is a few hundred

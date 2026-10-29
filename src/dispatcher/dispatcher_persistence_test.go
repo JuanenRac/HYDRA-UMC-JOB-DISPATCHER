@@ -14,8 +14,8 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/JuanenRac/hydra-umc-job-dispatcher/src/dispatcher"
-	"github.com/JuanenRac/hydra-umc-job-dispatcher/src/sqlitestore"
+	"github.com/JuanenRac/HYDRA-UMC-JOB-DISPATCHER/src/dispatcher"
+	"github.com/JuanenRac/HYDRA-UMC-JOB-DISPATCHER/src/sqlitestore"
 )
 
 // TestRealRestart_MissionQueueSurvivesAcrossTwoEngines is the end-to-end

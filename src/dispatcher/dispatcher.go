@@ -134,7 +134,7 @@ type JobRecord struct {
 // Database storage" was real future work, not forgotten, and Engine's
 // state was deliberately kept behind exported methods only so a real
 // backing store could be added later without changing every caller. See
-// NewEngineWithStore. github.com/JuanenRac/hydra-umc-job-dispatcher/src/
+// NewEngineWithStore. github.com/JuanenRac/HYDRA-UMC-JOB-DISPATCHER/src/
 // sqlitestore is the real, shipped implementation (pure-Go, no CGO -
 // cross-compiles the same way this binary already does for the CM5).
 type Store interface {

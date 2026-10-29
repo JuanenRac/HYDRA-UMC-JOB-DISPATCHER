@@ -9,7 +9,7 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/JuanenRac/hydra-umc-job-dispatcher/src/dispatcher"
+	"github.com/JuanenRac/HYDRA-UMC-JOB-DISPATCHER/src/dispatcher"
 )
 
 func openTestStore(t *testing.T) *Store {
