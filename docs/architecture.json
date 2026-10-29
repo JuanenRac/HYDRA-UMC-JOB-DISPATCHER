@@ -1,0 +1,100 @@
+{
+  "repo": "HYDRA-UMC-JOB-DISPATCHER",
+  "ecosystem": "hydra",
+  "tagline": "A priority queue of jobs for the robots: routing by tool, stages with dependencies, and no duplicates.",
+  "description": "HYDRA-UMC-JOB-DISPATCHER keeps a global queue of jobs, orders it by priority and hands each job to a robot that registered the tool the job names. Jobs have stages with dependencies and a duplicate-proof submission key; a robot that falls silent stops receiving work. The queue lives in memory or, with -db, in a pure-Go SQLite file. The HTTP surface needs a Bearer token outside the loopback address.",
+  "columns": [
+    "WHO USES IT",
+    "THIS REPOSITORY",
+    "WHAT IT DEPENDS ON"
+  ],
+  "nodes": [
+    {
+      "id": "clients",
+      "column": 0,
+      "level": "external",
+      "title": "Clients and planners",
+      "lines": [
+        "submit and cancel jobs over",
+        "HTTP with a Bearer token"
+      ],
+      "title_size": 12
+    },
+    {
+      "id": "robots",
+      "column": 0,
+      "level": "external",
+      "title": "Robots",
+      "lines": [
+        "register, ask /dispatch and",
+        "report completion"
+      ]
+    },
+    {
+      "id": "api",
+      "column": 1,
+      "level": "contract",
+      "title": "src/api",
+      "lines": [
+        "routes, token, 64 KiB body,",
+        "time-outs"
+      ],
+      "code": [
+        "src/api/api.go::MaxBodyBytes"
+      ]
+    },
+    {
+      "id": "disp",
+      "column": 1,
+      "level": "tested",
+      "title": "src/dispatcher",
+      "lines": [
+        "priority queue, tool routing,",
+        "stages, silent-robot detection"
+      ],
+      "code": [
+        "src/dispatcher/dispatcher.go",
+        "src/dispatcher/tools.go"
+      ]
+    },
+    {
+      "id": "db",
+      "column": 2,
+      "level": "tested",
+      "title": "SQLite (optional)",
+      "lines": [
+        "pure Go, so the queue",
+        "survives a restart"
+      ],
+      "code": [
+        "src/sqlitestore/sqlitestore.go"
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "clients",
+      "to": "api",
+      "label": "HTTP",
+      "level": "tested"
+    },
+    {
+      "from": "robots",
+      "to": "api",
+      "label": "/dispatch",
+      "level": "tested"
+    },
+    {
+      "from": "api",
+      "to": "disp",
+      "level": "tested"
+    },
+    {
+      "from": "disp",
+      "to": "db",
+      "label": "-db",
+      "level": "tested"
+    }
+  ],
+  "footer": "Tool routing compares the names a robot gives itself; it does not ask URTC over CAN."
+}

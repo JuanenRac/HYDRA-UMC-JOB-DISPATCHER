@@ -1,26 +1,33 @@
+<!-- =============================================================================
+HYDRA-UMC-JOB-DISPATCHER - Priority job dispatcher
+Copyright (C) JuanenRac (Electro Hobby 3D) <electrohobby3d@gmail.com>
+GPL-3.0-or-later - see LICENSE
+============================================================================= -->
+
 <p align="center">
   <img src="images/HYDRA_UMC_BANNER.svg" alt="HYDRA-UMC-JOB-DISPATCHER banner" width="100%">
 </p>
 
-# 📋 HYDRA-UMC-JOB-DISPATCHER
+# 🗂️ HYDRA-UMC-JOB-DISPATCHER
 
 <p align="center"><a href="README.md">🇺🇸 English</a> | <a href="README_spa.md">🇪🇸 Español</a> | <a href="README_fra.md">🇫🇷 Français</a> | <a href="README_ita.md">🇮🇹 Italiano</a> | <a href="README_deu.md">🇩🇪 Deutsch</a> | <a href="README_zho.md">🇨🇳 简体中文</a> | 🇯🇵 <b>日本語</b> | <a href="README_por.md">🇵🇹 Português</a></p>
 
 ### ⚙️ 異種ロボットフリート向けの優先度ベースのミッションキュー
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Licencia-GPL%203.0--or--later-blue.svg" alt="GPL 3.0 or later">
-  <img src="https://img.shields.io/badge/Architecture-Event--Driven-blue.svg" alt="Event-Driven">
-  <img src="https://img.shields.io/badge/Tech-Go%20%2F%20net%2Fhttp-00ADD8.svg" alt="Tech">
+  <img src="https://img.shields.io/badge/License-GPL%203.0--or--later-blue.svg" alt="GPL 3.0 or later">
+  <img src="https://img.shields.io/badge/Go-1.21%2B-00ADD8.svg" alt="Go">
+  <img src="https://img.shields.io/badge/Architecture-Event--Driven-blue.svg" alt="Architecture">
+  <img src="https://img.shields.io/badge/Tests-153%20passing-2ea44f.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/Version-0.2.3-0f6cbd.svg" alt="Version">
+  <img src="https://img.shields.io/badge/Maturity-functional-0F6CBD.svg" alt="Maturity">
 </p>
 
 ---
 
-**正直な現状確認 - 今日実際に動くもの:** スケジューリングエンジン(`src/dispatcher/dispatcher.go`)——優先度順キュー、ツールを考慮したルーティング、複数段階の依存関係追跡、そして `DedupKey` による冪等な投入——およびそれをラップする単純な JSON/HTTP API(`src/api/api.go`)は本物であり、テスト済みである(`src/dispatcher`、`src/api`、`src/sqlitestore` 全体で 121 件のテストが成功、`go test ./...`)。オプションの SQLite 永続化(`src/sqlitestore/sqlitestore.go`、CGO 不使用の純粋な Go)は、実際に強制終了して再起動した本物のプロセスに対してエンドツーエンドで検証されており、単に分離された単体テストではない。既知かつ文書化されているギャップ: ツールを考慮したルーティングは、ロボット自身の `POST /robots` 登録が申告する内容に対して `RequiredTool`/`Robot.Tool` の完全一致文字列比較でチェックしているだけであり、まだ CAN 経由で実際の URTC と通信してツールヘッドが物理的に装着されているかどうかを確認していない。そのため、自分のツールについて嘘をつくロボット(あるいはヘッドが外れてしまったロボット)は、今日の時点では正直なロボットと区別がつかない。ロードマップの 4 つのフェーズ(TSN 同期、3D 経路計画、ディスパッチ最適化、AI 駆動の所要時間推定)は、今のところ裏付けとなるコードが一切ない、将来に向けた願望である。これまでに何が実際に出荷されたかは `CHANGELOG.md` を参照。
+> **安全性とセキュリティの現状:** このエコシステムは認証された安全システムではありません。ハードウェアの E-STOP 経路、ファームウェアが強制する制限やインターロック、検証済みの動作コマンドはまだありません。ファームウェアイメージは CRC32 と共有鍵の HMAC-SHA256 で検査しており、非対称署名ではありません。TLS と相互 TLS は任意で、既定では無効です。独自基板はまだ実装も試験もされていません。ここに書かれた内容を人の安全のために頼る前に、[セキュリティベースライン](https://github.com/JuanenRac/HYDRA-UMC-DOCS/blob/main/docs/SECURITY_BASELINE.md)と[脅威モデル](https://github.com/JuanenRac/HYDRA-UMC-DOCS/blob/main/docs/THREAT_MODEL.md)をお読みください。
 
 ---
-
-> **安全性とセキュリティの現状:** このエコシステムは認証された安全システムではありません。ハードウェアの E-STOP 経路、ファームウェアが強制する制限やインターロック、検証済みの動作コマンドはまだありません。ファームウェアイメージは CRC32 と共有鍵の HMAC-SHA256 で検査しており、非対称署名ではありません。TLS と相互 TLS は任意で、既定では無効です。独自基板はまだ実装も試験もされていません。ここに書かれた内容を人の安全のために頼る前に、[セキュリティベースライン](https://github.com/JuanenRac/HYDRA-UMC-DOCS/blob/main/docs/SECURITY_BASELINE.md)と[脅威モデル](https://github.com/JuanenRac/HYDRA-UMC-DOCS/blob/main/docs/THREAT_MODEL.md)をお読みください。
 
 ## 📋 ひと目で
 
@@ -28,10 +35,12 @@
 |---|---|
 | バージョン | `0.2.3` |
 | 成熟度 | 機能する |
-| テスト | 143 |
+| テスト | 153 (`go test ./...`) |
 | 技術 | Go / priority queue / HTTP API / SQLite (modernc.org/sqlite, pure Go) |
 | 対象 | HYDRA-UMC セルの Raspberry Pi CM5 |
 | 実機での確認 | まだです：このバージョンについて実機での動作記録はありません |
+
+**移動：** [概要](#-概要) · [アーキテクチャ](#-アーキテクチャ) · [機能](#-機能) · [セキュリティと安全](#-セキュリティと安全) · [インターフェース](#-インターフェース) · [設定](#-設定) · [クイックスタート](#-クイックスタート) · [テスト](#-テスト) · [トラブルシューティング](#-トラブルシューティング) · [リポジトリの構成](#-リポジトリの構成) · [関連プロジェクト](#-関連プロジェクト)
 
 ## 🚦 プロジェクトの状況
 
@@ -42,11 +51,11 @@
 | 領域 | 状態 | ここでの意味 |
 |---|---|---|
 | ソフトウェア | 🟡 | 主な目的では動作します。足りない点は上の正直さの確認に書かれています |
-| テスト | 🟢 | 自動テスト 143 件。変更のたびに実行されます |
+| テスト | 🟢 | 自動テスト 153 件。変更のたびに実行されます |
 | 実機 | 🔴 | まだです：このバージョンについて実機での動作記録はありません |
 | ドキュメント | 🟢 | 8 言語の README。変更のたびにマニフェストと照合されます |
 
-## 1. 🛠️ 技術概要
+## 🎯 概要
 
 **HYDRA-UMC-JOB-DISPATCHER** は、オーケストレーターのタスク割り当て
 エンジンです。グローバルなミッションキューを管理し、各ロボットの現在の
@@ -56,19 +65,18 @@
 ことを保証し、異なるロボットが連携して動作する必要のあるマルチステップ
 組立シーケンスを調整します。
 
-### 主な機能：
-* 📋 **動的キューイング：** インテリジェントなミッションの優先順位付けとスケジューリング。
-* ⚖️ **工具認識ルーティング：** 正しい URTC ヘッドを持つロボットへ自動的にジョブをルーティングします。
-* 🧰 **設定可能なツールカタログ（警告のみ）：** `-tools-file`（ツールヘッドの TOOL_* プロファイル名の JSON リスト）や `-tools` で、設置環境が知っているツールを宣言します。`RequiredTool` や `Tool` がカタログにないジョブ／ロボットも受け付けられ、警告が一度だけ記録されます（ツールは完全一致のため、大文字小文字だけが違う場合はヒント付き）。カタログがなければ何も変わりません。*(実装済み)*
-* 🔄 **マルチステージミッション：** タスク間の依存関係を管理します（例：「ピック」は「プレース」より先に発生する必要があります）。
-* 📡 **永続性：** 実際に動作するオプションの SQLite バックエンドによるミッション状態管理（`-db PATH`、`src/sqlitestore`、純粋な Go - CGO 不要） - 実際のプロセス再起動を経てもキューは生き残ることをエンドツーエンドで検証済み。未設定の場合はメモリ上のみで動作します。`GET /health` は劣化したストアを黙って失敗させず報告します。詳細は [`docs/API.md`](docs/API.md#persistence) を参照。
-* 🔁 **冪等な送信（v0）：** `POST /jobs/submit` による実際の、任意の `DedupKey` ベースの重複排除——進行中または既に完了したジョブを再送信すると変更されずに返され、実際の失敗後の再試行は同じジョブ ID を再利用し、作業を二重に実行しません。優先順位の順序は繰り返し実行しても決定論的であり、明示的な回帰テストでカバーされています。
-* 🧯 **デフォルトで安全。応答しなくなったロボットには仕事を渡しません（v0）：** API は指定がなければ `127.0.0.1:8090` で待ち受け、別のアドレスにはベアラートークン（`-token` / `JOB_DISPATCHER_TOKEN`。設定すると `GET /health` 以外のすべてが要求します）か、明示的な `-allow-anonymous` が必要です。HTTP サーバーにはタイムアウトがあり、64 KB を超えるリクエストボディは `413` で拒否されます。`-robot-timeout`（既定 2 分）より長く無応答のロボットには新しい仕事が割り当てられず、ジョブは優先する `location` を指定でき（`POST /jobs`、`POST /jobs/submit`。その場所のロボットが優先され、必須ではありません）、各ロボットの最後のハートビートは永続化されます（旧バージョンのデータベースはその場で移行されます）。そのため再起動しても、無応答になったロボットが見えなくなりません。*（実装済み）*
-* 🗂️ **アトミックな書き込み・ページ送り・追跡可能なジョブ:** 完了・取り消し・再キュー・失効ハートビートの掃引は 1 回のトランザクションで SQLite に書き込まれます(データベースは WAL モード)。`GET /jobs` は絞り込みとページ送りができます(`status`、`limit`、`offset`、`X-Total-Count`)。各ジョブは `SubmittedAtMs`、`AssignedAtMs`、`CompletedAtMs` と、完了報告が送り返せる `Attempt` カウンター(`attempt`)を持ち、破棄された割り当ての遅れた報告は拒否されます。`DELETE /robots/{id}` はジョブのないロボットを削除します。未来の日付のロボットのハートビートは信用しません。機械可読な記述は `docs/openapi.yaml` にあります。 *(実装済み)*
+## 🧩 HYDRA-UMC での役割
 
----
+**HYDRA-UMC-JOB-DISPATCHER** はどのロボットにどのジョブを渡すかを決めます。クライアントがジョブを投入し、ロボットは搭載ツールを登録して仕事を求め、ディスパッチャーは条件に合う最優先のジョブを渡します。ロボットは動かしません。ジョブをどう扱うかはロボット自身と SDK のジョブゲートの役目です。
 
-## 2. 🔄 ディスパッチャーフロー
+## 🏛️ アーキテクチャ
+
+<p align="center">
+  <img src="images/architecture.svg" alt="HYDRA-UMC-JOB-DISPATCHER architecture" width="100%">
+</p>
+
+<details>
+<summary>図のテキスト版（Mermaid）</summary>
 
 ```mermaid
 flowchart LR
@@ -81,9 +89,9 @@ flowchart LR
     SCHED -.-> LOG["Production Reports （計画中）"]
 ```
 
----
+</details>
 
-## 3. 🧱 アーキテクチャと設計上の決定
+**この作りにした理由**
 
 * **実際のロジックがリポジトリのルートではなく `src/` の下にある理由。** `src/dispatcher`（スケジューリングエンジン）と `src/api`（HTTP ハンドラ）が実際の実装を保持しています。`main.go`/`version.go` はそれらを結びつけるエントリポイントとしてリポジトリのルートに残ります。
 * **ジョブの割当てが URTC 経由で工具の可用性をチェックする理由。** 特定の工具ヘッドを必要とするジョブは、その URTC 制御の工具ヘッドが実際に存在しアイドル状態であるロボットにのみ分配可能です——ディスパッチ前（ピック失敗後ではなく）にこれをチェックすることで、ロボットが実際には使用できないステーションに到着することを防ぎます。`src/dispatcher.Engine.DispatchOnce` は今日すでに `RequiredTool`/`Robot.Tool` の完全一致でこれを実施しています；工具ヘッドが物理的に取り付けられていることを確認するために CAN 経由で実際の URTC とまだ通信していません（エンジンはロボットの登録が主張する内容しか知りません——`src/api` の `POST /robots` を参照）。
@@ -93,49 +101,67 @@ flowchart LR
 * **`POST /jobs/submit` が `POST /jobs` を変更するのではなく新しいルートである理由。** `AddJob()`/`POST /jobs` は常に挿入を行い、ID の衝突ではエラーになります——この低レベルの契約は変更されません。`SubmitJob()`/`POST /jobs/submit` は `Job.DedupKey` を介してその上に実際の、任意の重複排除を重ねます——これはエコシステム全体で使われているのと同じパターンです（変更されない低レベルのプリミティブの隣に安全策付きのエントリポイントを追加するのであって、それに動作の変更を接ぎ木するのではありません）。
 * **失敗後の再試行が新しいジョブを作成するのではなく同じジョブ ID を再利用する理由。** 代替案——再試行のたびに新しいジョブを生成する——は、一つの論理的な作業単位の履歴を複数の ID に分散させてしまい、呼び出し側には「これは一度失敗して再試行されている」のか「これは無関係な新しい作業」なのかを区別する手段がなくなります。元のジョブを `Pending` にリセットすることで、失敗した試行を含むそのライフサイクル全体が一つの ID の下に保たれます。
 
----
+## ✨ 機能
 
-## 📂 リポジトリ構成
+* 📋 **動的キューイング：** インテリジェントなミッションの優先順位付けとスケジューリング。
+* ⚖️ **工具認識ルーティング：** 正しい URTC ヘッドを持つロボットへ自動的にジョブをルーティングします。
+* 🧰 **設定可能なツールカタログ（警告のみ）：** `-tools-file`（ツールヘッドの TOOL_* プロファイル名の JSON リスト）や `-tools` で、設置環境が知っているツールを宣言します。`RequiredTool` や `Tool` がカタログにないジョブ／ロボットも受け付けられ、警告が一度だけ記録されます（ツールは完全一致のため、大文字小文字だけが違う場合はヒント付き）。カタログがなければ何も変わりません。*(実装済み)*
+* 🔄 **マルチステージミッション：** タスク間の依存関係を管理します（例：「ピック」は「プレース」より先に発生する必要があります）。
+* 📡 **永続性：** 実際に動作するオプションの SQLite バックエンドによるミッション状態管理（`-db PATH`、`src/sqlitestore`、純粋な Go - CGO 不要） - 実際のプロセス再起動を経てもキューは生き残ることをエンドツーエンドで検証済み。未設定の場合はメモリ上のみで動作します。`GET /health` は劣化したストアを黙って失敗させず報告します。詳細は [`docs/API.md`](docs/API.md#persistence) を参照。
+* 🔁 **冪等な送信（v0）：** `POST /jobs/submit` による実際の、任意の `DedupKey` ベースの重複排除——進行中または既に完了したジョブを再送信すると変更されずに返され、実際の失敗後の再試行は同じジョブ ID を再利用し、作業を二重に実行しません。優先順位の順序は繰り返し実行しても決定論的であり、明示的な回帰テストでカバーされています。
+* 🧯 **デフォルトで安全。応答しなくなったロボットには仕事を渡しません（v0）：** API は指定がなければ `127.0.0.1:8090` で待ち受け、別のアドレスにはベアラートークン（`-token` / `JOB_DISPATCHER_TOKEN`。設定すると `GET /health` 以外のすべてが要求します）か、明示的な `-allow-anonymous` が必要です。HTTP サーバーにはタイムアウトがあり、64 KB を超えるリクエストボディは `413` で拒否されます。`-robot-timeout`（既定 2 分）より長く無応答のロボットには新しい仕事が割り当てられず、ジョブは優先する `location` を指定でき（`POST /jobs`、`POST /jobs/submit`。その場所のロボットが優先され、必須ではありません）、各ロボットの最後のハートビートは永続化されます（旧バージョンのデータベースはその場で移行されます）。そのため再起動しても、無応答になったロボットが見えなくなりません。*（実装済み）*
+* 🗂️ **アトミックな書き込み・ページ送り・追跡可能なジョブ:** 完了・取り消し・再キュー・失効ハートビートの掃引は 1 回のトランザクションで SQLite に書き込まれます(データベースは WAL モード)。`GET /jobs` は絞り込みとページ送りができます(`status`、`limit`、`offset`、`X-Total-Count`)。各ジョブは `SubmittedAtMs`、`AssignedAtMs`、`CompletedAtMs` と、完了報告が送り返せる `Attempt` カウンター(`attempt`)を持ち、破棄された割り当ての遅れた報告は拒否されます。`DELETE /robots/{id}` はジョブのないロボットを削除します。未来の日付のロボットのハートビートは信用しません。機械可読な記述は `docs/openapi.yaml` にあります。 *(実装済み)*
 
-```text
-HYDRA-UMC-JOB-DISPATCHER/
-├── src/
-│   ├── dispatcher/    # 実際のスケジューリングエンジン：キュー、
-│   │                  # 工具を意識したルーティング、多段階依存関係
-│   ├── api/           # エンジンを包む単純な JSON/HTTP ハンドラー
-│   └── sqlitestore/  # オプションの純粋な Go による SQLite 永続化 (-db PATH)
-├── docs/
-│   ├── API.md         # 本物の HTTP エンドポイントリファレンス（リクエスト、レスポンス、ステータスコード）
-│   └── openapi.yaml   # 同じルートの機械可読な OpenAPI 記述
-├── images/            # メディアと図版
-├── systemd/
-│   └── hydra-umc-job-dispatcher.service # CM5 上のローカル優先度ミッションキュー用 systemd ユニット
-├── tools/
-│   ├── build_test.py  # バージョンを更新しないビルド/コンパイル確認
-│   ├── ci_validate.py # CI が使用する manifest/CHANGELOG/docs の検証
-│   ├── _doc_policy.py # ファミリー共通のドキュメント規則 (HYDRA-UMC-SDK のコピーで、同期を維持)
-│   ├── _readme_parity.py # 8つの README が同じ構造であることの検査 (HYDRA-UMC-SDK のコピーで、同期を維持)
-│   └── hydra_project_tool.py # すべてのリポジトリで共通のコマンド: validate、test、ci、version、status、bump
-├── build/             # コンパイル済みバイナリ(build.sh/build.bat の出力)
-├── go.mod / go.sum    # Go モジュール定義
-├── version.go         # const Version = "X.Y.Z"(go.mod にはアプリバージョンフィールドがありません)
-├── main.go            # エントリポイント：エンジンを HTTP API に接続してリッスン
-├── main_test.go       # プロセスが起動を拒否する条件: ロボット登録やジョブ投入ができる API は、トークンなしでネットワークを待ち受けてはならない
-├── bump_version.py    # オドメーター式バージョンインクリメント（明示的な `bump` コマンドのみが実行）
-├── bump_manifest_version.py # hydra-umc.project.json のバージョンをネイティブ側と同期（--sync）
-├── build.sh/.bat      # バージョンを増加させ、その後 `go build` を実行
-├── run.sh/.bat        # コンパイル済みバイナリを実行
-└── README.md
+## 🔒 セキュリティと安全
+
+| 脅威 | 防御 | 場所 |
+|---|---|---|
+| ネットワークに開かれた API | `127.0.0.1:8090` で待ち受け、他のアドレスでは `-allow-anonymous` がない限り Bearer トークン（`-token` または `JOB_DISPATCHER_TOKEN`）が必要です。`GET /health` 以外のすべてのルートがそれを求め、定数時間で比較し、拒否は `WWW-Authenticate: Bearer` 付きの `401` です | `main.go`, `src/api/api.go` |
+| 大きなボディと遅い接続 | ボディは最大 64 KiB。ヘッダーは 5 秒、リクエストは 15 秒で届く必要があり、応答は 30 秒以内に書かれ、アイドル接続は 60 秒で閉じます | `src/api/api.go`, `main.go` |
+| 応答しなくなったロボットや存在しないツールへの仕事 | `-robot-timeout`（既定 2 分、`0` で無効）より長く沈黙したロボットには仕事を渡さず、そのジョブは「不明」になります。`-tools-file` / `-tools` にないツールを名指すジョブやロボットは拒否されます | `main.go`, `src/dispatcher/tools.go` |
+| 二重投入と、キューを失う再起動 | 投入は `DedupKey` により冪等です。`-db パス` を付けるとキューは純 Go の SQLite ファイルに保存され、プロセスを強制終了して再起動しても残ります。付けなければメモリ上だけです | `src/dispatcher`, `src/sqlitestore` |
+
+**絶対にしないこと：** ロボットは動かさず、ツール別の振り分けはロボットが自分について言う文字列を比較するだけです。ツールについて嘘をつくロボットは見分けられません（URTC には CAN で問い合わせないため）。
+
+## 🔌 インターフェース
+
+既定は `127.0.0.1:8090` の HTTP。詳しくは `docs/API.md` と `docs/openapi.yaml` を参照してください。
+
+| トピックまたはルート | 内容 |
+|---|---|
+| `/jobs`, `/jobs/submit`, `/jobs/{id}` | ジョブの一覧・投入・参照 |
+| `/jobs/complete`, `/jobs/cancel`, `/jobs/requeue`, `/jobs/detect-stale` | ジョブの完了・取消・再投入、沈黙したロボットのジョブの検出 |
+| `/robots`, `/robots/{id}`, `/dispatch` | ロボットとそのツールの登録、次の適合ジョブの要求 |
+| `GET /health` | サービスは動作中か（トークンなしで利用可） |
+
+## ⚙️ 設定
+
+| 変数 | 既定値 | 設定する内容 |
+|---|---|---|
+| `-addr` | `127.0.0.1:8090` | サービスの待ち受け先 |
+| `-token`, `JOB_DISPATCHER_TOKEN` | 空 | API の Bearer トークン |
+| `-allow-anonymous` | `false` | ループバック以外のアドレスでトークンなしを許可 |
+| `-robot-timeout` | `2m` | この時間沈黙したロボットには仕事を渡さない（`0` = 無効） |
+| `-db` | 空（メモリ） | キューを保持する SQLite ファイルのパス |
+| `-tools-file`, `JOB_DISPATCHER_TOOLS_FILE`, `-tools`, `JOB_DISPATCHER_TOOLS` | 空 | ジョブやロボットが指定できるツールの一覧 |
+
+## 🚀 クイックスタート
+
+Go 1.21 以上が必要です（SQLite ドライバーは純 Go で C コンパイラ不要）。Python 3 はプロジェクトのツールにだけ使います。
+
+```bash
+bash run.sh        # Linux, macOS (run.bat on Windows)
+go run . -addr 127.0.0.1:8090 -db jobs.sqlite3
+curl http://127.0.0.1:8090/health
 ```
 
-元のテンプレートから省略：`hardware/`、`firmware/`、`os/` —— これは
-純粋なソフトウェアサービス(Go バイナリ)であり、専用のハードウェアや
-ファームウェア、維持すべきオペレーティングシステムイメージもありません。
-完全な HTTP エンドポイントリファレンスは [`docs/API.md`](docs/API.md) を参照。
+## 🧪 テスト
 
----
+`go test ./...` で Go のテスト 153 件を実行します。テストはコードの隣（`src/api`、`src/dispatcher`、`src/sqlitestore`、`main_test.go`）にあり、SQLite ファイル上でプロセスを強制終了して再起動するテストも含みます。ハードウェアも外部ネットワークも不要です。
 
-## 🔧 ビルドと実行
+CI は `HYDRA_UMC_CI=1 python tools/ci_validate.py` を実行し、マニフェスト、文書、8 つの README、図を検査します。
+
+## 🏗️ ビルドとリリース
 
 コンパイルできるだけの骨組みではなく、優先度付きの本物のジョブ
 キューと HTTP API です。
@@ -182,15 +208,62 @@ go test ./...   # src/dispatcher(スケジューリングアルゴリズム) +
                  # src/api(httptest による実際の HTTP 往復テスト)
 ```
 
----
+## 🩺 トラブルシューティング
 
-## 🚀 ロードマップ
+| 表示 | 原因 | 対処 |
+|---|---|---|
+| the service refuses to start | ループバックでないアドレスなのにトークンがありません | `-token`（または `JOB_DISPATCHER_TOKEN`）を指定するか、承知のうえで `-allow-anonymous` を付けます |
+| `401` | リクエストに Bearer トークンがないか誤っています | `Authorization: Bearer <token>` を送ります |
+| a job stays queued | ジョブが指定するツールを持つ登録済みロボットがいないか、ロボットが沈黙しています | そのツールを持つロボットを登録し、`/dispatch` を呼び続けさせます。`-robot-timeout` も確認します |
+| the queue is empty after a restart | `-db` なしで動かしていました | SQLite ファイルを指す `-db` を付けて起動します |
+
+## 📂 リポジトリの構成
+
+<p align="center">
+  <img src="images/repository-structure.svg" alt="Repository structure of HYDRA-UMC-JOB-DISPATCHER" width="100%">
+</p>
+
+<details>
+<summary>ツリーのテキスト版</summary>
+
+```text
+HYDRA-UMC-JOB-DISPATCHER/
+├── src/
+│   ├── dispatcher/                              キュー、ツール別の振り分け、段階、復旧
+│   ├── api/                                     HTTP の窓口、トークン、制限
+│   └── sqlitestore/                             任意の永続キュー（純 Go の SQLite）
+├── docs/                                        API リファレンスと OpenAPI ファイル
+├── systemd/                                     CM5 用のサービスユニット
+├── tools/                                       ビルド・テスト実行、バージョン引き上げ、CI 検証、README と図の生成・検査
+├── images/                                      バナーと README の図
+├── .github/                                     CI ワークフローと Issue テンプレート
+├── hydra-umc.project.json                       マニフェスト：バージョン・成熟度・ファミリー
+├── CHANGELOG.md                                 各バージョンの変更点
+├── build.sh build.bat                           ビルドスクリプト（バージョンは変えません）
+├── build-test.sh build-test.bat                 ビルドスクリプト（バージョンは変えません）
+├── test.sh test.bat                             テストを実行
+├── main.go / version.go                         エントリー、オプション、バージョン
+├── main_test.go                                 エントリーのテスト
+├── go.mod / go.sum                              Go モジュールとチェックサム
+├── bump_version.py / bump_manifest_version.py   明示的なバージョン引き上げ
+├── run.sh run.bat                               サービスを起動
+└── SECURITY.md SUPPORT.md CONTRIBUTING.md CODE_OF_CONDUCT.md LICENSE LICENSE.md
+```
+
+</details>
+
+## 🗺️ ロードマップと既知の制限
+
+**現時点の既知の制限**
+
 * **フェーズ 1：** TSN による決定論的スウォーム同期とサブミリ秒ジッタの低減。
 * **フェーズ 2：** マルチロボットセルにおける動的障害物回避を伴う 3D パスプランニング。
 * **フェーズ 3：** リアルタイムのリソース可用性を用いたマルチロボットジョブディスパッチの最適化。
 * **フェーズ 4：** より優れたスケジューリングのための AI 駆動のジョブ時間推定と異種ロボットフリートの協調。
 
----
+## 🌍 言語
+
+この README とリポジトリの文書は、英語・スペイン語・ドイツ語・フランス語・イタリア語・日本語・中国語・ポルトガル語（ポルトガル）の 8 言語で提供されています。8 つのファイルは同時に書かれ、同じ節と同じリンクを持つことを CI が確認します。 このリポジトリには独自の画面もメッセージカタログもないため、翻訳すべきインターフェース文字列はありません。
 
 ## 🔗 関連プロジェクト
 
@@ -283,21 +356,28 @@ go test ./...   # src/dispatcher(スケジューリングアルゴリズム) +
 - **[HYDRA-UMC-OPS-AGENT](https://github.com/JuanenRac/HYDRA-UMC-OPS-AGENT)** — 保守インシデントコーディネーター: 低権限のエッジ役割がサニタイズされたインベントリ/ヘルスのスナップショットを収集し、コントロールプレーン役割がそれを読み取り専用でレンダリングして AI プロバイダーに診断の提案を依頼します - パッチを適用することも、何かをデプロイすることも決してありません。
 - **[HYDRA-UMC-DEV-SERVER](https://github.com/JuanenRac/HYDRA-UMC-DEV-SERVER)** — 再現可能な開発ホスト（Raspberry Pi 5 / CM5）。エコシステムのソースコードを保管し、永続キューのもとで境界の明確なビルド/テストタスクを実行する。運用中の CM5 とは明確に異なる、開発専用の役割。
 
+## 📚 ドキュメント
 
----
+さらに読むには：
 
-## 📚 ドキュメント & コミュニティ
+* [docs/API.md](docs/API.md) - 各ルート、フィールド、エラー
+* [docs/openapi.yaml](docs/openapi.yaml) - 同じ API の OpenAPI ファイル
+* [エコシステムのセキュリティ基準](https://github.com/JuanenRac/HYDRA-UMC-DOCS/blob/main/docs/SECURITY_BASELINE.md)
+* [エコシステムの脅威モデル](https://github.com/JuanenRac/HYDRA-UMC-DOCS/blob/main/docs/THREAT_MODEL.md)
+* [このリポジトリの変更履歴](CHANGELOG.md)
+* [このリポジトリのライセンス](LICENSE.md)
 
-- **[CONTRIBUTING.md](CONTRIBUTING.md)** —— プルリクエストのための技術スタックとコーディング指針。
-- **[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)** —— このコミュニティで期待される行動規範。
-- **[SECURITY.md](SECURITY.md)** —— 脆弱性の報告方法と、このプロジェクトの実際のセキュリティ重点領域。
-- **[SUPPORT.md](SUPPORT.md)** —— 質問の投稿先とバグの報告先。
-- **[LICENSE.md](LICENSE.md)** —— このプロジェクト自身のライセンス。
+## 🤝 コントリビュートとコミュニティ
+
+* プルリクエストの前に `HYDRA_UMC_CI=1 py -3 tools/ci_validate.py`（または `HYDRA_UMC_CI=1 python3 tools/ci_validate.py`）を実行してください。`CI_VALIDATION=PASS` と表示される必要があります。この確認に `build.sh` や `build.bat` は使わないでください。ビルドは検査ではありません。
+* 8 つの README は HYDRA-UMC-DOCS の 1 つのソースから書かれます。手で編集しないでください。ソースを変更し、`tools/make_readmes.py` で書き直します。
+* 実行していないことを README に書かないでください。事実であれば「シミュレーションのみ」「実機では未確認」と書きます。
+* [CONTRIBUTING.md](CONTRIBUTING.md)、[行動規範](CODE_OF_CONDUCT.md)、[SECURITY.md](SECURITY.md)、[SUPPORT.md](SUPPORT.md) を参照してください。
 
 ## 👤 作者
-**JuanenRac** (Electro Hobby 3D)
-📧 electrohobby3d@gmail.com
-📺 [youtube.com/@electrohobby3d](https://youtube.com/@electrohobby3d)
+
+**JuanenRac (Electro Hobby 3D)** · electrohobby3d@gmail.com
 
 ## 📜 ライセンス
-GPL-3.0-or-later —— 詳細は LICENSE を参照してください。
+
+GPL-3.0-or-later - [LICENSE](LICENSE).

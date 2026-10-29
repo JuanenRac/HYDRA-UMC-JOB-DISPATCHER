@@ -4,6 +4,8 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+- **README in the universal layout:** the README and its seven translations follow the layout that the four families share (22 sections in a fixed order), with an architecture picture and a repository-structure picture drawn from `docs/architecture.json` and `docs/structure.json`; the CI validator checks both pictures and the file tree. Where the repository has a service or an MQTT transport, the README now says how to start it and which environment variables it reads.
+
 - **The CI looks for known vulnerabilities of the Go libraries (it only warns):** `govulncheck` runs after `staticcheck` and writes a warning in the log when it finds some, without failing the check, because the standard library of the runner can have vulnerabilities that this code does not call.
 - **The layout of the README is checked in the CI:** the validator runs `tools/universal_readme_check.py` and lists, as a warning, what differs from the universal layout of the README.
 - The Go module is named `github.com/JuanenRac/HYDRA-UMC-JOB-DISPATCHER`, with the same capitals as the repository and the other Go modules of the family (it was in lower case).

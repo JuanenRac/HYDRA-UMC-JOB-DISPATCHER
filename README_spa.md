@@ -1,26 +1,33 @@
+<!-- =============================================================================
+HYDRA-UMC-JOB-DISPATCHER - Priority job dispatcher
+Copyright (C) JuanenRac (Electro Hobby 3D) <electrohobby3d@gmail.com>
+GPL-3.0-or-later - see LICENSE
+============================================================================= -->
+
 <p align="center">
   <img src="images/HYDRA_UMC_BANNER.svg" alt="HYDRA-UMC-JOB-DISPATCHER banner" width="100%">
 </p>
 
-# 📋 HYDRA-UMC-JOB-DISPATCHER
+# 🗂️ HYDRA-UMC-JOB-DISPATCHER
 
 <p align="center"><a href="README.md">🇺🇸 English</a> | 🇪🇸 <b>Español</b> | <a href="README_fra.md">🇫🇷 Français</a> | <a href="README_ita.md">🇮🇹 Italiano</a> | <a href="README_deu.md">🇩🇪 Deutsch</a> | <a href="README_zho.md">🇨🇳 简体中文</a> | <a href="README_jpn.md">🇯🇵 日本語</a> | <a href="README_por.md">🇵🇹 Português</a></p>
 
 ### ⚙️ Cola de Misiones Basada en Prioridades para Flotas de Robots Heterogéneas
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Licencia-GPL%203.0--or--later-blue.svg" alt="GPL 3.0 or later">
-  <img src="https://img.shields.io/badge/Arquitectura-Basada%20en%20Eventos-blue.svg" alt="Event-Driven">
-  <img src="https://img.shields.io/badge/Tecnología-Go%20%2F%20net%2Fhttp-00ADD8.svg" alt="Tech">
+  <img src="https://img.shields.io/badge/License-GPL%203.0--or--later-blue.svg" alt="GPL 3.0 or later">
+  <img src="https://img.shields.io/badge/Go-1.21%2B-00ADD8.svg" alt="Go">
+  <img src="https://img.shields.io/badge/Architecture-Event--Driven-blue.svg" alt="Architecture">
+  <img src="https://img.shields.io/badge/Tests-153%20passing-2ea44f.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/Version-0.2.3-0f6cbd.svg" alt="Version">
+  <img src="https://img.shields.io/badge/Maturity-functional-0F6CBD.svg" alt="Maturity">
 </p>
 
 ---
 
-**Comprobación de honestidad - qué funciona realmente hoy:** el motor de planificación (`src/dispatcher/dispatcher.go`) - cola ordenada por prioridad, enrutamiento consciente de herramienta, seguimiento de dependencias multi-etapa, y envío idempotente vía `DedupKey` - y la API JSON/HTTP plana que lo envuelve (`src/api/api.go`) son reales y están testeados (121 tests pasando entre `src/dispatcher`, `src/api`, `src/sqlitestore`, `go test ./...`). La persistencia SQLite opcional (`src/sqlitestore/sqlitestore.go`, Go puro, sin CGO) está genuinamente verificada de extremo a extremo contra un proceso real matado y relanzado, no solo testeada de forma aislada. Lo que es una brecha conocida y documentada: el enrutamiento consciente de herramienta comprueba `RequiredTool`/`Robot.Tool` por coincidencia exacta de cadena contra lo que sea que declare el propio registro `POST /robots` de un robot - todavía no habla con un URTC real por CAN para confirmar que el cabezal de herramienta está físicamente acoplado, así que un robot que mienta sobre su propia herramienta (o a quien se le haya caído el cabezal) es hoy indistinguible de uno que diga la verdad. Las 4 fases del roadmap (sincronización TSN, planificación de rutas 3D, optimización de despacho, estimación de duración basada en IA) son trabajo futuro aspiracional sin ningún código detrás todavía. Ver `CHANGELOG.md` para lo que se ha entregado exactamente hasta ahora.
+> **Estado de seguridad física y de ciberseguridad:** este ecosistema no es un sistema de seguridad certificado. Todavía no existe una ruta de E-STOP por hardware, ni límites ni enclavamientos aplicados por el firmware, ni un comando de movimiento verificado; las imágenes de firmware se comprueban con CRC32 y un HMAC-SHA256 de clave compartida, no con una firma asimétrica; TLS y TLS mutuo son opcionales y están desactivados por defecto; aún no se ha poblado ni probado ninguna placa propia. Lee la [línea base de seguridad](https://github.com/JuanenRac/HYDRA-UMC-DOCS/blob/main/docs/SECURITY_BASELINE.md) y el [modelo de amenazas](https://github.com/JuanenRac/HYDRA-UMC-DOCS/blob/main/docs/THREAT_MODEL.md) antes de fiarte de cualquier afirmación de aquí para la seguridad de una persona.
 
 ---
-
-> **Estado de seguridad física y de ciberseguridad:** este ecosistema no es un sistema de seguridad certificado. Todavía no existe una ruta de E-STOP por hardware, ni límites ni enclavamientos aplicados por el firmware, ni un comando de movimiento verificado; las imágenes de firmware se comprueban con CRC32 y un HMAC-SHA256 de clave compartida, no con una firma asimétrica; TLS y TLS mutuo son opcionales y están desactivados por defecto; aún no se ha poblado ni probado ninguna placa propia. Lee la [línea base de seguridad](https://github.com/JuanenRac/HYDRA-UMC-DOCS/blob/main/docs/SECURITY_BASELINE.md) y el [modelo de amenazas](https://github.com/JuanenRac/HYDRA-UMC-DOCS/blob/main/docs/THREAT_MODEL.md) antes de fiarte de cualquier afirmación de aquí para la seguridad de una persona.
 
 ## 📋 De un vistazo
 
@@ -28,10 +35,12 @@
 |---|---|
 | Versión | `0.2.3` |
 | Madurez | Funcional |
-| Tests | 143 |
+| Tests | 153 (`go test ./...`) |
 | Tecnología | Go / priority queue / HTTP API / SQLite (modernc.org/sqlite, pure Go) |
 | Destino | La Raspberry Pi CM5 de una celda HYDRA-UMC |
 | En hardware real | Todavía no: no consta ninguna ejecución en hardware real para esta versión |
+
+**Ir a:** [Resumen](#-resumen) · [Arquitectura](#-arquitectura) · [Funciones](#-funciones) · [Seguridad y protección](#-seguridad-y-protección) · [Interfaces](#-interfaces) · [Configuración](#-configuración) · [Inicio rápido](#-inicio-rápido) · [Pruebas](#-pruebas) · [Resolución de problemas](#-resolución-de-problemas) · [Estructura del repositorio](#-estructura-del-repositorio) · [Proyectos relacionados](#-proyectos-relacionados)
 
 ## 🚦 Estado del proyecto
 
@@ -42,29 +51,28 @@ Cada línea es una parte de este repositorio y la luz dice hasta dónde llega ho
 | Área | Estado | Qué significa aquí |
 |---|---|---|
 | Software | 🟡 | Funciona para su propósito principal; la comprobación de honestidad de arriba lista lo que aún falta |
-| Pruebas | 🟢 | 143 pruebas automáticas, ejecutadas en cada cambio |
+| Pruebas | 🟢 | 153 pruebas automáticas, ejecutadas en cada cambio |
 | Hardware real | 🔴 | Todavía no: no consta ninguna ejecución en hardware real para esta versión |
 | Documentación | 🟢 | README en ocho idiomas, comprobado contra el manifiesto en cada cambio |
 
-## 1. 🛠️ VISIÓN GENERAL TÉCNICA
+## 🎯 Resumen
 
 **HYDRA-UMC-JOB-DISPATCHER** es el motor de asignación de tareas del Orquestador. Gestiona una cola global de misiones, distribuyendo trabajos a robots individuales en función de su disponibilidad actual, ubicación y herramienta instalada (URTC).
 
 Asegura que las tareas de alta prioridad (ej. "Reparación de Defecto de Emergencia") omitan el flujo de producción normal, y coordina secuencias de ensamblaje multi-paso que requieren que diferentes robots trabajen en tándem.
 
-### Características Clave:
-* 📋 **Colas Dinámicas:** Priorización e itineración inteligente de misiones.
-* ⚖️ **Enrutamiento Consciente de Herramientas:** Enruta automáticamente los trabajos al robot con el cabezal URTC correcto.
-* 🧰 **Catálogo de herramientas configurable (solo avisa):** `-tools-file` (una lista JSON con los nombres de los perfiles TOOL_* de los cabezales) y/o `-tools` declaran las herramientas que conoce la instalación. Un trabajo cuyo `RequiredTool`, o un robot cuyo `Tool`, no está en el catálogo se acepta igualmente y se registra una vez como aviso (con una pista si solo cambia la mayúscula, porque las herramientas coinciden exactamente). Sin catálogo nada cambia. *(implementado)*
-* 🔄 **Misiones Multi-Etapa:** Gestiona dependencias entre tareas (ej. "Pick" debe ocurrir antes de "Place").
-* 📡 **Persistencia:** estado de misión real y opcional respaldado por SQLite (`-db PATH`, `src/sqlitestore`, Go puro - sin CGO) - la cola sobrevive a un reinicio real del proceso, verificado de extremo a extremo; sin configurar, todo permanece en memoria. `GET /health` reporta un almacén degradado en vez de fallar en silencio. Ver [`docs/API.md`](docs/API.md#persistence).
-* 🔁 **Envío Idempotente (v0):** Deduplicación real y opcional basada en `DedupKey` vía `POST /jobs/submit` - un reenvío de un job en curso o ya terminado se devuelve sin cambios, y un reintento tras un fallo real reutiliza el mismo ID de job en vez de ejecutar el trabajo dos veces. El orden por prioridad es determinista entre ejecuciones repetidas, cubierto por un test de regresión explícito.
-* 🧯 **Seguro por defecto, y un robot que deja de responder no recibe trabajo (v0):** la API escucha en `127.0.0.1:8090` salvo que se indique otra cosa, y otra dirección exige un token bearer (`-token` / `JOB_DISPATCHER_TOKEN`; entonces todo salvo `GET /health` lo pide) o un `-allow-anonymous` explícito; el servidor HTTP tiene tiempos límite y los cuerpos de petición de más de 64 KB se rechazan con `413`. Un robot callado durante más de `-robot-timeout` (2 minutos por defecto) no recibe trabajo nuevo, un trabajo puede indicar una `location` preferida (`POST /jobs`, `POST /jobs/submit`; se prefieren los robots de esa ubicación, nunca se exige), y el último latido de cada robot se persiste (una base de datos de la versión anterior se migra en el sitio), así que un reinicio ya no oculta un robot que se calló. *(implementado)*
-* 🗂️ **Escrituras atómicas, paginación y trabajos trazables:** una finalización, cancelación, reencolado o barrido de latidos caducados se escribe en SQLite en una sola transacción (la base funciona en modo WAL); `GET /jobs` se puede filtrar y paginar (`status`, `limit`, `offset`, `X-Total-Count`); cada trabajo lleva `SubmittedAtMs`, `AssignedAtMs`, `CompletedAtMs` y un contador `Attempt` que el informe de finalización puede devolver (`attempt`) para que se rechace el informe tardío de una asignación abandonada; `DELETE /robots/{id}` olvida un robot sin trabajo; no se fía de un latido de robot con fecha futura. Hay una descripción legible por máquinas en `docs/openapi.yaml`. *(implementado)*
+## 🧩 Papel en HYDRA-UMC
 
----
+**HYDRA-UMC-JOB-DISPATCHER** decide qué robot recibe qué trabajo. Los clientes envían trabajos, los robots registran las herramientas que llevan y piden trabajo, y el despachador entrega el trabajo de mayor prioridad que encaja. No mueve ningún robot: lo que un robot hace con un trabajo es asunto suyo y de la puerta de trabajos del SDK.
 
-## 2. 🔄 FLUJO DEL DESPACHADOR
+## 🏛️ Arquitectura
+
+<p align="center">
+  <img src="images/architecture.svg" alt="HYDRA-UMC-JOB-DISPATCHER architecture" width="100%">
+</p>
+
+<details>
+<summary>Versión en texto del diagrama (Mermaid)</summary>
 
 ```mermaid
 flowchart LR
@@ -77,9 +85,9 @@ flowchart LR
     SCHED -.-> LOG["Informes de Producción (previsto)"]
 ```
 
----
+</details>
 
-## 3. 🧱 ARQUITECTURA Y DECISIONES DE DISEÑO
+**Por qué está hecho así**
 
 * **Por qué la lógica real vive bajo `src/` y no en la raíz del repo.** `src/dispatcher` (el motor de planificación) y `src/api` (los handlers HTTP) contienen la implementación real; `main.go`/`version.go` siguen en la raíz como el punto de entrada que los conecta.
 * **Por qué la asignación de trabajos comprueba la disponibilidad de herramienta vía URTC.** Un trabajo que necesita un cabezal de herramienta concreto solo es asignable a un robot cuyo cabezal controlado por URTC esté realmente presente e inactivo - comprobar esto antes de asignar (no después de una recogida fallida) evita que un robot llegue a una estación que en realidad no puede usar. `src/dispatcher.Engine.DispatchOnce` ya aplica esto hoy comparando `RequiredTool` contra `Robot.Tool` de forma exacta; todavía no habla con un URTC real por CAN para confirmar que el cabezal está físicamente conectado (el motor solo conoce lo que declara el registro del robot vía `POST /robots`).
@@ -89,49 +97,67 @@ flowchart LR
 * **Por qué `POST /jobs/submit` es una ruta nueva en vez de cambiar `POST /jobs`.** `AddJob()`/`POST /jobs` siempre insertan y fallan ante una colisión de ID - ese contrato de bajo nivel queda intacto. `SubmitJob()`/`POST /jobs/submit` añade deduplicación real y opcional encima vía `Job.DedupKey`: el mismo patrón usado en todo el ecosistema (un punto de entrada con verja añadido junto a una primitiva de bajo nivel sin tocar, no un cambio de comportamiento incrustado en ella).
 * **Por qué un reintento tras un fallo reutiliza el mismo ID de job en vez de crear uno nuevo.** La alternativa - generar un job nuevo en cada reintento - dispersaría el historial de una única unidad lógica de trabajo entre varios IDs y no daría a quien llama forma de distinguir "esto falló una vez y se está reintentando" de "esto es trabajo nuevo sin relación". Reiniciar el job original a `Pending` mantiene todo su ciclo de vida (incluido el intento fallido) bajo un único ID.
 
----
+## ✨ Funciones
 
-## 📂 ESTRUCTURA DE DIRECTORIOS
+* 📋 **Colas Dinámicas:** Priorización e itineración inteligente de misiones.
+* ⚖️ **Enrutamiento Consciente de Herramientas:** Enruta automáticamente los trabajos al robot con el cabezal URTC correcto.
+* 🧰 **Catálogo de herramientas configurable (solo avisa):** `-tools-file` (una lista JSON con los nombres de los perfiles TOOL_* de los cabezales) y/o `-tools` declaran las herramientas que conoce la instalación. Un trabajo cuyo `RequiredTool`, o un robot cuyo `Tool`, no está en el catálogo se acepta igualmente y se registra una vez como aviso (con una pista si solo cambia la mayúscula, porque las herramientas coinciden exactamente). Sin catálogo nada cambia. *(implementado)*
+* 🔄 **Misiones Multi-Etapa:** Gestiona dependencias entre tareas (ej. "Pick" debe ocurrir antes de "Place").
+* 📡 **Persistencia:** estado de misión real y opcional respaldado por SQLite (`-db PATH`, `src/sqlitestore`, Go puro - sin CGO) - la cola sobrevive a un reinicio real del proceso, verificado de extremo a extremo; sin configurar, todo permanece en memoria. `GET /health` reporta un almacén degradado en vez de fallar en silencio. Ver [`docs/API.md`](docs/API.md#persistence).
+* 🔁 **Envío Idempotente (v0):** Deduplicación real y opcional basada en `DedupKey` vía `POST /jobs/submit` - un reenvío de un job en curso o ya terminado se devuelve sin cambios, y un reintento tras un fallo real reutiliza el mismo ID de job en vez de ejecutar el trabajo dos veces. El orden por prioridad es determinista entre ejecuciones repetidas, cubierto por un test de regresión explícito.
+* 🧯 **Seguro por defecto, y un robot que deja de responder no recibe trabajo (v0):** la API escucha en `127.0.0.1:8090` salvo que se indique otra cosa, y otra dirección exige un token bearer (`-token` / `JOB_DISPATCHER_TOKEN`; entonces todo salvo `GET /health` lo pide) o un `-allow-anonymous` explícito; el servidor HTTP tiene tiempos límite y los cuerpos de petición de más de 64 KB se rechazan con `413`. Un robot callado durante más de `-robot-timeout` (2 minutos por defecto) no recibe trabajo nuevo, un trabajo puede indicar una `location` preferida (`POST /jobs`, `POST /jobs/submit`; se prefieren los robots de esa ubicación, nunca se exige), y el último latido de cada robot se persiste (una base de datos de la versión anterior se migra en el sitio), así que un reinicio ya no oculta un robot que se calló. *(implementado)*
+* 🗂️ **Escrituras atómicas, paginación y trabajos trazables:** una finalización, cancelación, reencolado o barrido de latidos caducados se escribe en SQLite en una sola transacción (la base funciona en modo WAL); `GET /jobs` se puede filtrar y paginar (`status`, `limit`, `offset`, `X-Total-Count`); cada trabajo lleva `SubmittedAtMs`, `AssignedAtMs`, `CompletedAtMs` y un contador `Attempt` que el informe de finalización puede devolver (`attempt`) para que se rechace el informe tardío de una asignación abandonada; `DELETE /robots/{id}` olvida un robot sin trabajo; no se fía de un latido de robot con fecha futura. Hay una descripción legible por máquinas en `docs/openapi.yaml`. *(implementado)*
 
-```text
-HYDRA-UMC-JOB-DISPATCHER/
-├── src/
-│   ├── dispatcher/    # El motor de planificación real: cola, enrutamiento
-│   │                  # consciente de herramienta, dependencias multi-etapa
-│   ├── api/           # Handlers JSON/HTTP planos que envuelven el motor
-│   └── sqlitestore/  # Persistencia SQLite opcional en Go puro (-db PATH)
-├── docs/
-│   ├── API.md         # Referencia real de endpoints HTTP (peticiones, respuestas, codigos de estado)
-│   └── openapi.yaml   # Descripción OpenAPI legible por máquinas de las mismas rutas
-├── images/            # Medios y diagramas
-├── systemd/
-│   └── hydra-umc-job-dispatcher.service # Unidad systemd de la cola de misiones por prioridad en la CM5 local
-├── tools/
-│   ├── build_test.py  # Comprobación de build/compilación sin subir versión
-│   ├── ci_validate.py # Validación de manifest/CHANGELOG/docs usada por la CI
-│   ├── _doc_policy.py # Reglas de documentación compartidas por la familia (copia de la de HYDRA-UMC-SDK, mantenida en sincronía)
-│   ├── _readme_parity.py # Comprobación de que los ocho README comparten estructura (copia de la de HYDRA-UMC-SDK, mantenida en sincronía)
-│   └── hydra_project_tool.py # Los mismos comandos en todos los repositorios: validate, test, ci, version, status, bump
-├── build/             # Binarios compilados (salida de build.sh/build.bat)
-├── go.mod / go.sum    # Definición del módulo Go
-├── version.go         # const Version = "X.Y.Z" (go.mod no tiene ese campo)
-├── main.go            # Punto de entrada: conecta el motor a la API HTTP y escucha
-├── main_test.go       # Con qué se niega a arrancar el proceso: una API que puede registrar robots y enviar trabajos no debe escuchar en la red sin token
-├── bump_version.py    # Incremento de versión tipo cuentakilómetros (solo lo ejecuta el comando `bump` explícito)
-├── bump_manifest_version.py # Sincroniza la versión de hydra-umc.project.json con la nativa (--sync)
-├── build.sh/.bat      # Valida y compila (compilar nunca cambia la versión)
-├── run.sh/.bat        # Ejecuta el binario compilado
-└── README.md
+## 🔒 Seguridad y protección
+
+| Amenaza | Defensa | Dónde |
+|---|---|---|
+| Una API abierta a la red | Escucha en `127.0.0.1:8090`; cualquier otra dirección exige un token Bearer (`-token` o `JOB_DISPATCHER_TOKEN`) salvo que se dé `-allow-anonymous`; todas las rutas salvo `GET /health` lo piden, comparado en tiempo constante, y el rechazo es `401` con `WWW-Authenticate: Bearer` | `main.go`, `src/api/api.go` |
+| Cuerpos grandes y conexiones lentas | Un cuerpo mide como máximo 64 KiB; la cabecera debe llegar en 5 s, la petición en 15 s, la respuesta se escribe en 30 s y una conexión inactiva se cierra a los 60 s | `src/api/api.go`, `main.go` |
+| Trabajo dado a un robot que dejó de contestar o a una herramienta que no existe | Un robot callado más de `-robot-timeout` (2 minutos por defecto, `0` lo apaga) no recibe trabajo y sus trabajos pasan a desconocidos; un trabajo o robot que nombre una herramienta fuera de `-tools-file` / `-tools` se rechaza | `main.go`, `src/dispatcher/tools.go` |
+| Un envío duplicado y un reinicio que pierde la cola | El envío es idempotente por la `DedupKey`; con `-db RUTA` la cola se guarda en un fichero SQLite en Go puro y sobrevive a un proceso matado y relanzado, sin ello la cola vive en memoria | `src/dispatcher`, `src/sqlitestore` |
+
+**Lo que nunca hace:** no mueve ningún robot, y el encaminado por herramienta compara las cadenas que un robot dice de sí mismo: un robot que miente sobre su herramienta no se distingue, porque no se pregunta a URTC por CAN.
+
+## 🔌 Interfaces
+
+HTTP en `127.0.0.1:8090` por defecto; la referencia completa es `docs/API.md` y `docs/openapi.yaml`.
+
+| Topic o ruta | Qué lleva |
+|---|---|
+| `/jobs`, `/jobs/submit`, `/jobs/{id}` | listar, enviar y leer trabajos |
+| `/jobs/complete`, `/jobs/cancel`, `/jobs/requeue`, `/jobs/detect-stale` | terminar, cancelar o reencolar un trabajo; encontrar los trabajos de robots callados |
+| `/robots`, `/robots/{id}`, `/dispatch` | registrar un robot y sus herramientas; pedir el siguiente trabajo que encaje |
+| `GET /health` | ¿está vivo el servicio? (abierta sin token) |
+
+## ⚙️ Configuración
+
+| Variable | Por defecto | Qué fija |
+|---|---|---|
+| `-addr` | `127.0.0.1:8090` | dónde escucha el servicio |
+| `-token`, `JOB_DISPATCHER_TOKEN` | vacío | el token Bearer de la API |
+| `-allow-anonymous` | `false` | permitir una dirección no loopback sin token |
+| `-robot-timeout` | `2m` | silencio tras el cual un robot no recibe trabajo (`0` = apagado) |
+| `-db` | vacío (memoria) | ruta del fichero SQLite que guarda la cola |
+| `-tools-file`, `JOB_DISPATCHER_TOOLS_FILE`, `-tools`, `JOB_DISPATCHER_TOOLS` | vacío | la lista de herramientas que un trabajo o robot puede nombrar |
+
+## 🚀 Inicio rápido
+
+Requiere Go 1.21 o superior (el controlador de SQLite es Go puro, sin compilador de C) y Python 3 solo para las herramientas del proyecto.
+
+```bash
+bash run.sh        # Linux, macOS (run.bat on Windows)
+go run . -addr 127.0.0.1:8090 -db jobs.sqlite3
+curl http://127.0.0.1:8090/health
 ```
 
-Podado de la plantilla original: `hardware/`, `firmware/` y `os/` — es un
-servicio de software puro (binario Go) sin hardware ni firmware propios y
-sin imagen de sistema operativo que mantener. Ver
-[`docs/API.md`](docs/API.md) para la referencia completa de endpoints HTTP.
+## 🧪 Pruebas
 
----
+153 pruebas de Go se ejecutan con `go test ./...`; están junto al código (`src/api`, `src/dispatcher`, `src/sqlitestore` y `main_test.go`) e incluyen un proceso que se mata y se relanza sobre un fichero SQLite. Sin hardware ni red externa.
 
-## 🔧 BUILD Y EJECUCIÓN
+El CI ejecuta `HYDRA_UMC_CI=1 python tools/ci_validate.py`, que comprueba el manifiesto, los documentos, los ocho README y las imágenes.
+
+## 🏗️ Compilación y publicación
 
 Una cola de misiones con prioridad real y API HTTP, no solo un esqueleto
 que compila.
@@ -178,17 +204,64 @@ go test ./...   # src/dispatcher (algoritmo de planificacion) +
                  # src/api (round-trips HTTP reales via httptest)
 ```
 
----
+## 🩺 Resolución de problemas
 
-## 🚀 HOJA DE RUTA
+| Ves | Porque | Haz |
+|---|---|---|
+| the service refuses to start | La dirección no es loopback y no se dio token | Da `-token` (o `JOB_DISPATCHER_TOKEN`) o `-allow-anonymous` si lo aceptas |
+| `401` | La petición no trae token Bearer o trae uno erróneo | Envía `Authorization: Bearer <token>` |
+| a job stays queued | Ningún robot registrado lleva la herramienta que nombra el trabajo, o el robot está callado | Registra un robot con esa herramienta y haz que siga pidiendo `/dispatch`; revisa `-robot-timeout` |
+| the queue is empty after a restart | El servicio corrió sin `-db` | Arráncalo con `-db` apuntando a un fichero SQLite |
+
+## 📂 Estructura del repositorio
+
+<p align="center">
+  <img src="images/repository-structure.svg" alt="Repository structure of HYDRA-UMC-JOB-DISPATCHER" width="100%">
+</p>
+
+<details>
+<summary>Versión en texto del árbol</summary>
+
+```text
+HYDRA-UMC-JOB-DISPATCHER/
+├── src/
+│   ├── dispatcher/                              la cola, el encaminado por herramienta, etapas, recuperación
+│   ├── api/                                     la interfaz HTTP, token, límites
+│   └── sqlitestore/                             cola duradera opcional (SQLite en Go puro)
+├── docs/                                        la referencia de la API y el fichero OpenAPI
+├── systemd/                                     unidad de servicio para la CM5
+├── tools/                                       ejecutor de compilación y pruebas, subida de versión, validador de CI, generadores y comprobaciones de README e imágenes
+├── images/                                      banner y las imágenes del README
+├── .github/                                     flujo de CI y plantillas de incidencias
+├── hydra-umc.project.json                       manifiesto: versión, madurez, familia
+├── CHANGELOG.md                                 qué cambió en cada versión
+├── build.sh build.bat                           scripts de compilación (nunca cambian la versión)
+├── build-test.sh build-test.bat                 scripts de compilación (nunca cambian la versión)
+├── test.sh test.bat                             ejecutan las pruebas
+├── main.go / version.go                         punto de entrada, opciones y la versión
+├── main_test.go                                 pruebas del punto de entrada
+├── go.mod / go.sum                              módulo de Go y sumas
+├── bump_version.py / bump_manifest_version.py   subida de versión explícita
+├── run.sh run.bat                               arrancar el servicio
+└── SECURITY.md SUPPORT.md CONTRIBUTING.md CODE_OF_CONDUCT.md LICENSE LICENSE.md
+```
+
+</details>
+
+## 🗺️ Hoja de ruta y límites conocidos
+
+**Límites conocidos hoy**
+
 * **Fase 1:** Sincronización determinista de enjambre sobre TSN y reducción de jitter sub-ms.
 * **Fase 2:** Planificación de trayectorias 3D con evitación dinámica de obstáculos en celdas multi-robot.
 * **Fase 3:** Optimización del despacho de trabajos multi-robot utilizando disponibilidad de recursos en tiempo real.
 * **Fase 4:** Estimación de duración de trabajos impulsada por IA para una mejor planificación y coordinación de flotas heterogéneas.
 
----
+## 🌍 Idiomas
 
-## 🔗 Proyectos Relacionados
+Este README y los documentos del repositorio existen en ocho idiomas: inglés, español, alemán, francés, italiano, japonés, chino y portugués (Portugal). Se escriben a la vez y el CI comprueba que los ocho ficheros tengan las mismas secciones y los mismos enlaces. Este repositorio no tiene pantalla ni catálogo de mensajes propios, así que no hay cadenas de interfaz que traducir.
+
+## 🔗 Proyectos relacionados
 
 Este proyecto es parte del ecosistema de robótica HYDRA-UMC del mismo autor (JuanenRac / Electro Hobby 3D). Vale la pena conocerlo, ya que una petición podría en realidad ser sobre alguno de estos en vez de sobre este repositorio.
 
@@ -279,21 +352,28 @@ Este proyecto es parte del ecosistema de robótica HYDRA-UMC del mismo autor (Ju
 - **[HYDRA-UMC-OPS-AGENT](https://github.com/JuanenRac/HYDRA-UMC-OPS-AGENT)** — coordinador de incidencias de mantenimiento: un rol edge de bajo privilegio recopila un snapshot de inventario/salud saneado, un rol control-plane lo renderiza de solo lectura y pide a un proveedor de IA que sugiera un diagnóstico - nunca aplica un parche ni despliega nada.
 - **[HYDRA-UMC-DEV-SERVER](https://github.com/JuanenRac/HYDRA-UMC-DEV-SERVER)** — host de desarrollo reproducible (Raspberry Pi 5 / CM5) que almacena el código del ecosistema y ejecuta tareas acotadas de compilación/pruebas bajo una cola duradera; un rol de desarrollo dedicado, explícitamente distinto de un CM5 operativo.
 
+## 📚 Documentación
 
----
+Dónde leer más:
 
-## 📚 Documentación y Comunidad
+* [docs/API.md](docs/API.md) - cada ruta, sus campos y sus errores
+* [docs/openapi.yaml](docs/openapi.yaml) - la misma API como fichero OpenAPI
+* [Base de seguridad del ecosistema](https://github.com/JuanenRac/HYDRA-UMC-DOCS/blob/main/docs/SECURITY_BASELINE.md)
+* [Modelo de amenazas del ecosistema](https://github.com/JuanenRac/HYDRA-UMC-DOCS/blob/main/docs/THREAT_MODEL.md)
+* [Historial de cambios de este repositorio](CHANGELOG.md)
+* [Licencia de este repositorio](LICENSE.md)
 
-- **[CONTRIBUTING.md](CONTRIBUTING.md)** — stack tecnológico y pautas de codificación para un pull request.
-- **[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)** — los estándares de comportamiento esperados en esta comunidad.
-- **[SECURITY.md](SECURITY.md)** — cómo reportar una vulnerabilidad, y las áreas reales de enfoque en seguridad de este proyecto.
-- **[SUPPORT.md](SUPPORT.md)** — dónde hacer preguntas y reportar errores.
-- **[LICENSE.md](LICENSE.md)** — la licencia propia de este proyecto.
+## 🤝 Contribuir y comunidad
+
+* Antes de un pull request ejecuta `HYDRA_UMC_CI=1 py -3 tools/ci_validate.py` (o `HYDRA_UMC_CI=1 python3 tools/ci_validate.py`): debe imprimir `CI_VALIDATION=PASS`. No ejecutes `build.sh` ni `build.bat` para esta comprobación; compilar no es comprobar.
+* Los ocho README se escriben desde una sola fuente en HYDRA-UMC-DOCS; no los edites a mano. Cambia la fuente y vuelve a escribirlos con `tools/make_readmes.py`.
+* No afirmes en un README lo que no se ha ejecutado: di «simulado» o «sin probar en hardware» cuando esa sea la verdad.
+* Mira [CONTRIBUTING.md](CONTRIBUTING.md), el [código de conducta](CODE_OF_CONDUCT.md), [SECURITY.md](SECURITY.md) y [SUPPORT.md](SUPPORT.md).
 
 ## 👤 AUTOR
-**JuanenRac** (Electro Hobby 3D)
-📧 electrohobby3d@gmail.com
-📺 [youtube.com/@electrohobby3d](https://youtube.com/@electrohobby3d)
+
+**JuanenRac (Electro Hobby 3D)** · electrohobby3d@gmail.com
 
 ## 📜 LICENCIA
-GPL-3.0-or-later - Ver archivo LICENSE para más detalles.
+
+GPL-3.0-or-later - [LICENSE](LICENSE).

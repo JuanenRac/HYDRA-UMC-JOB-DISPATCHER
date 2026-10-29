@@ -1,26 +1,33 @@
+<!-- =============================================================================
+HYDRA-UMC-JOB-DISPATCHER - Priority job dispatcher
+Copyright (C) JuanenRac (Electro Hobby 3D) <electrohobby3d@gmail.com>
+GPL-3.0-or-later - see LICENSE
+============================================================================= -->
+
 <p align="center">
   <img src="images/HYDRA_UMC_BANNER.svg" alt="HYDRA-UMC-JOB-DISPATCHER banner" width="100%">
 </p>
 
-# 📋 HYDRA-UMC-JOB-DISPATCHER
+# 🗂️ HYDRA-UMC-JOB-DISPATCHER
 
 <p align="center"><a href="README.md">🇺🇸 English</a> | <a href="README_spa.md">🇪🇸 Español</a> | <a href="README_fra.md">🇫🇷 Français</a> | <a href="README_ita.md">🇮🇹 Italiano</a> | <a href="README_deu.md">🇩🇪 Deutsch</a> | 🇨🇳 <b>简体中文</b> | <a href="README_jpn.md">🇯🇵 日本語</a> | <a href="README_por.md">🇵🇹 Português</a></p>
 
 ### ⚙️ 面向异构机器人车队的基于优先级的任务队列
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Licencia-GPL%203.0--or--later-blue.svg" alt="GPL 3.0 or later">
-  <img src="https://img.shields.io/badge/Architecture-Event--Driven-blue.svg" alt="Event-Driven">
-  <img src="https://img.shields.io/badge/Tech-Go%20%2F%20net%2Fhttp-00ADD8.svg" alt="Tech">
+  <img src="https://img.shields.io/badge/License-GPL%203.0--or--later-blue.svg" alt="GPL 3.0 or later">
+  <img src="https://img.shields.io/badge/Go-1.21%2B-00ADD8.svg" alt="Go">
+  <img src="https://img.shields.io/badge/Architecture-Event--Driven-blue.svg" alt="Architecture">
+  <img src="https://img.shields.io/badge/Tests-153%20passing-2ea44f.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/Version-0.2.3-0f6cbd.svg" alt="Version">
+  <img src="https://img.shields.io/badge/Maturity-functional-0F6CBD.svg" alt="Maturity">
 </p>
 
 ---
 
-**诚实核查 - 今天真正能运行的部分：** 调度引擎(`src/dispatcher/dispatcher.go`)——按优先级排序的队列、工具感知路由、多阶段依赖跟踪，以及通过 `DedupKey` 实现的幂等提交——以及包装它的简单 JSON/HTTP API(`src/api/api.go`)都是真实的并经过测试(`src/dispatcher`、`src/api`、`src/sqlitestore` 共 121 个测试通过，`go test ./...`)。可选的 SQLite 持久化(`src/sqlitestore/sqlitestore.go`，纯 Go 实现，不使用 CGO)已针对一个真实被杀死并重新启动的进程完成端到端验证，而不仅仅是孤立的单元测试。一个已知且已记录的差距：工具感知路由是通过精确字符串匹配来检查 `RequiredTool`/`Robot.Tool` 的，依据的只是机器人自身通过 `POST /robots` 声明的内容——它尚未通过 CAN 总线与真实的 URTC 通信以确认工具头是否真的物理连接，因此一个谎报自身工具的机器人(或工具头已经脱落的机器人)目前与如实汇报的机器人是无法区分的。路线图中的 4 个阶段(TSN 同步、3D 路径规划、调度优化、AI 驱动的时长估算)都是尚无任何代码支撑的愿景性未来工作。具体已交付的内容请见 `CHANGELOG.md`。
+> **安全与安防现状:**本生态系统不是经认证的安全系统。目前尚无硬件 E-STOP 通路,没有由固件强制执行的限位或联锁,也没有经过验证的运动指令;固件映像使用 CRC32 和共享密钥的 HMAC-SHA256 校验,而非非对称签名;TLS 与双向 TLS 均为可选项,默认关闭;自制电路板尚未组装或测试。在依赖此处任何说法来保障人身安全之前,请先阅读[安全基线](https://github.com/JuanenRac/HYDRA-UMC-DOCS/blob/main/docs/SECURITY_BASELINE.md)和[威胁模型](https://github.com/JuanenRac/HYDRA-UMC-DOCS/blob/main/docs/THREAT_MODEL.md)。
 
 ---
-
-> **安全与安防现状:**本生态系统不是经认证的安全系统。目前尚无硬件 E-STOP 通路,没有由固件强制执行的限位或联锁,也没有经过验证的运动指令;固件映像使用 CRC32 和共享密钥的 HMAC-SHA256 校验,而非非对称签名;TLS 与双向 TLS 均为可选项,默认关闭;自制电路板尚未组装或测试。在依赖此处任何说法来保障人身安全之前,请先阅读[安全基线](https://github.com/JuanenRac/HYDRA-UMC-DOCS/blob/main/docs/SECURITY_BASELINE.md)和[威胁模型](https://github.com/JuanenRac/HYDRA-UMC-DOCS/blob/main/docs/THREAT_MODEL.md)。
 
 ## 📋 速览
 
@@ -28,10 +35,12 @@
 |---|---|
 | 版本 | `0.2.3` |
 | 成熟度 | 可用 |
-| 测试 | 143 |
+| 测试 | 153 (`go test ./...`) |
 | 技术栈 | Go / priority queue / HTTP API / SQLite (modernc.org/sqlite, pure Go) |
 | 目标 | HYDRA-UMC 工作单元的 Raspberry Pi CM5 |
 | 真实硬件 | 尚未：此版本没有在真实硬件上运行的记录 |
+
+**跳转：** [概述](#-概述) · [架构](#-架构) · [功能](#-功能) · [安全与防护](#-安全与防护) · [接口](#-接口) · [配置](#-配置) · [快速开始](#-快速开始) · [测试](#-测试) · [故障排除](#-故障排除) · [仓库结构](#-仓库结构) · [相关项目](#-相关项目)
 
 ## 🚦 项目状态
 
@@ -42,11 +51,11 @@
 | 领域 | 状态 | 在这里的含义 |
 |---|---|---|
 | 软件 | 🟡 | 主要用途可用；上面的诚实性检查列出了仍然缺少的内容 |
-| 测试 | 🟢 | 143 项自动测试，每次变更都会运行 |
+| 测试 | 🟢 | 153 项自动测试，每次变更都会运行 |
 | 真实硬件 | 🔴 | 尚未：此版本没有在真实硬件上运行的记录 |
 | 文档 | 🟢 | 八种语言的 README，每次变更都会与清单核对 |
 
-## 1. 🛠️ 技术概述
+## 🎯 概述
 
 **HYDRA-UMC-JOB-DISPATCHER** 是编排器的任务分配引擎。它管理一个全局任务
 队列，根据每个机器人当前的可用性、位置和所安装的工具（URTC），将任务分
@@ -55,19 +64,18 @@
 它确保高优先级任务（例如"紧急缺陷修复"）能够绕过正常的生产流程，并协调
 需要不同机器人协同工作的多步骤装配序列。
 
-### 关键特性：
-* 📋 **动态队列：** 智能任务优先级排序与调度。
-* ⚖️ **工具感知路由：** 自动将任务路由到装有正确 URTC 刀头的机器人。
-* 🧰 **可配置的工具目录（仅告警）：** `-tools-file`（工具头 TOOL_* 配置文件名称的 JSON 列表）和/或 `-tools` 声明安装环境所知的工具。`RequiredTool` 或 `Tool` 不在目录中的作业/机器人仍会被接受，并只记录一次警告（因为工具名称必须完全匹配，仅大小写不同时会给出提示）。没有目录时一切照旧。*(已实现)*
-* 🔄 **多阶段任务：** 管理任务之间的依赖关系（例如"抓取"必须先于"放置"发生）。
-* 📡 **持久化：** 真实的、可选的 SQLite 持久化任务状态(`-db PATH`、`src/sqlitestore`,纯 Go,无需 CGO)——队列在真实的进程重启后依然存活,已端到端验证;未设置时则保持纯内存运行。`GET /health` 会报告存储降级,而不是静默失败。详见 [`docs/API.md`](docs/API.md#persistence)。
-* 🔁 **幂等提交（v0）：** 通过 `POST /jobs/submit` 实现真实的、可选的基于 `DedupKey` 的去重——重新提交一个进行中或已完成的任务会原样返回，而在真实失败后的重试会复用同一个任务 ID，而不是把工作执行两次。优先级顺序在重复运行之间是确定性的，由一个明确的回归测试覆盖。
-* 🧯 **默认安全，停止响应的机器人不会再被派活（v0）：** API 默认只监听 `127.0.0.1:8090`，使用其他地址需要 bearer 令牌（`-token` / `JOB_DISPATCHER_TOKEN`；设置后除 `GET /health` 外的所有路由都要求它）或显式的 `-allow-anonymous`；HTTP 服务器有超时限制，超过 64 KB 的请求体会被以 `413` 拒绝。静默时间超过 `-robot-timeout`（默认 2 分钟）的机器人不会再被分配新工作，作业可以指定首选的 `location`（`POST /jobs`、`POST /jobs/submit`；优先选择该位置的机器人，但不是硬性要求），每个机器人的最后一次心跳都会被持久化（上一版本的数据库会就地迁移），因此重启不再会掩盖已经沉默的机器人。*（已实现）*
-* 🗂️ **原子写入、分页与可追踪的任务：** 完成、取消、重新排队或清扫过期心跳都在一个事务中写入 SQLite（数据库使用 WAL 模式）；`GET /jobs` 可以过滤并分页（`status`、`limit`、`offset`、`X-Total-Count`）；每个任务带有 `SubmittedAtMs`、`AssignedAtMs`、`CompletedAtMs` 以及完成报告可回传的 `Attempt` 计数器（`attempt`），因此被放弃的分配迟到的报告会被拒绝；`DELETE /robots/{id}` 会忘记没有任务的机器人；日期在未来的机器人心跳不被信任。机器可读的描述见 `docs/openapi.yaml`。 *(已实现)*
+## 🧩 在 HYDRA-UMC 中的角色
 
----
+**HYDRA-UMC-JOB-DISPATCHER** 决定哪个机器人接哪个任务。客户端提交任务，机器人登记自带的工具并索取任务，调度器把适合的最高优先级任务交出去。它不移动机器人：机器人如何处理任务是其自身和 SDK 任务关口的事。
 
-## 2. 🔄 调度器流程
+## 🏛️ 架构
+
+<p align="center">
+  <img src="images/architecture.svg" alt="HYDRA-UMC-JOB-DISPATCHER architecture" width="100%">
+</p>
+
+<details>
+<summary>图表的文本版本（Mermaid）</summary>
 
 ```mermaid
 flowchart LR
@@ -80,9 +88,9 @@ flowchart LR
     SCHED -.-> LOG["Production Reports （计划中）"]
 ```
 
----
+</details>
 
-## 3. 🧱 架构与设计决策
+**为什么这样构建**
 
 * **为何真正的逻辑位于 `src/` 之下，而非仓库根目录。** `src/dispatcher`（调度引擎）和 `src/api`（HTTP 处理器）包含实际实现；`main.go`/`version.go` 仍留在仓库根目录，作为将它们连接起来的入口点。
 * **为何任务分配会通过 URTC 检查工具可用性。** 需要特定刀头的任务只能被分发给实际装有相应 URTC 控制刀头且处于空闲状态的机器人——在分发前（而非在拾取失败后）进行此项检查，可以避免机器人到达一个它实际上无法使用的工位。`src/dispatcher.Engine.DispatchOnce` 现在已通过精确匹配 `RequiredTool`/`Robot.Tool` 来实现这一点；它尚未通过 CAN 与真实的 URTC 通信以确认刀头确实已物理连接（引擎只知道机器人注册时声明的内容——见 `src/api` 的 `POST /robots`）。
@@ -92,48 +100,67 @@ flowchart LR
 * **为何 `POST /jobs/submit` 是一个新路由，而不是修改 `POST /jobs`。** `AddJob()`/`POST /jobs` 始终执行插入，并在 ID 冲突时报错——这个底层契约保持不变。`SubmitJob()`/`POST /jobs/submit` 通过 `Job.DedupKey` 在其之上叠加了真实的、可选的去重——这与整个生态系统中使用的模式相同（在不变的底层原语旁边添加一个受保护的新入口点，而不是把行为改动强加在它身上）。
 * **为何失败后的重试复用同一个任务 ID，而不是新建一个。** 另一种做法——每次重试都生成一个新任务——会把同一个逻辑工作单元的历史分散到多个 ID 上，调用方也无法分辨“这次失败了一次、正在重试”和“这是一项无关的新工作”。将原始任务重置为 `Pending`，可以让它整个生命周期（包括失败的那次尝试）都保留在同一个 ID 之下。
 
----
+## ✨ 功能
 
-## 📂 目录结构
+* 📋 **动态队列：** 智能任务优先级排序与调度。
+* ⚖️ **工具感知路由：** 自动将任务路由到装有正确 URTC 刀头的机器人。
+* 🧰 **可配置的工具目录（仅告警）：** `-tools-file`（工具头 TOOL_* 配置文件名称的 JSON 列表）和/或 `-tools` 声明安装环境所知的工具。`RequiredTool` 或 `Tool` 不在目录中的作业/机器人仍会被接受，并只记录一次警告（因为工具名称必须完全匹配，仅大小写不同时会给出提示）。没有目录时一切照旧。*(已实现)*
+* 🔄 **多阶段任务：** 管理任务之间的依赖关系（例如"抓取"必须先于"放置"发生）。
+* 📡 **持久化：** 真实的、可选的 SQLite 持久化任务状态(`-db PATH`、`src/sqlitestore`,纯 Go,无需 CGO)——队列在真实的进程重启后依然存活,已端到端验证;未设置时则保持纯内存运行。`GET /health` 会报告存储降级,而不是静默失败。详见 [`docs/API.md`](docs/API.md#persistence)。
+* 🔁 **幂等提交（v0）：** 通过 `POST /jobs/submit` 实现真实的、可选的基于 `DedupKey` 的去重——重新提交一个进行中或已完成的任务会原样返回，而在真实失败后的重试会复用同一个任务 ID，而不是把工作执行两次。优先级顺序在重复运行之间是确定性的，由一个明确的回归测试覆盖。
+* 🧯 **默认安全，停止响应的机器人不会再被派活（v0）：** API 默认只监听 `127.0.0.1:8090`，使用其他地址需要 bearer 令牌（`-token` / `JOB_DISPATCHER_TOKEN`；设置后除 `GET /health` 外的所有路由都要求它）或显式的 `-allow-anonymous`；HTTP 服务器有超时限制，超过 64 KB 的请求体会被以 `413` 拒绝。静默时间超过 `-robot-timeout`（默认 2 分钟）的机器人不会再被分配新工作，作业可以指定首选的 `location`（`POST /jobs`、`POST /jobs/submit`；优先选择该位置的机器人，但不是硬性要求），每个机器人的最后一次心跳都会被持久化（上一版本的数据库会就地迁移），因此重启不再会掩盖已经沉默的机器人。*（已实现）*
+* 🗂️ **原子写入、分页与可追踪的任务：** 完成、取消、重新排队或清扫过期心跳都在一个事务中写入 SQLite（数据库使用 WAL 模式）；`GET /jobs` 可以过滤并分页（`status`、`limit`、`offset`、`X-Total-Count`）；每个任务带有 `SubmittedAtMs`、`AssignedAtMs`、`CompletedAtMs` 以及完成报告可回传的 `Attempt` 计数器（`attempt`），因此被放弃的分配迟到的报告会被拒绝；`DELETE /robots/{id}` 会忘记没有任务的机器人；日期在未来的机器人心跳不被信任。机器可读的描述见 `docs/openapi.yaml`。 *(已实现)*
 
-```text
-HYDRA-UMC-JOB-DISPATCHER/
-├── src/
-│   ├── dispatcher/    # 真正的调度引擎：队列、工具感知路由、
-│   │                  # 多阶段依赖关系
-│   ├── api/           # 封装引擎的简单 JSON/HTTP 处理器
-│   └── sqlitestore/  # 可选的纯 Go SQLite 持久化 (-db PATH)
-├── docs/
-│   ├── API.md         # 真实的 HTTP 端点参考（请求、响应、状态码）
-│   └── openapi.yaml   # 相同路由的机器可读 OpenAPI 描述
-├── images/            # 媒体与图示
-├── systemd/
-│   └── hydra-umc-job-dispatcher.service # CM5 本地优先级任务队列的 systemd 单元
-├── tools/
-│   ├── build_test.py  # 不递增版本号的构建/编译检查
-│   ├── ci_validate.py # CI 使用的 manifest/CHANGELOG/docs 校验
-│   ├── _doc_policy.py # 家族共享的文档规则 (HYDRA-UMC-SDK 的副本,保持同步)
-│   ├── _readme_parity.py # 检查八个 README 结构一致 (HYDRA-UMC-SDK 的副本,保持同步)
-│   └── hydra_project_tool.py # 每个仓库相同的命令: validate、test、ci、version、status、bump
-├── build/             # 编译后的二进制文件（build.sh/build.bat 的输出）
-├── go.mod / go.sum    # Go 模块定义
-├── version.go         # const Version = "X.Y.Z"（go.mod 没有应用版本字段）
-├── main.go            # 入口点：将引擎连接到 HTTP API 并监听
-├── main_test.go       # 进程拒绝启动的情形: 能注册机器人、提交作业的 API 不得在没有令牌时监听网络
-├── bump_version.py    # 里程表式版本递增（仅由显式 `bump` 命令运行）
-├── bump_manifest_version.py # 将 hydra-umc.project.json 的版本与原生版本同步（--sync）
-├── build.sh/.bat      # 然后执行 `go build`
-├── run.sh/.bat        # 运行编译后的二进制文件
-└── README.md
+## 🔒 安全与防护
+
+| 威胁 | 防御 | 位置 |
+|---|---|---|
+| 对网络开放的 API | 默认监听 `127.0.0.1:8090`；其他地址需要 Bearer 令牌（`-token` 或 `JOB_DISPATCHER_TOKEN`），除非给出 `-allow-anonymous`；除 `GET /health` 外所有路由都要求它，以恒定时间比较，拒绝时返回带 `WWW-Authenticate: Bearer` 的 `401` | `main.go`, `src/api/api.go` |
+| 大请求体和慢连接 | 请求体最大 64 KiB；头部须在 5 秒内到达，请求在 15 秒内，响应在 30 秒内写出，空闲连接 60 秒后关闭 | `src/api/api.go`, `main.go` |
+| 把任务交给不再应答的机器人或不存在的工具 | 沉默超过 `-robot-timeout`（默认 2 分钟，`0` 关闭）的机器人不再分到任务，其任务变为未知；指名 `-tools-file` / `-tools` 之外工具的任务或机器人会被拒绝 | `main.go`, `src/dispatcher/tools.go` |
+| 重复提交以及丢失队列的重启 | 提交通过 `DedupKey` 保持幂等；使用 `-db 路径` 时队列保存在纯 Go 的 SQLite 文件中，进程被杀掉再启动后仍在，不用则队列只在内存中 | `src/dispatcher`, `src/sqlitestore` |
+
+**它绝不做的事：** 它不移动机器人，按工具路由只比较机器人自述的字符串：谎报工具的机器人无法识别，因为不会通过 CAN 去问 URTC。
+
+## 🔌 接口
+
+默认在 `127.0.0.1:8090` 提供 HTTP；完整参考见 `docs/API.md` 和 `docs/openapi.yaml`。
+
+| 主题或路由 | 内容 |
+|---|---|
+| `/jobs`, `/jobs/submit`, `/jobs/{id}` | 列出、提交和读取任务 |
+| `/jobs/complete`, `/jobs/cancel`, `/jobs/requeue`, `/jobs/detect-stale` | 完成、取消或重新排队任务；找出沉默机器人的任务 |
+| `/robots`, `/robots/{id}`, `/dispatch` | 登记机器人及其工具；索取下一个合适的任务 |
+| `GET /health` | 服务是否存活（无需令牌） |
+
+## ⚙️ 配置
+
+| 变量 | 默认值 | 设置内容 |
+|---|---|---|
+| `-addr` | `127.0.0.1:8090` | 服务的监听位置 |
+| `-token`, `JOB_DISPATCHER_TOKEN` | 空 | API 的 Bearer 令牌 |
+| `-allow-anonymous` | `false` | 允许非回环地址且无令牌 |
+| `-robot-timeout` | `2m` | 沉默多久后机器人不再分到任务（`0` = 关闭） |
+| `-db` | 空（内存） | 保存队列的 SQLite 文件路径 |
+| `-tools-file`, `JOB_DISPATCHER_TOOLS_FILE`, `-tools`, `JOB_DISPATCHER_TOOLS` | 空 | 任务或机器人可指名的工具列表 |
+
+## 🚀 快速开始
+
+需要 Go 1.21 或更高版本（SQLite 驱动是纯 Go，无需 C 编译器）；Python 3 仅用于项目工具。
+
+```bash
+bash run.sh        # Linux, macOS (run.bat on Windows)
+go run . -addr 127.0.0.1:8090 -db jobs.sqlite3
+curl http://127.0.0.1:8090/health
 ```
 
-从原始模板中省略：`hardware/`、`firmware/`、`os/`——这是一个纯软件
-服务（Go 二进制文件），没有专属硬件或固件，也没有需要维护的操作系统
-镜像。完整的 HTTP 端点参考见 [`docs/API.md`](docs/API.md)。
+## 🧪 测试
 
----
+运行 `go test ./...` 会执行 153 个 Go 测试；它们位于代码旁（`src/api`、`src/dispatcher`、`src/sqlitestore` 和 `main_test.go`），包括在 SQLite 文件上杀掉并重启进程的测试；不需要硬件和外部网络。
 
-## 🔧 构建与运行
+CI 运行 `HYDRA_UMC_CI=1 python tools/ci_validate.py`，检查清单、文档、八个 README 和图片。
+
+## 🏗️ 构建与发布
 
 一个带有优先级和 HTTP API 的真实任务队列，而不只是一个能编译的骨架。
 
@@ -179,15 +206,62 @@ go test ./...   # src/dispatcher（调度算法）+
                  # src/api（通过 httptest 的真实 HTTP 往返测试）
 ```
 
----
+## 🩺 故障排除
 
-## 🚀 路线图
+| 你看到 | 原因 | 处理 |
+|---|---|---|
+| the service refuses to start | 地址不是回环地址且没有给令牌 | 给出 `-token`（或 `JOB_DISPATCHER_TOKEN`），或在接受风险时用 `-allow-anonymous` |
+| `401` | 请求没有 Bearer 令牌或令牌错误 | 发送 `Authorization: Bearer <token>` |
+| a job stays queued | 没有已登记的机器人带有该任务指名的工具，或机器人沉默 | 登记带有该工具的机器人并让它持续请求 `/dispatch`；检查 `-robot-timeout` |
+| the queue is empty after a restart | 服务运行时没有 `-db` | 启动时用 `-db` 指向一个 SQLite 文件 |
+
+## 📂 仓库结构
+
+<p align="center">
+  <img src="images/repository-structure.svg" alt="Repository structure of HYDRA-UMC-JOB-DISPATCHER" width="100%">
+</p>
+
+<details>
+<summary>目录树的文本版本</summary>
+
+```text
+HYDRA-UMC-JOB-DISPATCHER/
+├── src/
+│   ├── dispatcher/                              队列、按工具路由、阶段、恢复
+│   ├── api/                                     HTTP 接口、令牌、限制
+│   └── sqlitestore/                             可选的持久队列（纯 Go 的 SQLite）
+├── docs/                                        API 参考与 OpenAPI 文件
+├── systemd/                                     CM5 的服务单元
+├── tools/                                       构建与测试运行器、版本提升、CI 校验、README 与图片的生成和检查
+├── images/                                      横幅图与 README 的图片
+├── .github/                                     CI 工作流和 Issue 模板
+├── hydra-umc.project.json                       清单：版本、成熟度、系列
+├── CHANGELOG.md                                 每个版本的变化
+├── build.sh build.bat                           构建脚本（从不改变版本）
+├── build-test.sh build-test.bat                 构建脚本（从不改变版本）
+├── test.sh test.bat                             运行测试
+├── main.go / version.go                         入口、选项和版本
+├── main_test.go                                 入口的测试
+├── go.mod / go.sum                              Go 模块与校验和
+├── bump_version.py / bump_manifest_version.py   显式的版本提升
+├── run.sh run.bat                               启动服务
+└── SECURITY.md SUPPORT.md CONTRIBUTING.md CODE_OF_CONDUCT.md LICENSE LICENSE.md
+```
+
+</details>
+
+## 🗺️ 路线图与已知限制
+
+**当前已知限制**
+
 * **第一阶段：** 基于 TSN 的确定性集群同步与亚毫秒级抖动降低。
 * **第二阶段：** 多机器人单元中带动态避障的 3D 路径规划。
 * **第三阶段：** 利用实时资源可用性进行多机器人任务分发优化。
 * **第四阶段：** AI 驱动的任务时长估算，以实现更优的调度和异构机器人车队协调。
 
----
+## 🌍 语言
+
+本 README 和仓库文档提供八种语言：英语、西班牙语、德语、法语、意大利语、日语、中文和葡萄牙语（葡萄牙）。它们同时编写，并由 CI 检查八个文件拥有相同的章节和相同的链接。 本仓库没有自己的界面或消息目录，因此没有需要翻译的界面文字。
 
 ## 🔗 相关项目
 
@@ -280,21 +354,28 @@ go test ./...   # src/dispatcher（调度算法）+
 - **[HYDRA-UMC-OPS-AGENT](https://github.com/JuanenRac/HYDRA-UMC-OPS-AGENT)** — 维护事件协调器：一个低权限的边缘角色采集经过脱敏的库存/健康快照，一个控制面角色以只读方式渲染它，并请求某个 AI 提供方给出诊断建议——从不应用补丁，也从不部署任何内容。
 - **[HYDRA-UMC-DEV-SERVER](https://github.com/JuanenRac/HYDRA-UMC-DEV-SERVER)** — 可复现的开发主机（Raspberry Pi 5 / CM5），保存整个生态系统的源代码，并在持久队列下运行有界的构建/测试任务；这是专用的开发角色，明确区别于运行中的 CM5。
 
+## 📚 文档
 
----
+更多阅读：
 
-## 📚 文档与社区
+* [docs/API.md](docs/API.md) - 每条路由、其字段和错误
+* [docs/openapi.yaml](docs/openapi.yaml) - 同一 API 的 OpenAPI 文件
+* [生态系统的安全基线](https://github.com/JuanenRac/HYDRA-UMC-DOCS/blob/main/docs/SECURITY_BASELINE.md)
+* [生态系统的威胁模型](https://github.com/JuanenRac/HYDRA-UMC-DOCS/blob/main/docs/THREAT_MODEL.md)
+* [本仓库的更新日志](CHANGELOG.md)
+* [本仓库的许可证](LICENSE.md)
 
-- **[CONTRIBUTING.md](CONTRIBUTING.md)** —— 提交 Pull Request 所需的技术栈和编码规范。
-- **[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)** —— 本社区所期望的行为准则。
-- **[SECURITY.md](SECURITY.md)** —— 如何报告漏洞，以及本项目真实的安全关注重点。
-- **[SUPPORT.md](SUPPORT.md)** —— 在哪里提问和报告缺陷。
-- **[LICENSE.md](LICENSE.md)** —— 本项目自身的许可证。
+## 🤝 参与贡献与社区
+
+* 提交 pull request 之前，请运行 `HYDRA_UMC_CI=1 py -3 tools/ci_validate.py`（或 `HYDRA_UMC_CI=1 python3 tools/ci_validate.py`）：它必须输出 `CI_VALIDATION=PASS`。此检查不要运行 `build.sh` 或 `build.bat`；构建不是检查。
+* 八个 README 由 HYDRA-UMC-DOCS 中的同一个源生成；请勿手工编辑。修改源文件，再用 `tools/make_readmes.py` 重新生成。
+* 不要在 README 中声称尚未运行过的内容：属实时请写“仅模拟”或“尚未在硬件上试过”。
+* 请参阅 [CONTRIBUTING.md](CONTRIBUTING.md)、[行为准则](CODE_OF_CONDUCT.md)、[SECURITY.md](SECURITY.md) 和 [SUPPORT.md](SUPPORT.md)。
 
 ## 👤 作者
-**JuanenRac** (Electro Hobby 3D)
-📧 electrohobby3d@gmail.com
-📺 [youtube.com/@electrohobby3d](https://youtube.com/@electrohobby3d)
+
+**JuanenRac (Electro Hobby 3D)** · electrohobby3d@gmail.com
 
 ## 📜 许可证
-GPL-3.0-or-later —— 详见 LICENSE。
+
+GPL-3.0-or-later - [LICENSE](LICENSE).

@@ -1,0 +1,326 @@
+{
+  "repo": "HYDRA-UMC-JOB-DISPATCHER",
+  "ecosystem": "hydra",
+  "svg": "en",
+  "cards": [
+    {
+      "name": "src/",
+      "span": 3,
+      "accent": "a",
+      "sub": {
+        "en": "the service, in Go",
+        "es": "el servicio, en Go",
+        "de": "der Dienst in Go",
+        "fr": "le service, en Go",
+        "it": "il servizio, in Go",
+        "ja": "Go のサービス",
+        "zh": "用 Go 编写的服务",
+        "pt": "o serviço, em Go"
+      },
+      "rows": [
+        {
+          "name": "dispatcher/",
+          "desc": {
+            "en": "the queue, routing by tool, stages, recovery",
+            "es": "la cola, el encaminado por herramienta, etapas, recuperación",
+            "de": "die Warteschlange, Weiterleitung nach Werkzeug, Stufen, Wiederherstellung",
+            "fr": "la file, l'acheminement par outil, les étapes, la reprise",
+            "it": "la coda, l'instradamento per strumento, le fasi, il ripristino",
+            "ja": "キュー、ツール別の振り分け、段階、復旧",
+            "zh": "队列、按工具路由、阶段、恢复",
+            "pt": "a fila, o encaminhamento por ferramenta, etapas, recuperação"
+          }
+        },
+        {
+          "name": "api/",
+          "desc": {
+            "en": "the HTTP surface, token, limits",
+            "es": "la interfaz HTTP, token, límites",
+            "de": "die HTTP-Schnittstelle, Token, Grenzen",
+            "fr": "l'interface HTTP, jeton, limites",
+            "it": "l'interfaccia HTTP, token, limiti",
+            "ja": "HTTP の窓口、トークン、制限",
+            "zh": "HTTP 接口、令牌、限制",
+            "pt": "a interface HTTP, token, limites"
+          }
+        },
+        {
+          "name": "sqlitestore/",
+          "desc": {
+            "en": "optional durable queue (pure Go SQLite)",
+            "es": "cola duradera opcional (SQLite en Go puro)",
+            "de": "optionale dauerhafte Warteschlange (reines Go-SQLite)",
+            "fr": "file durable optionnelle (SQLite en Go pur)",
+            "it": "coda durevole opzionale (SQLite in Go puro)",
+            "ja": "任意の永続キュー（純 Go の SQLite）",
+            "zh": "可选的持久队列（纯 Go 的 SQLite）",
+            "pt": "fila durável opcional (SQLite em Go puro)"
+          }
+        }
+      ]
+    },
+    {
+      "name": {
+        "en": "tests, docs and tools",
+        "es": "pruebas, docs y herramientas",
+        "de": "Tests, Doku und Werkzeuge",
+        "fr": "tests, docs et outils",
+        "it": "test, documenti e strumenti",
+        "ja": "テスト・文書・ツール",
+        "zh": "测试、文档和工具",
+        "pt": "testes, docs e ferramentas"
+      },
+      "kind": "group",
+      "span": 3,
+      "accent": "b",
+      "columns": 2,
+      "rows": [
+        {
+          "name": "docs/",
+          "desc": {
+            "en": "the API reference and the OpenAPI file",
+            "es": "la referencia de la API y el fichero OpenAPI",
+            "de": "die API-Referenz und die OpenAPI-Datei",
+            "fr": "la référence de l'API et le fichier OpenAPI",
+            "it": "il riferimento dell'API e il file OpenAPI",
+            "ja": "API リファレンスと OpenAPI ファイル",
+            "zh": "API 参考与 OpenAPI 文件",
+            "pt": "a referência da API e o ficheiro OpenAPI"
+          }
+        },
+        {
+          "name": "systemd/",
+          "desc": {
+            "en": "service unit for the CM5",
+            "es": "unidad de servicio para la CM5",
+            "de": "Dienst-Unit für den CM5",
+            "fr": "unité de service pour la CM5",
+            "it": "unità di servizio per la CM5",
+            "ja": "CM5 用のサービスユニット",
+            "zh": "CM5 的服务单元",
+            "pt": "unidade de serviço para o CM5"
+          }
+        },
+        {
+          "name": "tools/",
+          "desc": {
+            "en": "project tools, CI checks, version bump",
+            "es": "herramientas del proyecto, comprobaciones de CI, subida de versión",
+            "de": "Projektwerkzeuge, CI-Prüfungen, Versionserhöhung",
+            "fr": "outils du projet, vérifications CI, montée de version",
+            "it": "strumenti del progetto, controlli CI, aumento di versione",
+            "ja": "プロジェクトのツール、CI の検査、バージョンの引き上げ",
+            "zh": "项目工具、CI 检查、版本提升",
+            "pt": "ferramentas do projeto, verificações de CI, subida de versão"
+          },
+          "tree_desc": {
+            "en": "build and test runner, version bump, CI validator, README and picture generators and checks",
+            "es": "ejecutor de compilación y pruebas, subida de versión, validador de CI, generadores y comprobaciones de README e imágenes",
+            "de": "Build- und Testläufer, Versionserhöhung, CI-Prüfer, README- und Bildgeneratoren samt Prüfungen",
+            "fr": "exécuteur de build et de tests, montée de version, validateur CI, générateurs et vérifications des README et des images",
+            "it": "esecutore di build e test, aumento di versione, validatore CI, generatori e controlli di README e immagini",
+            "ja": "ビルド・テスト実行、バージョン引き上げ、CI 検証、README と図の生成・検査",
+            "zh": "构建与测试运行器、版本提升、CI 校验、README 与图片的生成和检查",
+            "pt": "executor de compilação e testes, subida de versão, validador de CI, geradores e verificações de README e imagens"
+          }
+        },
+        {
+          "name": "images/",
+          "desc": {
+            "en": "banner and the pictures of the README",
+            "es": "banner y las imágenes del README",
+            "de": "Banner und die Bilder der README",
+            "fr": "bannière et images du README",
+            "it": "banner e immagini del README",
+            "ja": "バナーと README の図",
+            "zh": "横幅图与 README 的图片",
+            "pt": "faixa e imagens do README"
+          }
+        },
+        {
+          "name": ".github/",
+          "desc": {
+            "en": "CI workflow and issue templates",
+            "es": "flujo de CI y plantillas de incidencias",
+            "de": "CI-Workflow und Issue-Vorlagen",
+            "fr": "workflow CI et modèles de tickets",
+            "it": "workflow CI e modelli di segnalazione",
+            "ja": "CI ワークフローと Issue テンプレート",
+            "zh": "CI 工作流和 Issue 模板",
+            "pt": "fluxo de CI e modelos de questões"
+          }
+        }
+      ]
+    },
+    {
+      "name": {
+        "en": "project files",
+        "es": "ficheros del proyecto",
+        "de": "Projektdateien",
+        "fr": "fichiers du projet",
+        "it": "file del progetto",
+        "ja": "プロジェクトのファイル",
+        "zh": "项目文件",
+        "pt": "ficheiros do projeto"
+      },
+      "kind": "group",
+      "span": 3,
+      "accent": "c",
+      "columns": 2,
+      "rows": [
+        {
+          "name": "hydra-umc.project.json",
+          "desc": {
+            "en": "manifest: version, maturity, family",
+            "es": "manifiesto: versión, madurez, familia",
+            "de": "Manifest: Version, Reifegrad, Familie",
+            "fr": "manifeste : version, maturité, famille",
+            "it": "manifesto: versione, maturità, famiglia",
+            "ja": "マニフェスト：バージョン・成熟度・ファミリー",
+            "zh": "清单：版本、成熟度、系列",
+            "pt": "manifesto: versão, maturidade, família"
+          }
+        },
+        {
+          "name": "CHANGELOG.md",
+          "desc": {
+            "en": "what changed in each version",
+            "es": "qué cambió en cada versión",
+            "de": "was sich in jeder Version geändert hat",
+            "fr": "ce qui a changé à chaque version",
+            "it": "cosa è cambiato in ogni versione",
+            "ja": "各バージョンの変更点",
+            "zh": "每个版本的变化",
+            "pt": "o que mudou em cada versão"
+          }
+        },
+        {
+          "name": "build.sh  build.bat",
+          "tree_name": "build.sh build.bat",
+          "desc": {
+            "en": "build scripts (they never change the version)",
+            "es": "scripts de compilación (nunca cambian la versión)",
+            "de": "Build-Skripte (ändern die Version nie)",
+            "fr": "scripts de build (ils ne changent jamais la version)",
+            "it": "script di build (non cambiano mai la versione)",
+            "ja": "ビルドスクリプト（バージョンは変えません）",
+            "zh": "构建脚本（从不改变版本）",
+            "pt": "scripts de compilação (nunca mudam a versão)"
+          }
+        },
+        {
+          "name": "build-test.sh  build-test.bat",
+          "tree_name": "build-test.sh build-test.bat",
+          "desc": {
+            "en": "build scripts (they never change the version)",
+            "es": "scripts de compilación (nunca cambian la versión)",
+            "de": "Build-Skripte (ändern die Version nie)",
+            "fr": "scripts de build (ils ne changent jamais la version)",
+            "it": "script di build (non cambiano mai la versione)",
+            "ja": "ビルドスクリプト（バージョンは変えません）",
+            "zh": "构建脚本（从不改变版本）",
+            "pt": "scripts de compilação (nunca mudam a versão)"
+          }
+        },
+        {
+          "name": "test.sh  test.bat",
+          "tree_name": "test.sh test.bat",
+          "desc": {
+            "en": "run the tests",
+            "es": "ejecutan las pruebas",
+            "de": "führen die Tests aus",
+            "fr": "lancent les tests",
+            "it": "eseguono i test",
+            "ja": "テストを実行",
+            "zh": "运行测试",
+            "pt": "executam os testes"
+          }
+        },
+        {
+          "name": "main.go  version.go",
+          "desc": {
+            "en": "entry point, flags and the version",
+            "es": "punto de entrada, opciones y la versión",
+            "de": "Einstieg, Optionen und die Version",
+            "fr": "point d'entrée, options et version",
+            "it": "ingresso, opzioni e versione",
+            "ja": "エントリー、オプション、バージョン",
+            "zh": "入口、选项和版本",
+            "pt": "ponto de entrada, opções e a versão"
+          },
+          "tree_name": "main.go / version.go"
+        },
+        {
+          "name": "main_test.go",
+          "desc": {
+            "en": "tests of the entry point",
+            "es": "pruebas del punto de entrada",
+            "de": "Tests des Einstiegs",
+            "fr": "tests du point d'entrée",
+            "it": "test del punto di ingresso",
+            "ja": "エントリーのテスト",
+            "zh": "入口的测试",
+            "pt": "testes do ponto de entrada"
+          }
+        },
+        {
+          "name": "go.mod  go.sum",
+          "desc": {
+            "en": "Go module and checksums",
+            "es": "módulo de Go y sumas",
+            "de": "Go-Modul und Prüfsummen",
+            "fr": "module Go et sommes de contrôle",
+            "it": "modulo Go e checksum",
+            "ja": "Go モジュールとチェックサム",
+            "zh": "Go 模块与校验和",
+            "pt": "módulo Go e somas"
+          },
+          "tree_name": "go.mod / go.sum"
+        },
+        {
+          "name": "bump_version.py",
+          "desc": {
+            "en": "explicit version bump",
+            "es": "subida de versión explícita",
+            "de": "ausdrückliche Versionserhöhung",
+            "fr": "montée de version explicite",
+            "it": "aumento di versione esplicito",
+            "ja": "明示的なバージョン引き上げ",
+            "zh": "显式的版本提升",
+            "pt": "subida de versão explícita"
+          },
+          "tree_name": "bump_version.py / bump_manifest_version.py"
+        },
+        {
+          "name": "run.sh  run.bat",
+          "desc": {
+            "en": "start the service",
+            "es": "arrancar el servicio",
+            "de": "den Dienst starten",
+            "fr": "démarrer le service",
+            "it": "avviare il servizio",
+            "ja": "サービスを起動",
+            "zh": "启动服务",
+            "pt": "arrancar o serviço"
+          },
+          "tree_name": "run.sh run.bat"
+        },
+        {
+          "name": "SECURITY  SUPPORT  CONTRIBUTING  LICENSE",
+          "tree_name": "SECURITY.md SUPPORT.md CONTRIBUTING.md CODE_OF_CONDUCT.md LICENSE LICENSE.md",
+          "desc": {
+            "en": "community and licence files",
+            "es": "comunidad y licencia",
+            "de": "Community und Lizenz",
+            "fr": "communauté et licence",
+            "it": "comunità e licenza",
+            "ja": "コミュニティとライセンス",
+            "zh": "社区与许可证",
+            "pt": "comunidade e licença"
+          },
+          "tree_desc": ""
+        }
+      ]
+    }
+  ]
+}
