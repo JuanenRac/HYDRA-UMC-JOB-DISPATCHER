@@ -473,3 +473,45 @@ func TestHandleRobots_ABareHeartbeatKeepsTheRobot(t *testing.T) {
 		t.Fatalf("robot after a bare heartbeat = %+v", robots[0])
 	}
 }
+
+func TestDispatchWaiting_ExplainsWhyAJobHasNoRobotAndDispatchIsUnchanged(t *testing.T) {
+	s := New(dispatcher.NewEngine())
+	waiting := func() []dispatcher.WaitingJob {
+		rec := get(t, s, "/dispatch/waiting")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET /dispatch/waiting status = %d, body = %s", rec.Code, rec.Body.String())
+		}
+		var out []dispatcher.WaitingJob
+		if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+			t.Fatalf("decoding: %v", err)
+		}
+		return out
+	}
+	post(t, s, "/jobs", jobRequest{ID: "j1", Priority: 1, RequiredTool: "Laser"})
+	if w := waiting(); len(w) != 1 || w[0].Reason != dispatcher.WaitNoRobots {
+		t.Fatalf("no robots: %+v", w)
+	}
+	post(t, s, "/robots", robotBody{ID: "r1", Tool: "PnP", Available: true})
+	if w := waiting(); w[0].Reason != dispatcher.WaitNoRobotWithTool {
+		t.Fatalf("no robot with the tool: %+v", w)
+	}
+	post(t, s, "/robots", robotBody{ID: "r2", Tool: "Laser", Available: false})
+	if w := waiting(); w[0].Reason != dispatcher.WaitRobotsBusy {
+		t.Fatalf("busy: %+v", w)
+	}
+	post(t, s, "/robots", robotBody{ID: "r2", Tool: "Laser", Available: true})
+	if w := waiting(); w[0].Reason != dispatcher.WaitForItsTurn {
+		t.Fatalf("free robot: %+v", w)
+	}
+	rec := post(t, s, "/dispatch", nil)
+	var assignments []dispatcher.Assignment
+	if err := json.Unmarshal(rec.Body.Bytes(), &assignments); err != nil || len(assignments) != 1 {
+		t.Fatalf("POST /dispatch must still answer a plain list of assignments: %v %s", err, rec.Body.String())
+	}
+	if w := waiting(); len(w) != 0 {
+		t.Fatalf("an assigned job is no longer waiting: %+v", w)
+	}
+	if rec := post(t, s, "/dispatch/waiting", nil); rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("POST /dispatch/waiting = %d, want 405", rec.Code)
+	}
+}

@@ -55,6 +55,7 @@ func New(engine *dispatcher.Engine) *Server {
 	s.mux.HandleFunc("/robots", s.handleRobots)
 	s.mux.HandleFunc("/robots/", s.handleRobotByID)
 	s.mux.HandleFunc("/dispatch", s.handleDispatch)
+	s.mux.HandleFunc("/dispatch/waiting", s.handleWaiting)
 	s.mux.HandleFunc("/jobs/detect-stale", s.handleDetectStale)
 	s.mux.HandleFunc("/health", s.handleHealth)
 	return s
@@ -453,6 +454,17 @@ func (s *Server) handleDispatch(w http.ResponseWriter, r *http.Request) {
 		assignments = []dispatcher.Assignment{}
 	}
 	writeJSON(w, http.StatusOK, assignments)
+}
+
+// handleWaiting answers GET /dispatch/waiting: every pending job with the reason it has no robot now. It does not
+// dispatch anything, and POST /dispatch keeps answering the plain list of assignments.
+func (s *Server) handleWaiting(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", "GET")
+		writeError(w, http.StatusMethodNotAllowed, errors.New("use GET"))
+		return
+	}
+	writeJSON(w, http.StatusOK, s.engine.WaitingJobs())
 }
 
 type detectStaleRequest struct {

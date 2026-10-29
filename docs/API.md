@@ -312,6 +312,18 @@ Each assigned job's `Status` becomes `"assigned"` and `AssignedRobot` is set; th
 
 ---
 
+## `GET /dispatch/waiting`
+
+Read-only: the `"pending"` jobs in dispatch order, each with the reason it has no robot right now. It assigns nothing and `POST /dispatch` keeps answering the plain list of assignments above.
+
+```json
+[{"jobId": "weld-43", "priority": 5, "requiredTool": "Laser", "reason": "matching_robots_busy"}]
+```
+
+`reason` is one of `no_robots_registered`, `no_robot_with_required_tool` (no robot has that tool attached), `matching_robots_busy`, `matching_robots_not_heard_from_recently` (they are free but their heartbeat is older than the freshness window) or `robot_available_waiting_for_dispatch` (a robot is free; the next `POST /dispatch` takes it). Requires the token when one is set.
+
+---
+
 ## `POST /jobs/detect-stale`
 
 Marks every `"assigned"` job whose robot has not sent a real heartbeat (a `POST /robots` call) within `timeoutSeconds` as `"unknown"` - see `Status`'s own description above. A caller may invoke this with its own timeout.

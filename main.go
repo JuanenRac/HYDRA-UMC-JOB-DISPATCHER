@@ -7,7 +7,7 @@
 // routing, multi-stage dependencies, priority bypass, deterministic
 // priority ordering, and DedupKey-based idempotent submission), src/api
 // exposes it over plain HTTP/JSON (POST /jobs, POST /jobs/submit, POST
-// /robots, POST /dispatch, POST /jobs/complete, GET /jobs, GET /robots,
+// /robots, POST /dispatch, GET /dispatch/waiting, POST /jobs/complete, GET /jobs, GET /robots,
 // GET /health).
 //
 // Real SQLite-backed persistence (src/sqlitestore, per the README's own

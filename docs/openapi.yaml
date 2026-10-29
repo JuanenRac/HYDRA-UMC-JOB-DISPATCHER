@@ -255,6 +255,30 @@ paths:
                   properties:
                     JobID: { type: string }
                     RobotID: { type: string }
+  /dispatch/waiting:
+    get:
+      summary: Pending jobs and why each has no robot now (changes nothing)
+      responses:
+        "200":
+          description: Pending jobs in dispatch order.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    jobId: { type: string }
+                    priority: { type: integer }
+                    requiredTool: { type: string }
+                    reason:
+                      type: string
+                      enum:
+                        - no_robots_registered
+                        - no_robot_with_required_tool
+                        - matching_robots_busy
+                        - matching_robots_not_heard_from_recently
+                        - robot_available_waiting_for_dispatch
 components:
   securitySchemes:
     bearer:
