@@ -97,6 +97,8 @@ flowchart LR
 * **Warum `POST /jobs/submit` eine neue Route ist, statt `POST /jobs` zu ändern.** `AddJob()`/`POST /jobs` fügen immer ein und schlagen bei einer ID-Kollision fehl - dieser Low-Level-Vertrag bleibt unangetastet. `SubmitJob()`/`POST /jobs/submit` legt darüber echte, optionale Deduplizierung via `Job.DedupKey` - dasselbe Muster, das im gesamten Ökosystem verwendet wird (ein abgesicherter Einstiegspunkt neben einer unveränderten Low-Level-Primitive, keine Verhaltensänderung, die ihr aufgepfropft wird).
 * **Warum ein Wiederholungsversuch nach einem Fehler dieselbe Job-ID wiederverwendet, statt eine neue anzulegen.** Die Alternative - bei jedem Versuch einen neuen Job anzulegen - würde die Historie einer einzigen logischen Arbeitseinheit über mehrere IDs verstreuen und einem Aufrufer keine Möglichkeit geben, "das ist einmal fehlgeschlagen und wird wiederholt" von "das ist neue, unabhängige Arbeit" zu unterscheiden. Den ursprünglichen Job auf `Pending` zurückzusetzen hält seinen gesamten Lebenszyklus (einschließlich des fehlgeschlagenen Versuchs) unter einer einzigen ID.
 
+**Jobs aus einer Operation.** `POST /jobs/submit` nimmt auch die gemeinsame Operation des SDK an (ein Body mit `operation_id`), die der semantische Planer übergibt: Die Id der Operation ist die Id des Jobs und zugleich sein Dedup-Schlüssel, sodass dieselbe Operation erneut zu senden derselbe Job ist; `priority`, `required_tool`, `location` und `depends_on` aus ihren `params` sind die des Jobs. Nur eine Operation im Zustand `received` wird angenommen; alles andere ist ein `400`.
+
 ## ✨ Funktionen
 
 * 📋 **Dynamisches Queueing:** Intelligente Missionspriorisierung und -planung.

@@ -97,6 +97,8 @@ flowchart LR
 * **Perché `POST /jobs/submit` è una nuova rotta invece di modificare `POST /jobs`.** `AddJob()`/`POST /jobs` inseriscono sempre e falliscono su una collisione di ID - quel contratto di basso livello resta intatto. `SubmitJob()`/`POST /jobs/submit` aggiunge sopra una deduplicazione reale e opzionale tramite `Job.DedupKey`: lo stesso schema usato in tutto l'ecosistema (un punto di ingresso con verifica aggiunto accanto a una primitiva di basso livello invariata, non un cambio di comportamento innestato su di essa).
 * **Perché un nuovo tentativo dopo un fallimento riutilizza lo stesso ID del job invece di crearne uno nuovo.** L'alternativa - generare un nuovo job a ogni tentativo - disperderebbe la cronologia di un'unica unità logica di lavoro su più ID e non darebbe a chi chiama modo di distinguere "questo è fallito una volta e viene ritentato" da "questo è nuovo lavoro senza relazione". Ripristinare il job originale a `Pending` mantiene tutto il suo ciclo di vita (incluso il tentativo fallito) sotto un unico ID.
 
+**Lavori da una Operation.** `POST /jobs/submit` accetta anche l'Operation comune dell'SDK (un corpo con `operation_id`), che è ciò che consegna il pianificatore semantico: l'id dell'operazione è l'id del lavoro e anche la sua chiave di deduplicazione, quindi inviare di nuovo la stessa operazione dà lo stesso lavoro, e `priority`, `required_tool`, `location` e `depends_on` dei suoi `params` sono quelli del lavoro. Viene accettata solo un'operazione nello stato `received`; tutto il resto è un `400`.
+
 ## ✨ Funzionalità
 
 * 📋 **Code dinamiche:** Priorità e pianificazione intelligente delle missioni.

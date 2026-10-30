@@ -197,6 +197,21 @@ curl -X POST localhost:8090/jobs/submit -d '{"id":"job-2-retry","priority":5,"de
 
 ---
 
+**Request body as an Operation.** The body may instead be the common Operation of the SDK (`operation.schema.json`), which is what the semantic planner hands over. A body with `operation_id` is read that way:
+
+```json
+{
+  "schema_version": "1.0",
+  "operation_id": "plan-3f9c2b1a",
+  "kind": "execute_plan",
+  "target": {"kind": "cell", "id": "cell-2"},
+  "status": "received",
+  "params": {"priority": 4, "required_tool": "Laser", "location": "cell-2", "depends_on": []}
+}
+```
+
+The `operation_id` is the id of the job and also its `dedupKey`, so posting the same operation again is the same job (`200` the second time). `priority`, `required_tool`, `location` and `depends_on` are read from `params` (all optional). Only an operation in the state `received` (nothing authorized, queued or sent yet) with `schema_version` `1.0` is taken; a wrong state, an unknown schema version, a `params` that is not an object or a field of the wrong type is a `400` and nothing is stored.
+
 ## `POST /jobs/complete`
 
 Marks an assigned (or `"unknown"` - see `POST /jobs/detect-stale` below) job as finished (success or failure).

@@ -4,6 +4,7 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+- **`POST /jobs/submit` takes the common Operation of the SDK:** a body with `operation_id` (what the semantic planner hands over) becomes a job whose id and dedup key are the id of the operation, so posting it again is the same job; `priority`, `required_tool`, `location` and `depends_on` are read from its `params`. Only an operation in the state `received` with `schema_version` `1.0` is taken (anything else is a `400`). The OpenAPI document names the new body as `OperationIntake`.
 ## [0.2.4] - The list of waiting jobs with the reason of each, the vulnerability check of the Go libraries and the universal README
 
 - **`GET /dispatch/waiting`:** the pending jobs in dispatch order with the reason each has no robot (no robots, no robot with the tool, matching robots busy, matching robots silent, or a robot free for the next pass). Read-only; `POST /dispatch` still answers the plain list of assignments, so existing callers are unaffected.

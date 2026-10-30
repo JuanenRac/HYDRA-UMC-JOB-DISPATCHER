@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -233,9 +234,14 @@ func (s *Server) handleSubmitJob(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, errors.New("use POST"))
 		return
 	}
-	var req submitRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
 		writeError(w, bodyErrorStatus(err), err)
+		return
+	}
+	req, err := submitFromBody(body)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
 		return
 	}
 	if req.ID == "" {

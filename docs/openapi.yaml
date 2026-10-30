@@ -66,11 +66,13 @@ paths:
         content:
           application/json:
             schema:
-              allOf:
-                - { $ref: "#/components/schemas/JobRequest" }
-                - type: object
-                  properties:
-                    dedupKey: { type: string }
+              oneOf:
+                - allOf:
+                    - { $ref: "#/components/schemas/JobRequest" }
+                    - type: object
+                      properties:
+                        dedupKey: { type: string }
+                - { $ref: "#/components/schemas/OperationIntake" }
       responses:
         "200":
           description: An in-flight or finished job with that dedupKey exists, or a failed or cancelled one was retried.
@@ -304,6 +306,21 @@ components:
         status: { type: string, enum: [ok, degraded] }
         persistenceHealthy: { type: boolean }
         lastPersistError: { type: string, nullable: true }
+    OperationIntake:
+      description: The common Operation of the SDK as the semantic planner hands it over. Its operation_id is the id and the dedupKey of the job; priority, required_tool, location and depends_on are read from params. Only the state received is taken.
+      type: object
+      required: [schema_version, operation_id, status, params]
+      properties:
+        schema_version: { type: string, enum: ["1.0"] }
+        operation_id: { type: string, minLength: 1 }
+        status: { type: string, enum: [received] }
+        params:
+          type: object
+          properties:
+            priority: { type: integer }
+            required_tool: { type: string }
+            location: { type: string }
+            depends_on: { type: array, items: { type: string } }
     JobRequest:
       type: object
       required: [id]
