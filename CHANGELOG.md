@@ -4,6 +4,8 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+## [0.2.4] - The list of waiting jobs with the reason of each, the vulnerability check of the Go libraries and the universal README
+
 - **`GET /dispatch/waiting`:** the pending jobs in dispatch order with the reason each has no robot (no robots, no robot with the tool, matching robots busy, matching robots silent, or a robot free for the next pass). Read-only; `POST /dispatch` still answers the plain list of assignments, so existing callers are unaffected.
 - **README in the universal layout:** the README and its seven translations follow the layout that the four families share (22 sections in a fixed order), with an architecture picture and a repository-structure picture drawn from `docs/architecture.json` and `docs/structure.json`; the CI validator checks both pictures and the file tree. Where the repository has a service or an MQTT transport, the README now says how to start it and which environment variables it reads.
 
