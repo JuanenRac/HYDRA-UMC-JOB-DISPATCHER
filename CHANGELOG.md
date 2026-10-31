@@ -4,6 +4,8 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+## [0.2.6] - A robot that goes silent is asked to stop before its job goes to another robot, with replanning on
+
 - **A robot that goes silent is asked to stop before its job goes to another robot, with replanning on:** a robot that declares `stopCapable` in its heartbeat gets a stop request when it is found silent (`GET /jobs/stop-requests`), and its job goes back to the queue only after it acknowledges (`POST /jobs/stop-ack`). Without an acknowledgement within `stop_ack_timeout_seconds` (default 30, in the configuration file) the job becomes `unknown` as before; `allow_unconfirmed` (default `false`) lets it go back to the queue anyway. A late acknowledgement resolves an `unknown` job. A robot that did not declare the capability keeps the plain replanning. Tests run on a simulated clock.
 
 ## [0.2.5] - The closest robot by a table of costs, replanning of the jobs of a failed robot, a range next to every estimate, estimated times and a production event for every job that ends, all off by default
