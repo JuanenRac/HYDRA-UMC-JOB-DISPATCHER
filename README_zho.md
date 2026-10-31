@@ -115,6 +115,7 @@ flowchart LR
 * 🕒 **作业为什么在等待:** `GET /dispatch/waiting` 按派发顺序列出待处理作业，并给出每个作业没有机器人的原因(没有注册机器人、没有带该工具的机器人、匹配的机器人都在忙、匹配的机器人长时间没有回应，或有机器人空闲、等待下一轮派发)。它是只读的；`POST /dispatch` 仍然返回原来的分配列表。
 * ⏱️ **每个作业的预计时间(默认关闭):** 加上 `-eta` 后,`GET /dispatch/eta` 会根据同一工具最近已完成作业的耗时(尚无记录时使用可配置的默认值),估算每个未完成作业何时开始和结束、由哪台机器人执行,以及队列何时清空。无法估算的作业会说明原因。不加 `-eta` 时该路由不存在,其他一切不变;它是只读的,并用注入的时钟进行测试。
 * 🧾 **每个结束的作业都会生成一个生产事件(默认关闭):** 加上 `-production-events` 和目标(`-production-events-file` 每个事件一行 JSON,`-production-events-url` 发送 JSON `POST`)后,每次收到作业结束的报告都会交出一个 HYDRA-UMC-SDK 共享合约的 `ProductionEvent`(机器人、结束时间、是否合格、周期时间、作业),生产报告会据此计算 OEE。事件先按合约检查;合约无法描述的周期会被跳过并记录,绝不捏造,目标出错也不会使结束操作失败。不加开关则一切不变;用注入的时钟进行测试。
+* 🧭 **最近的机器人、重新规划与区间(默认全部关闭):** 配置文件(`-config`)保存调好的数值,每个部分除非另行说明否则关闭:`location_costs` 把指明位置的作业交给到该位置声明成本最低的机器人,`replan`(`POST /jobs/replan`,对静默或故障的机器人也会自动进行)按顺序把故障机器人的作业放回队列,不重复也不丢失,`eta_interval` 在每个估计旁加上从低到高的区间(同一工具最近时长的四分位数),或说明为何无法给出。没有该文件时一切照旧;已用注入时钟和固定种子的随机场景测试。
 
 ## 🔒 安全与防护
 
@@ -134,6 +135,7 @@ flowchart LR
 | 主题或路由 | 内容 |
 |---|---|
 | `/jobs`, `/jobs/submit`, `/jobs/{id}` | 列出、提交和读取任务 |
+| `/jobs/replan` | 把故障机器人的作业放回队列(仅当配置文件开启重新规划时;否则 404) |
 | `/jobs/complete`, `/jobs/cancel`, `/jobs/requeue`, `/jobs/detect-stale` | 完成、取消或重新排队任务；找出沉默机器人的任务 |
 | `/robots`, `/robots/{id}`, `/dispatch` | 登记机器人及其工具；索取下一个合适的任务 |
 | `GET /health` | 服务是否存活（无需令牌） |
@@ -147,6 +149,7 @@ flowchart LR
 | `-allow-anonymous` | `false` | 允许非回环地址且无令牌 |
 | `-robot-timeout` | `2m` | 沉默多久后机器人不再分到任务（`0` = 关闭） |
 | `-eta`, `JOB_DISPATCHER_ETA=1`, `-eta-default-duration`, `-eta-window` | 关闭、`1m`、`20` | 启用 `GET /dispatch/eta`(每个未完成作业和队列的预计开始与结束);在该工具有作业完成之前假定的时长(`0` = 不假定),以及每个工具取平均的最近已完成作业数 |
+| `-config`, `JOB_DISPATCHER_CONFIG` | 空 | 含三项可选行为调好数值的 JSON 文件,除非文件开启否则各自关闭:`location_costs`(位置之间的成本表;作业交给成本最低的机器人)、`replan`(故障或静默机器人的作业回到队列)和 `eta_interval`(每个估计旁的区间,需要 `-eta`) |
 | `-production-events`, `JOB_DISPATCHER_PRODUCTION_EVENTS=1`, `-production-events-file`, `-production-events-url`, `-production-events-token` | 关闭、空、空、空 | 为每个结束的作业交出一个共享合约的 `ProductionEvent`:文件中每个事件一行 JSON,和/或向 URL 发送 JSON `POST`(带 bearer 令牌);开关至少需要一个目标 |
 | `-db` | 空（内存） | 保存队列的 SQLite 文件路径 |
 | `-tools-file`, `JOB_DISPATCHER_TOOLS_FILE`, `-tools`, `JOB_DISPATCHER_TOOLS` | 空 | 任务或机器人可指名的工具列表 |

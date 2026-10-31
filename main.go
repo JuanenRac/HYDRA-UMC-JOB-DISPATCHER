@@ -105,6 +105,14 @@ func buildProductionSink(file, url, token string) dispatcher.ProductionEventSink
 	}
 }
 
+// configProblem is why the configuration file cannot be used with the switches given (empty when it can): a range for the estimates needs the estimates.
+func configProblem(cfg dispatcher.FileConfig, etaOn bool) string {
+	if cfg.IntervalSetting().Enabled && !etaOn {
+		return "eta_interval is enabled in the configuration file but the estimates are off: add -eta"
+	}
+	return ""
+}
+
 func main() {
 	addr := flag.String("addr", "127.0.0.1:8090", "address to listen on for the HTTP API (loopback by default: another address needs a token)")
 	token := flag.String("token", os.Getenv("JOB_DISPATCHER_TOKEN"), "bearer token every route except GET /health requires (default: the JOB_DISPATCHER_TOKEN environment variable)")
@@ -125,7 +133,19 @@ func main() {
 	productionFile := flag.String("production-events-file", os.Getenv("JOB_DISPATCHER_PRODUCTION_EVENTS_FILE"), "append every production event as one JSON line to this file; only with -production-events")
 	productionURL := flag.String("production-events-url", os.Getenv("JOB_DISPATCHER_PRODUCTION_EVENTS_URL"), "POST every production event as JSON to this URL; only with -production-events")
 	productionToken := flag.String("production-events-token", os.Getenv("JOB_DISPATCHER_PRODUCTION_EVENTS_TOKEN"), "bearer token sent with -production-events-url (default: the JOB_DISPATCHER_PRODUCTION_EVENTS_TOKEN environment variable)")
+	configPath := flag.String("config", os.Getenv("JOB_DISPATCHER_CONFIG"), "JSON file with the tuned values of the optional behaviours: location_costs (the closest robot by a declared table of costs), replan (jobs of a robot that failed or went silent go back to the queue) and eta_interval (a range next to every estimate, needs -eta); every one is off unless the file turns it on (default: the JOB_DISPATCHER_CONFIG environment variable)")
 	flag.Parse()
+	fileConfig := dispatcher.FileConfig{}
+	if *configPath != "" {
+		loaded, err := dispatcher.LoadConfigFile(*configPath)
+		if err != nil {
+			log.Fatalf("[job-dispatcher] refusing to start: %v", err)
+		}
+		fileConfig = loaded
+		if problem := configProblem(fileConfig, *etaOn); problem != "" {
+			log.Fatalf("[job-dispatcher] refusing to start: %s", problem)
+		}
+	}
 	if problem := productionEventsProblem(*productionOn, *productionFile, *productionURL); problem != "" {
 		log.Fatalf("[job-dispatcher] refusing to start: %s", problem)
 	}
@@ -158,8 +178,18 @@ func main() {
 	}
 	engine.SetRobotFreshness(*robotTimeout)
 	if *etaOn {
-		engine.SetETA(dispatcher.ETAConfig{Enabled: true, DefaultDuration: *etaDefault, Window: *etaWindow})
+		engine.SetETA(dispatcher.ETAConfig{Enabled: true, DefaultDuration: *etaDefault, Window: *etaWindow, Interval: fileConfig.IntervalSetting()})
 		fmt.Println("[job-dispatcher] GET /dispatch/eta is on: estimates of when each job and the whole queue finish")
+	}
+	if err := engine.SetLocationCosts(fileConfig.LocationSetting()); err != nil {
+		log.Fatalf("[job-dispatcher] refusing to start: %v", err)
+	}
+	if fileConfig.LocationSetting().Enabled {
+		fmt.Println("[job-dispatcher] location costs are on: a job that names a location goes to the robot with the lowest declared cost")
+	}
+	engine.SetReplan(fileConfig.ReplanSetting())
+	if fileConfig.ReplanSetting().Enabled {
+		fmt.Println("[job-dispatcher] replanning is on: the jobs of a robot that failed or went silent go back to the queue (POST /jobs/replan)")
 	}
 	if *productionOn {
 		engine.SetProductionEvents(buildProductionSink(*productionFile, *productionURL, *productionToken))
@@ -191,8 +221,12 @@ func main() {
 			ticker := time.NewTicker(*robotTimeout / 2)
 			defer ticker.Stop()
 			for range ticker.C {
-				if ids := engine.DetectStaleAssignments(*robotTimeout); len(ids) > 0 {
-					log.Printf("[job-dispatcher] robot silent for over %s: jobs now unknown: %v", *robotTimeout, ids)
+				unknown, requeued := engine.DetectStaleAssignmentsReplan(*robotTimeout)
+				if len(unknown) > 0 {
+					log.Printf("[job-dispatcher] robot silent for over %s: jobs now unknown: %v", *robotTimeout, unknown)
+				}
+				if len(requeued) > 0 {
+					log.Printf("[job-dispatcher] robot silent for over %s: jobs back in the queue: %v", *robotTimeout, requeued)
 				}
 			}
 		}()

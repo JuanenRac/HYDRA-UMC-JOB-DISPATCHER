@@ -368,10 +368,19 @@ How the estimate is made:
 
 - **Duration of a job:** the average time from assignment to completion of the most recent finished jobs (`done`, at most `-eta-window`, default 20) of the same tool (`basis` `observed_tool`); when that tool has none yet, the average over every tool (`observed_all`); when nothing has finished yet, `-eta-default-duration` (default 60 s, `basis` `default`; `0` means no guess, so the job gets no estimate).
 - **Robots:** each robot works through its jobs one after another. A robot with an assigned job is free when that job's expected duration is over (`overdue: true` and an end of "now" once it has run longer than expected). A free robot that is available and, when `-robot-timeout` is on, has checked in recently is free now. Any other robot is not counted.
-- **Order:** the waiting jobs (`pending` and `blocked`) are placed in dispatch order (priority, then arrival), each on the matching robot that is free the earliest (ties: the lower load, then the lower ID), and never before the end of the jobs they depend on. The preferred location of a job is not modelled, and the estimate assumes a dispatch pass happens as soon as a robot is free, so the real start can be later when nobody calls `POST /dispatch`.
+- **Order:** the waiting jobs (`pending` and `blocked`) are placed in dispatch order (priority, then arrival), each on the matching robot that is free the earliest (ties: the lower load, then the lower ID; with the location costs of the configuration file on, a tie goes to the robot with the lowest declared cost for the job's location first), and never before the end of the jobs they depend on. The estimate assumes a dispatch pass happens as soon as a robot is free, so the real start can be later when nobody calls `POST /dispatch`. A robot that was declared failed (see `POST /jobs/replan`) is not counted until its own next heartbeat, so the estimate is recalculated without it on the next read.
 - **No estimate:** `estimated` is `false` with a `reason`: `no_robot_with_required_tool`, `no_robot_available`, `no_duration_known`, `dependency_will_not_finish` or `outcome_unknown` (the job is `unknown` after a silent robot). Jobs that can never run (`unreachable`, `failed`, `cancelled`) and finished jobs are not listed.
 
 It is an estimate, not a promise: a job lasts as long as the recent ones of its tool did.
+
+**Ranges (off by default).** With `"eta_interval": {"enabled": true}` in the configuration file (it needs `-eta`; see [Configuration file](#configuration-file)) every estimate also carries a range next to the single value: the plan is laid out two more times with the low and the high percentile (default 25 and 75) of the durations of the recent finished jobs of the same tool, so the uncertainty of the jobs ahead adds up. The extra fields appear only when they apply:
+
+```json
+{"jobId": "weld-43", "status": "pending", "estimated": true, "robotId": "arm-3", "startMs": 1760000061000, "endMs": 1760000122000, "durationMs": 61000, "basis": "observed_tool",
+ "startLowMs": 1760000040000, "startHighMs": 1760000080000, "endLowMs": 1760000090000, "endHighMs": 1760000160000, "durationLowMs": 50000, "durationHighMs": 80000}
+```
+
+The queue answer gets `drainLowMs` and `drainHighMs`, and each row of `observed` gets `lowMs` and `highMs`. The range never excludes the single value. A range needs at least `min_samples` (default 3) finished jobs of the tool; without them the row has `intervalReason` instead: `too_few_samples` (the tool has finished fewer jobs than the minimum) or `no_history_for_tool` (the duration is the average over every tool or the default, not the tool's own). A job that cannot be estimated at all keeps its `reason`. A job whose tool lacks history counts with its single value inside the ranges of the jobs behind it, so those ranges are narrower than the real uncertainty; the percentiles are linear interpolations between the two closest ranks, rounded down to a millisecond. Without the switch none of these fields exist.
 
 ---
 
@@ -395,8 +404,51 @@ Marking a job `"unknown"` does not touch its robot's `Available` field: a robot 
 
 | Status | Body | Meaning |
 |---|---|---|
-| 200 | `{"unknownJobIds": ["weld-42"]}` | The IDs of every job just marked `"unknown"` this pass (`[]` if none). |
+| 200 | `{"unknownJobIds": ["weld-42"]}` | The IDs of every job just marked `"unknown"` this pass (`[]` if none). With replanning on for silent robots (see [Configuration file](#configuration-file)) the answer also has `requeuedJobIds`, the jobs that went back to the queue instead, and `unknownJobIds` is `[]`. |
 | 400 | `{"error": "\"timeoutSeconds\" must be a positive number"}` | Missing, zero, negative, or malformed `timeoutSeconds`. |
+
+---
+
+## `POST /jobs/replan`
+
+Off by default: the route exists only when the configuration file turns replanning on (`"replan": {"enabled": true}`); otherwise it answers the same `404` as any unknown path. It declares a robot failed or gone: the robot is held unavailable until its own next heartbeat reports `available: true`, and every job assigned to it (or whose outcome is `unknown`) goes back to the queue, `pending` or `blocked` as its dependencies say, in the order they were submitted. A requeued job keeps its place in the dispatch order and its `attempt` count; the next assignment raises it, so the late report of the abandoned attempt (`POST /jobs/complete` with the old `attempt`, or from the old robot) is refused with `409` and cannot close the new one. No job is duplicated or lost, and calling it twice requeues nothing the second time. Requires the token when one is set.
+
+**Request body**
+
+```json
+{"robotId": "arm-3", "reason": "cable cut"}
+```
+
+**Responses**
+
+| Status | Body | Meaning |
+|---|---|---|
+| 200 | `{"requeuedJobIds": ["weld-42"]}` | The jobs sent back to the queue (`[]` when the robot had none). |
+| 400 | `{"error": "\"robotId\" is required"}` | Missing or malformed body. |
+| 404 | `{"error": "robot ID does not exist: ..."}` | Unknown robot. |
+
+The same requeue happens by itself when the configuration file asks for it: `on_stale` sends the jobs of a robot that went silent (`POST /jobs/detect-stale` and the process's own check) back to the queue instead of marking them `unknown`, and `on_fault` does it for the assigned job of a robot whose heartbeat says `available: false` in the middle of the job. Without replanning those jobs stay `assigned` or become `unknown`, as always.
+
+---
+
+## Configuration file
+
+The tuned values of three optional behaviours live in a JSON file given with `-config` (or `JOB_DISPATCHER_CONFIG`), never in the code. Every section is optional and every switch is off unless the file turns it on, so no file, an empty file or `{}` change nothing. A misspelt key, a negative cost or percentiles that make no range stop the start with a clear message.
+
+```json
+{
+  "location_costs": {
+    "enabled": true,
+    "costs": {"cell-A": {"cell-B": 5, "cell-C": 1}, "cell-B": {"cell-C": 2}}
+  },
+  "replan": {"enabled": true, "on_stale": true, "on_fault": true},
+  "eta_interval": {"enabled": true, "low_percentile": 25, "high_percentile": 75, "min_samples": 3}
+}
+```
+
+- **`location_costs`:** a job that names a `location` goes to the eligible robot (available, tool attached, heard from recently) whose location has the lowest declared cost to it, instead of only preferring the robots in exactly that location. `costs[from][to]` is any non-negative number (a distance, a travel time); the table is read both ways and a location is at cost 0 from itself. A pair that is not declared has an unknown cost and ranks after every known one; ties go to the lower load, then the lower ID. A job without a location, and a configuration without this section, behave as before. The location stays a preference, never a requirement. The estimate follows the same rule among the robots free at the same moment.
+- **`replan`:** see `POST /jobs/replan`. `on_stale` and `on_fault` are `true` when the section is enabled unless the file says `false`.
+- **`eta_interval`:** the ranges of `GET /dispatch/eta`; the process refuses to start with it enabled and without `-eta`.
 
 ---
 

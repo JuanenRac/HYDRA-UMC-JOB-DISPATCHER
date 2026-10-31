@@ -194,7 +194,32 @@ paths:
                 type: object
                 properties:
                   unknownJobIds: { type: array, items: { type: string } }
+                  requeuedJobIds: { type: array, items: { type: string }, description: Only with replanning on for silent robots - the jobs that went back to the queue. }
         "400": { $ref: "#/components/responses/Error" }
+  /jobs/replan:
+    post:
+      summary: Declare a robot failed and send its jobs back to the queue (only when the configuration file turns replanning on; otherwise 404)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [robotId]
+              properties:
+                robotId: { type: string }
+                reason: { type: string }
+      responses:
+        "200":
+          description: The jobs sent back to the queue, in submission order.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  requeuedJobIds: { type: array, items: { type: string } }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
   /robots:
     get:
       summary: The fleet registry
@@ -300,6 +325,8 @@ paths:
                 properties:
                   generatedAtMs: { type: integer, format: int64 }
                   drainMs: { type: integer, format: int64, description: When the last estimated job ends (0 = nothing to wait for). }
+                  drainLowMs: { type: integer, format: int64, description: Only with the ranges on. }
+                  drainHighMs: { type: integer, format: int64, description: Only with the ranges on. }
                   observed:
                     type: array
                     items:
@@ -308,6 +335,8 @@ paths:
                         tool: { type: string }
                         samples: { type: integer }
                         meanMs: { type: integer, format: int64 }
+                        lowMs: { type: integer, format: int64, description: Only with the ranges on and enough samples. }
+                        highMs: { type: integer, format: int64 }
                   jobs:
                     type: array
                     items:
@@ -325,6 +354,16 @@ paths:
                         durationMs: { type: integer, format: int64 }
                         basis: { type: string, enum: [observed_tool, observed_all, default] }
                         overdue: { type: boolean }
+                        startLowMs: { type: integer, format: int64, description: The range, only with the ranges on and enough history of the tool. }
+                        startHighMs: { type: integer, format: int64 }
+                        endLowMs: { type: integer, format: int64 }
+                        endHighMs: { type: integer, format: int64 }
+                        durationLowMs: { type: integer, format: int64 }
+                        durationHighMs: { type: integer, format: int64 }
+                        intervalReason:
+                          type: string
+                          enum: [too_few_samples, no_history_for_tool]
+                          description: Why an estimate has no range.
         "404":
           description: The estimates are switched off, or the job is unknown or has ended.
 components:

@@ -112,6 +112,7 @@ flowchart LR
 * 🕒 **Why a job waits:** `GET /dispatch/waiting` lists the pending jobs in dispatch order with the reason each has no robot (no robots registered, no robot with the tool, matching robots busy, matching robots silent, or a robot free for the next pass). It is read-only; `POST /dispatch` still answers the plain list of assignments.
 * ⏱️ **Estimated time of each job (off by default):** with `-eta`, `GET /dispatch/eta` estimates when every unfinished job starts and ends, on which robot, and when the queue will be empty, from how long the recent finished jobs of the same tool took (a configurable default until there are some). A job that cannot be estimated says why. Without `-eta` the route does not exist and nothing else changes; it is read-only and tested with an injected clock.
 * 🧾 **A production event for every job that ends (off by default):** with `-production-events` and a destination (`-production-events-file` for one JSON line per event, `-production-events-url` for a JSON `POST`), each report that a job ended hands over a `ProductionEvent` of the shared contract of HYDRA-UMC-SDK (robot, end time, good or not, cycle time, job), which the production reports turn into OEE. The event is checked against the contract first; a cycle it cannot describe is skipped and logged, never invented, and a sink that fails never fails the completion. Without the switch nothing changes; tested with an injected clock.
+* 🧭 **Closest robot, replanning and ranges (all off by default):** a configuration file (`-config`) holds the tuned values and each section is off unless it says so: `location_costs` sends a job that names a location to the robot with the lowest declared cost to it, `replan` (`POST /jobs/replan`, or by itself for a robot that went silent or faulted) sends the jobs of a failed robot back to the queue in order without duplicating or losing any, and `eta_interval` adds a low-to-high range (quartiles of the recent durations of the same tool) next to every estimate, or says why it cannot. Without the file nothing changes; tested with an injected clock and seeded random scenarios.
 
 ## 🔒 Security & Safety
 
@@ -131,6 +132,7 @@ HTTP on `127.0.0.1:8090` by default; the full reference is `docs/API.md` and `do
 | Topic or route | What it carries |
 |---|---|
 | `/jobs`, `/jobs/submit`, `/jobs/{id}` | list, submit and read jobs |
+| `/jobs/replan` | send the jobs of a failed robot back to the queue (only when the configuration file turns replanning on; otherwise 404) |
 | `/jobs/complete`, `/jobs/cancel`, `/jobs/requeue`, `/jobs/detect-stale` | finish, cancel or requeue a job; find the jobs of silent robots |
 | `/robots`, `/robots/{id}`, `/dispatch` | register a robot and its tools; ask for the next job that fits |
 | `GET /health` | is the service alive (open without a token) |
@@ -144,6 +146,7 @@ HTTP on `127.0.0.1:8090` by default; the full reference is `docs/API.md` and `do
 | `-allow-anonymous` | `false` | allow a non-loopback address without a token |
 | `-robot-timeout` | `2m` | silence after which a robot gets no work (`0` = off) |
 | `-eta`, `JOB_DISPATCHER_ETA=1`, `-eta-default-duration`, `-eta-window` | off, `1m`, `20` | switch on `GET /dispatch/eta` (estimated start and end of every unfinished job and of the queue); the duration assumed until a job of the tool has finished (`0` = no guess) and how many recent finished jobs per tool are averaged |
+| `-config`, `JOB_DISPATCHER_CONFIG` | empty | a JSON file with the tuned values of three optional behaviours, each off unless the file turns it on: `location_costs` (a table of costs between locations; the job goes to the robot with the lowest cost), `replan` (the jobs of a failed or silent robot go back to the queue) and `eta_interval` (a range next to every estimate, needs `-eta`) |
 | `-production-events`, `JOB_DISPATCHER_PRODUCTION_EVENTS=1`, `-production-events-file`, `-production-events-url`, `-production-events-token` | off, empty, empty, empty | hand over a `ProductionEvent` of the shared contract for every job that ends: one JSON line per event in the file and/or a JSON `POST` to the URL (with the bearer token); the switch needs at least one destination |
 | `-db` | empty (memory) | path of the SQLite file that keeps the queue |
 | `-tools-file`, `JOB_DISPATCHER_TOOLS_FILE`, `-tools`, `JOB_DISPATCHER_TOOLS` | empty | the list of tools a job or robot may name |

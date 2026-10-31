@@ -6,7 +6,11 @@
 // jobs must not listen on the network without a token.
 package main
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/JuanenRac/HYDRA-UMC-JOB-DISPATCHER/src/dispatcher"
+)
 
 func TestIsLoopbackAddr(t *testing.T) {
 	for addr, want := range map[string]bool{
@@ -66,5 +70,21 @@ func TestProductionEventsProblem(t *testing.T) {
 		if got := productionEventsProblem(c.on, c.file, c.url) != ""; got != c.refused {
 			t.Errorf("productionEventsProblem(%v, %q, %q) refused = %v, want %v", c.on, c.file, c.url, got, c.refused)
 		}
+	}
+}
+
+func TestConfigProblem(t *testing.T) {
+	withRange, err := dispatcher.ParseConfig([]byte(`{"eta_interval":{"enabled":true}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p := configProblem(withRange, true); p != "" {
+		t.Errorf("a range with the estimates on must start, got %q", p)
+	}
+	if p := configProblem(withRange, false); p == "" {
+		t.Error("a range without the estimates must be refused")
+	}
+	if p := configProblem(dispatcher.FileConfig{}, false); p != "" {
+		t.Errorf("an empty configuration must start, got %q", p)
 	}
 }

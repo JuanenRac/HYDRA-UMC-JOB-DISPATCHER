@@ -61,6 +61,7 @@ func New(engine *dispatcher.Engine) *Server {
 	s.mux.HandleFunc("/jobs/complete", s.handleCompleteJob)
 	s.mux.HandleFunc("/jobs/cancel", s.handleCancelJob)
 	s.mux.HandleFunc("/jobs/requeue", s.handleRequeueJob)
+	s.mux.HandleFunc("/jobs/replan", s.handleReplan)
 	s.mux.HandleFunc("/jobs/", s.handleJobByID)
 	s.mux.HandleFunc("/robots", s.handleRobots)
 	s.mux.HandleFunc("/robots/", s.handleRobotByID)
@@ -533,11 +534,19 @@ func (s *Server) handleDetectStale(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, errors.New("\"timeoutSeconds\" must be a positive number"))
 		return
 	}
-	unknownJobIDs := s.engine.DetectStaleAssignments(time.Duration(req.TimeoutSeconds * float64(time.Second)))
+	unknownJobIDs, requeued := s.engine.DetectStaleAssignmentsReplan(time.Duration(req.TimeoutSeconds * float64(time.Second)))
 	if unknownJobIDs == nil {
 		unknownJobIDs = []string{}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"unknownJobIds": unknownJobIDs})
+	answer := map[string]any{"unknownJobIds": unknownJobIDs}
+	if s.engine.ReplanEnabled() {
+		// only with replanning on: the jobs that went back to the queue instead of becoming unknown
+		if requeued == nil {
+			requeued = []string{}
+		}
+		answer["requeuedJobIds"] = requeued
+	}
+	writeJSON(w, http.StatusOK, answer)
 }
 
 type requeueRequest struct {
@@ -578,6 +587,49 @@ func (s *Server) handleRequeueJob(w http.ResponseWriter, r *http.Request) {
 	log.Printf("[job-dispatcher] operator requeued job %q (robot %q, reason %q)", req.ID, req.RobotID, req.Reason)
 	updated, _ := s.engine.Job(req.ID)
 	writeJSON(w, http.StatusOK, updated)
+}
+
+type replanRequest struct {
+	RobotID string `json:"robotId"`
+	Reason  string `json:"reason"`
+}
+
+// handleReplan answers POST /jobs/replan: the robot is declared failed or gone and every job assigned to it (or whose
+// outcome is unknown) goes back to the queue. While replanning is switched off (the default) the route does not exist:
+// the answer is the same 404 as for any unknown path.
+func (s *Server) handleReplan(w http.ResponseWriter, r *http.Request) {
+	if !s.engine.ReplanEnabled() {
+		http.NotFound(w, r)
+		return
+	}
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", "POST")
+		writeError(w, http.StatusMethodNotAllowed, errors.New("use POST"))
+		return
+	}
+	var req replanRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, bodyErrorStatus(err), err)
+		return
+	}
+	if req.RobotID == "" {
+		writeError(w, http.StatusBadRequest, errors.New("\"robotId\" is required"))
+		return
+	}
+	ids, err := s.engine.ReplanRobot(req.RobotID)
+	if err != nil {
+		status := http.StatusBadRequest
+		if errors.Is(err, dispatcher.ErrUnknownRobot) {
+			status = http.StatusNotFound
+		}
+		writeError(w, status, err)
+		return
+	}
+	if ids == nil {
+		ids = []string{}
+	}
+	log.Printf("[job-dispatcher] operator replanned robot %q (reason %q): jobs back in the queue: %v", req.RobotID, req.Reason, ids)
+	writeJSON(w, http.StatusOK, map[string]any{"requeuedJobIds": ids})
 }
 
 // handleJobByID answers GET /jobs/{id} with one job, so a client does not have to download

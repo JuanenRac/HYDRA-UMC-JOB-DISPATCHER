@@ -112,6 +112,7 @@ flowchart LR
 * 🕒 **Porque um trabalho espera:** `GET /dispatch/waiting` lista os trabalhos pendentes pela ordem de despacho com o motivo por que cada um não tem robô (nenhum robô registado, nenhum robô com a ferramenta, robôs adequados ocupados, robôs adequados em silêncio, ou um robô livre para a próxima passagem). É só de leitura; `POST /dispatch` continua a responder a lista simples de atribuições.
 * ⏱️ **Tempo estimado de cada trabalho (desligado por predefinição):** com `-eta`, `GET /dispatch/eta` estima quando cada trabalho por concluir começa e termina, em que robô e quando a fila ficará vazia, a partir do tempo que demoraram os últimos trabalhos concluídos da mesma ferramenta (um valor predefinido configurável enquanto não houver nenhum). Um trabalho que não se consegue estimar indica o motivo. Sem `-eta` a rota não existe e mais nada muda; é só de leitura e é testada com um relógio injetado.
 * 🧾 **Um evento de produção por cada trabalho que termina (desligado por omissão):** com `-production-events` e um destino (`-production-events-file` para uma linha JSON por evento, `-production-events-url` para um `POST` JSON), cada relatório de que um trabalho terminou entrega um `ProductionEvent` do contrato partilhado do HYDRA-UMC-SDK (robô, hora de fim, bom ou não, tempo de ciclo, trabalho), que os relatórios de produção transformam em OEE. O evento é verificado primeiro contra o contrato; um ciclo que não consegue descrever é ignorado e registado, nunca inventado, e um destino que falha nunca faz falhar a conclusão. Sem o interruptor nada muda; testado com um relógio injetado.
+* 🧭 **Robô mais próximo, replaneamento e intervalos (tudo desligado por predefinição):** um ficheiro de configuração (`-config`) guarda os valores afinados e cada secção está desligada, a menos que diga o contrário: `location_costs` envia um trabalho que indica uma localização para o robô com o menor custo declarado até ela, `replan` (`POST /jobs/replan`, ou por si só para um robô que ficou mudo ou avariou) devolve à fila, por ordem, os trabalhos de um robô avariado sem duplicar nem perder nenhum, e `eta_interval` junta a cada estimativa um intervalo de baixo a alto (quartis das durações recentes da mesma ferramenta) ou diz porque não pode. Sem o ficheiro nada muda; testado com relógio injetado e cenários aleatórios com semente fixa.
 
 ## 🔒 Segurança e proteção
 
@@ -131,6 +132,7 @@ HTTP em `127.0.0.1:8090` por predefinição; a referência completa é `docs/API
 | Tópico ou rota | O que leva |
 |---|---|
 | `/jobs`, `/jobs/submit`, `/jobs/{id}` | listar, submeter e ler trabalhos |
+| `/jobs/replan` | devolver à fila os trabalhos de um robô avariado (só se o ficheiro de configuração ativar o replaneamento; caso contrário, 404) |
 | `/jobs/complete`, `/jobs/cancel`, `/jobs/requeue`, `/jobs/detect-stale` | terminar, cancelar ou recolocar um trabalho na fila; encontrar os trabalhos de robôs em silêncio |
 | `/robots`, `/robots/{id}`, `/dispatch` | registar um robô e as suas ferramentas; pedir o próximo trabalho que encaixa |
 | `GET /health` | o serviço está vivo (aberta sem token) |
@@ -144,6 +146,7 @@ HTTP em `127.0.0.1:8090` por predefinição; a referência completa é `docs/API
 | `-allow-anonymous` | `false` | permitir um endereço não loopback sem token |
 | `-robot-timeout` | `2m` | silêncio após o qual um robô não recebe trabalho (`0` = desligado) |
 | `-eta`, `JOB_DISPATCHER_ETA=1`, `-eta-default-duration`, `-eta-window` | desligado, `1m`, `20` | ativar `GET /dispatch/eta` (início e fim estimados de cada trabalho por concluir e da fila); a duração assumida até um trabalho da ferramenta terminar (`0` = sem suposição) e quantos trabalhos concluídos recentes por ferramenta entram na média |
+| `-config`, `JOB_DISPATCHER_CONFIG` | vazio | um ficheiro JSON com os valores afinados de três comportamentos opcionais, cada um desligado a menos que o ficheiro o ative: `location_costs` (uma tabela de custos entre localizações; o trabalho vai para o robô de menor custo), `replan` (os trabalhos de um robô avariado ou mudo voltam à fila) e `eta_interval` (um intervalo junto a cada estimativa, exige `-eta`) |
 | `-production-events`, `JOB_DISPATCHER_PRODUCTION_EVENTS=1`, `-production-events-file`, `-production-events-url`, `-production-events-token` | desligado, vazio, vazio, vazio | entregar um `ProductionEvent` do contrato partilhado por cada trabalho que termina: uma linha JSON por evento no ficheiro e/ou um `POST` JSON para o URL (com o token bearer); o interruptor precisa de pelo menos um destino |
 | `-db` | vazio (memória) | caminho do ficheiro SQLite que guarda a fila |
 | `-tools-file`, `JOB_DISPATCHER_TOOLS_FILE`, `-tools`, `JOB_DISPATCHER_TOOLS` | vazio | a lista de ferramentas que um trabalho ou robô pode nomear |
