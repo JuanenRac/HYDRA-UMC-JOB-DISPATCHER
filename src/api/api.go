@@ -37,6 +37,8 @@ type Server struct {
 	engine *dispatcher.Engine
 	mux    *http.ServeMux
 	token  string
+	// maxBody is the largest request body any route reads (MaxBodyBytes unless SetMaxBodyBytes changed it).
+	maxBody int64
 }
 
 // RequireToken makes every route except GET /health demand `Authorization: Bearer <token>`
@@ -44,9 +46,16 @@ type Server struct {
 // (main.go) refuses that combination on an address other than loopback.
 func (s *Server) RequireToken(token string) { s.token = token }
 
+// SetMaxBodyBytes changes the largest request body any route reads (default MaxBodyBytes). A value of zero or less keeps the default.
+func (s *Server) SetMaxBodyBytes(n int64) {
+	if n > 0 {
+		s.maxBody = n
+	}
+}
+
 // New builds a Server ready to be used as an http.Handler.
 func New(engine *dispatcher.Engine) *Server {
-	s := &Server{engine: engine, mux: http.NewServeMux()}
+	s := &Server{engine: engine, mux: http.NewServeMux(), maxBody: MaxBodyBytes}
 	s.mux.HandleFunc("/jobs", s.handleJobs)
 	s.mux.HandleFunc("/jobs/submit", s.handleSubmitJob)
 	s.mux.HandleFunc("/jobs/complete", s.handleCompleteJob)
@@ -69,7 +78,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Body != nil {
-		r.Body = http.MaxBytesReader(w, r.Body, MaxBodyBytes)
+		r.Body = http.MaxBytesReader(w, r.Body, s.maxBody)
 	}
 	s.mux.ServeHTTP(w, r)
 }

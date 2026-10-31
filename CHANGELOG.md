@@ -4,6 +4,7 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+- **The limits of the HTTP server are options:** `-max-body-bytes` (default 65536), `-read-header-timeout` (5s), `-read-timeout` (15s), `-write-timeout` (30s) and `-idle-timeout` (60s); the defaults are the values the server always used, and a zero or negative value stops the start.
 - **`POST /jobs/submit` takes the common Operation of the SDK:** a body with `operation_id` (what the semantic planner hands over) becomes a job whose id and dedup key are the id of the operation, so posting it again is the same job; `priority`, `required_tool`, `location` and `depends_on` are read from its `params`. Only an operation in the state `received` with `schema_version` `1.0` is taken (anything else is a `400`). The OpenAPI document names the new body as `OperationIntake`.
 ## [0.2.4] - The list of waiting jobs with the reason of each, the vulnerability check of the Go libraries and the universal README
 

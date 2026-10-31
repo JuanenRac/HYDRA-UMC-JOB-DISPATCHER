@@ -143,6 +143,7 @@ HTTP en `127.0.0.1:8090` por defecto; la referencia completa es `docs/API.md` y 
 | `-robot-timeout` | `2m` | silencio tras el cual un robot no recibe trabajo (`0` = apagado) |
 | `-db` | vacío (memoria) | ruta del fichero SQLite que guarda la cola |
 | `-tools-file`, `JOB_DISPATCHER_TOOLS_FILE`, `-tools`, `JOB_DISPATCHER_TOOLS` | vacío | la lista de herramientas que un trabajo o robot puede nombrar |
+| `-max-body-bytes`, `-read-header-timeout`, `-read-timeout`, `-write-timeout`, `-idle-timeout` | `65536`, `5s`, `15s`, `30s`, `60s` | mayor cuerpo de petición en bytes (uno mayor recibe `413`) y los límites de tiempo del servidor HTTP; ninguno admite cero |
 
 ## 🚀 Inicio rápido
 
@@ -243,6 +244,7 @@ HYDRA-UMC-JOB-DISPATCHER/
 ├── test.sh test.bat                             ejecutan las pruebas
 ├── main.go / version.go                         punto de entrada, opciones y la versión
 ├── main_test.go                                 pruebas del punto de entrada
+├── server_limits.go / server_limits_test.go     los límites de tiempo y tamaño del servidor HTTP, y sus pruebas
 ├── go.mod / go.sum                              módulo de Go y sumas
 ├── bump_version.py / bump_manifest_version.py   subida de versión explícita
 ├── run.sh run.bat                               arrancar el servicio

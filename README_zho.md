@@ -146,6 +146,7 @@ flowchart LR
 | `-robot-timeout` | `2m` | 沉默多久后机器人不再分到任务（`0` = 关闭） |
 | `-db` | 空（内存） | 保存队列的 SQLite 文件路径 |
 | `-tools-file`, `JOB_DISPATCHER_TOOLS_FILE`, `-tools`, `JOB_DISPATCHER_TOOLS` | 空 | 任务或机器人可指名的工具列表 |
+| `-max-body-bytes`, `-read-header-timeout`, `-read-timeout`, `-write-timeout`, `-idle-timeout` | `65536`, `5s`, `15s`, `30s`, `60s` | 请求体的最大字节数（更大的返回 `413`）以及 HTTP 服务器的时间限制；都不接受 0 |
 
 ## 🚀 快速开始
 
@@ -245,6 +246,7 @@ HYDRA-UMC-JOB-DISPATCHER/
 ├── test.sh test.bat                             运行测试
 ├── main.go / version.go                         入口、选项和版本
 ├── main_test.go                                 入口的测试
+├── server_limits.go / server_limits_test.go     HTTP 服务器的时间与大小限制及其测试
 ├── go.mod / go.sum                              Go 模块与校验和
 ├── bump_version.py / bump_manifest_version.py   显式的版本提升
 ├── run.sh run.bat                               启动服务

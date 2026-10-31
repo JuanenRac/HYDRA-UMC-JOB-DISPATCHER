@@ -103,3 +103,18 @@ func TestLocation_TravelsThroughTheAPI(t *testing.T) {
 		t.Fatalf("submit response = %+v (%v), want the location back", submitted, err)
 	}
 }
+
+func TestBody_TheLimitCanBeChangedAndANonsenseValueKeepsTheDefault(t *testing.T) {
+	s := New(dispatcher.NewEngine())
+	s.SetMaxBodyBytes(0)
+	s.SetMaxBodyBytes(-5)
+	body, _ := json.Marshal(map[string]string{"id": "job-1", "requiredTool": strings.Repeat("x", 1024)})
+	if rec := withToken(t, s, http.MethodPost, "/jobs", "", body); rec.Code != http.StatusCreated {
+		t.Fatalf("a 1 KiB body with the default limit = %d, want 201", rec.Code)
+	}
+	s.SetMaxBodyBytes(512)
+	body, _ = json.Marshal(map[string]string{"id": "job-2", "requiredTool": strings.Repeat("x", 1024)})
+	if rec := withToken(t, s, http.MethodPost, "/jobs", "", body); rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("a 1 KiB body with a 512 byte limit = %d, want 413", rec.Code)
+	}
+}

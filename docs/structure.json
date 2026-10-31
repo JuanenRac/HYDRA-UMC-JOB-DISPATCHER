@@ -264,6 +264,20 @@
           }
         },
         {
+          "name": "server_limits.go  server_limits_test.go",
+          "tree_name": "server_limits.go / server_limits_test.go",
+          "desc": {
+            "en": "the time and size limits of the HTTP server, and their tests",
+            "es": "los límites de tiempo y tamaño del servidor HTTP, y sus pruebas",
+            "de": "die Zeit- und Größenlimits des HTTP-Servers und ihre Tests",
+            "fr": "les limites de temps et de taille du serveur HTTP, et leurs tests",
+            "it": "i limiti di tempo e dimensione del server HTTP e i loro test",
+            "ja": "HTTP サーバーの時間・サイズ制限とそのテスト",
+            "zh": "HTTP 服务器的时间与大小限制及其测试",
+            "pt": "os limites de tempo e tamanho do servidor HTTP e os seus testes"
+          }
+        },
+        {
           "name": "go.mod  go.sum",
           "desc": {
             "en": "Go module and checksums",

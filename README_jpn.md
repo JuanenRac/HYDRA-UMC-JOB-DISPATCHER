@@ -147,6 +147,7 @@ flowchart LR
 | `-robot-timeout` | `2m` | この時間沈黙したロボットには仕事を渡さない（`0` = 無効） |
 | `-db` | 空（メモリ） | キューを保持する SQLite ファイルのパス |
 | `-tools-file`, `JOB_DISPATCHER_TOOLS_FILE`, `-tools`, `JOB_DISPATCHER_TOOLS` | 空 | ジョブやロボットが指定できるツールの一覧 |
+| `-max-body-bytes`, `-read-header-timeout`, `-read-timeout`, `-write-timeout`, `-idle-timeout` | `65536`, `5s`, `15s`, `30s`, `60s` | リクエスト本文の最大バイト数（超えると `413`）と HTTP サーバーの時間制限。どれも 0 は受け付けません |
 
 ## 🚀 クイックスタート
 
@@ -247,6 +248,7 @@ HYDRA-UMC-JOB-DISPATCHER/
 ├── test.sh test.bat                             テストを実行
 ├── main.go / version.go                         エントリー、オプション、バージョン
 ├── main_test.go                                 エントリーのテスト
+├── server_limits.go / server_limits_test.go     HTTP サーバーの時間・サイズ制限とそのテスト
 ├── go.mod / go.sum                              Go モジュールとチェックサム
 ├── bump_version.py / bump_manifest_version.py   明示的なバージョン引き上げ
 ├── run.sh run.bat                               サービスを起動

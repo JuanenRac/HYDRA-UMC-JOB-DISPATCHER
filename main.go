@@ -23,7 +23,6 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -82,7 +81,16 @@ func main() {
 	dbPath := flag.String("db", "", "path to a real SQLite database file for fault-tolerant mission-queue persistence (unset: purely in-memory, cleared on restart)")
 	toolsFile := flag.String("tools-file", os.Getenv("JOB_DISPATCHER_TOOLS_FILE"), "JSON file listing the known tool names (the TOOL_* profiles of the tool heads); a job or robot naming another tool only gets a warning in the log (default: the JOB_DISPATCHER_TOOLS_FILE environment variable)")
 	toolsList := flag.String("tools", os.Getenv("JOB_DISPATCHER_TOOLS"), "comma-separated known tool names, added to those of -tools-file (default: the JOB_DISPATCHER_TOOLS environment variable)")
+	maxBody := flag.Int64("max-body-bytes", api.MaxBodyBytes, "largest request body, in bytes, that any route reads (a larger one is refused with 413)")
+	readHeaderTimeout := flag.Duration("read-header-timeout", defaultServerLimits.ReadHeaderTimeout, "how long a client may take to send the request headers")
+	readTimeout := flag.Duration("read-timeout", defaultServerLimits.ReadTimeout, "how long a client may take to send a whole request")
+	writeTimeout := flag.Duration("write-timeout", defaultServerLimits.WriteTimeout, "how long the answer to a request may take to be written")
+	idleTimeout := flag.Duration("idle-timeout", defaultServerLimits.IdleTimeout, "how long an idle keep-alive connection is kept open")
 	flag.Parse()
+	limits := serverLimits{ReadHeaderTimeout: *readHeaderTimeout, ReadTimeout: *readTimeout, WriteTimeout: *writeTimeout, IdleTimeout: *idleTimeout}
+	if problem := limits.problem(*maxBody); problem != "" {
+		log.Fatalf("[job-dispatcher] refusing to start: %s", problem)
+	}
 
 	if problem := startupProblem(*addr, *token, *allowAnonymous); problem != "" {
 		log.Fatalf("[job-dispatcher] refusing to start: %s", problem)
@@ -116,6 +124,7 @@ func main() {
 		fmt.Printf("[job-dispatcher] tool catalog: %d known tool(s); an unknown tool name is only warned about\n", len(catalog.Names()))
 	}
 	server := api.New(engine)
+	server.SetMaxBodyBytes(*maxBody)
 	if *token != "" {
 		server.RequireToken(*token)
 		fmt.Println("[job-dispatcher] every route except GET /health requires a bearer token")
@@ -140,14 +149,6 @@ func main() {
 	}
 	// http.ListenAndServe has no timeouts: a client that opens a connection and never finishes a
 	// request would hold it (and a goroutine) for ever.
-	httpServer := &http.Server{
-		Addr:              *addr,
-		Handler:           server,
-		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       15 * time.Second,
-		WriteTimeout:      30 * time.Second,
-		IdleTimeout:       60 * time.Second,
-		MaxHeaderBytes:    16 * 1024,
-	}
+	httpServer := newHTTPServer(*addr, server, limits)
 	log.Fatal(httpServer.ListenAndServe())
 }
