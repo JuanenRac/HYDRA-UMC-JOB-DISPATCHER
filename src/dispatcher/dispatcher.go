@@ -203,6 +203,8 @@ type Engine struct {
 	tools *ToolCatalog
 	// eta is the configuration of the time estimates (see eta.go); the zero value is "off".
 	eta ETAConfig
+	// productionSink receives the ProductionEvent of every job that ends; nil (the default) means the events are off (see production_event.go).
+	productionSink ProductionEventSink
 	// now is the engine's own clock, injectable so a test can control it
 	// exactly (see DetectStaleAssignments) - real callers always get
 	// time.Now via the constructors below.
@@ -975,6 +977,14 @@ func (e *Engine) CompleteJob(jobID string, success bool, robotID string) error {
 // one is refused with ErrAttemptMismatch, so the late report of an abandoned assignment cannot
 // close the one that replaced it. attempt 0 means "not stated" and is not checked.
 func (e *Engine) CompleteJobAttempt(jobID string, success bool, robotID string, attempt int) error {
+	// The production event is handed over after the lock has been released (defers run last in, first out), so a sink never holds up the engine.
+	var sink ProductionEventSink
+	var event *ProductionEvent
+	defer func() {
+		if sink != nil && event != nil {
+			deliver(sink, *event)
+		}
+	}()
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
@@ -1012,6 +1022,7 @@ func (e *Engine) CompleteJobAttempt(jobID string, success bool, robotID string, 
 	} else {
 		j.Status = StatusFailed
 	}
+	sink, event = e.productionEventLocked(j)
 	// finishing THIS job only ever ends the scheduler's own
 	// reservation on the robot - it must never be read as "the robot
 	// itself is healthy again". A heartbeat reporting Available=false

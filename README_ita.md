@@ -18,7 +18,7 @@ GPL-3.0-or-later - see LICENSE
   <img src="https://img.shields.io/badge/License-GPL%203.0--or--later-blue.svg" alt="GPL 3.0 or later">
   <img src="https://img.shields.io/badge/Go-1.21%2B-00ADD8.svg" alt="Go">
   <img src="https://img.shields.io/badge/Architecture-Event--Driven-blue.svg" alt="Architecture">
-  <img src="https://img.shields.io/badge/Tests-177%20passing-2ea44f.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/Tests-188%20passing-2ea44f.svg" alt="Tests">
   <img src="https://img.shields.io/badge/Version-0.2.4-0f6cbd.svg" alt="Version">
   <img src="https://img.shields.io/badge/Maturity-functional-0F6CBD.svg" alt="Maturity">
 </p>
@@ -35,7 +35,7 @@ GPL-3.0-or-later - see LICENSE
 |---|---|
 | Versione | `0.2.4` |
 | Maturità | Funzionale |
-| Test | 177 (`go test ./...`) |
+| Test | 188 (`go test ./...`) |
 | Tecnologia | Go / priority queue / HTTP API / SQLite (modernc.org/sqlite, pure Go) |
 | Destinazione | Il Raspberry Pi CM5 di una cella HYDRA-UMC |
 | Su hardware reale | Non ancora: per questa versione non risulta alcuna esecuzione su hardware reale |
@@ -51,7 +51,7 @@ Ogni riga è una parte di questo repository e il semaforo dice a che punto è og
 | Area | Stato | Cosa significa qui |
 |---|---|---|
 | Software | 🟡 | Funziona per il suo scopo principale; la verifica di onestà qui sopra elenca ciò che manca ancora |
-| Test | 🟢 | 177 test automatici, eseguiti a ogni modifica |
+| Test | 🟢 | 188 test automatici, eseguiti a ogni modifica |
 | Hardware reale | 🔴 | Non ancora: per questa versione non risulta alcuna esecuzione su hardware reale |
 | Documentazione | 🟢 | README in otto lingue, verificato rispetto al manifesto a ogni modifica |
 
@@ -111,6 +111,7 @@ flowchart LR
 * 🗂️ **Scritture atomiche, paginazione e lavori tracciabili:** un completamento, un annullamento, un reinserimento o uno scorrimento dei battiti scaduti viene scritto in SQLite in un'unica transazione (il database funziona in modalità WAL); `GET /jobs` si può filtrare e paginare (`status`, `limit`, `offset`, `X-Total-Count`); ogni lavoro porta `SubmittedAtMs`, `AssignedAtMs`, `CompletedAtMs` e un contatore `Attempt` che il rapporto di completamento può rimandare (`attempt`) così il rapporto tardivo di un'assegnazione abbandonata viene rifiutato; `DELETE /robots/{id}` dimentica un robot senza lavoro; un battito di robot con data futura non è considerato attendibile. Una descrizione leggibile dalle macchine è in `docs/openapi.yaml`. *(implementato)*
 * 🕒 **Perché un lavoro attende:** `GET /dispatch/waiting` elenca i lavori in attesa nell'ordine di assegnazione con il motivo per cui ciascuno non ha un robot (nessun robot registrato, nessun robot con lo strumento, robot adatti occupati, robot adatti silenziosi, oppure un robot libero per il prossimo passaggio). È di sola lettura; `POST /dispatch` risponde ancora con l'elenco semplice delle assegnazioni.
 * ⏱️ **Tempo stimato di ogni lavoro (spento per impostazione predefinita):** con `-eta`, `GET /dispatch/eta` stima quando inizia e finisce ogni lavoro non concluso, su quale robot e quando la coda sarà vuota, in base alla durata degli ultimi lavori conclusi con lo stesso strumento (un valore predefinito configurabile finché non ce ne sono). Un lavoro che non si può stimare ne indica il motivo. Senza `-eta` la route non esiste e nient'altro cambia; è di sola lettura e viene provata con un orologio iniettato.
+* 🧾 **Un evento di produzione per ogni lavoro che termina (spento di default):** con `-production-events` e una destinazione (`-production-events-file` per una riga JSON per evento, `-production-events-url` per un `POST` JSON), ogni segnalazione che un lavoro è terminato consegna un `ProductionEvent` del contratto condiviso di HYDRA-UMC-SDK (robot, ora di fine, buono o no, tempo di ciclo, lavoro), che i rapporti di produzione trasformano in OEE. L'evento viene prima verificato rispetto al contratto; un ciclo che non può descrivere viene saltato e registrato, mai inventato, e una destinazione che fallisce non fa mai fallire la chiusura. Senza l'interruttore non cambia nulla; provato con un orologio iniettato.
 
 ## 🔒 Sicurezza e protezione
 
@@ -143,6 +144,7 @@ HTTP su `127.0.0.1:8090` per impostazione predefinita; il riferimento completo �
 | `-allow-anonymous` | `false` | consentire un indirizzo non loopback senza token |
 | `-robot-timeout` | `2m` | silenzio dopo il quale un robot non riceve lavoro (`0` = spento) |
 | `-eta`, `JOB_DISPATCHER_ETA=1`, `-eta-default-duration`, `-eta-window` | spento, `1m`, `20` | attivare `GET /dispatch/eta` (inizio e fine stimati di ogni lavoro non concluso e della coda); la durata ipotizzata finché un lavoro dello strumento non è concluso (`0` = nessuna ipotesi) e su quanti lavori conclusi recenti per strumento si fa la media |
+| `-production-events`, `JOB_DISPATCHER_PRODUCTION_EVENTS=1`, `-production-events-file`, `-production-events-url`, `-production-events-token` | spento, vuoto, vuoto, vuoto | consegnare un `ProductionEvent` del contratto condiviso per ogni lavoro che termina: una riga JSON per evento nel file e/o un `POST` JSON all'URL (con il token bearer); l'interruttore richiede almeno una destinazione |
 | `-db` | vuoto (memoria) | percorso del file SQLite che conserva la coda |
 | `-tools-file`, `JOB_DISPATCHER_TOOLS_FILE`, `-tools`, `JOB_DISPATCHER_TOOLS` | vuoto | l'elenco degli strumenti che un lavoro o un robot può nominare |
 | `-max-body-bytes`, `-read-header-timeout`, `-read-timeout`, `-write-timeout`, `-idle-timeout` | `65536`, `5s`, `15s`, `30s`, `60s` | corpo di richiesta più grande in byte (uno più grande riceve `413`) e limiti di tempo del server HTTP; nessuno accetta zero |
@@ -159,7 +161,7 @@ curl http://127.0.0.1:8090/health
 
 ## 🧪 Test
 
-177 test Go si eseguono con `go test ./...`; stanno accanto al codice (`src/api`, `src/dispatcher`, `src/sqlitestore` e `main_test.go`) e includono un processo ucciso e riavviato su un file SQLite. Né hardware né rete esterna.
+188 test Go si eseguono con `go test ./...`; stanno accanto al codice (`src/api`, `src/dispatcher`, `src/sqlitestore` e `main_test.go`) e includono un processo ucciso e riavviato su un file SQLite. Né hardware né rete esterna.
 
 La CI esegue `HYDRA_UMC_CI=1 python tools/ci_validate.py`, che controlla il manifesto, i documenti, gli otto README e le immagini.
 

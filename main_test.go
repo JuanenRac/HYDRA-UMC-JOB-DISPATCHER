@@ -49,3 +49,22 @@ func TestBuildToolCatalog(t *testing.T) {
 		t.Fatal("a missing catalog file must stop the start")
 	}
 }
+
+func TestProductionEventsProblem(t *testing.T) {
+	for _, c := range []struct {
+		on        bool
+		file, url string
+		refused   bool
+	}{
+		{false, "", "", false},
+		{false, "events.jsonl", "", false},
+		{true, "", "", true},
+		{true, "events.jsonl", "", false},
+		{true, "", "http://127.0.0.1:1/", false},
+		{true, "events.jsonl", "http://127.0.0.1:1/", false},
+	} {
+		if got := productionEventsProblem(c.on, c.file, c.url) != ""; got != c.refused {
+			t.Errorf("productionEventsProblem(%v, %q, %q) refused = %v, want %v", c.on, c.file, c.url, got, c.refused)
+		}
+	}
+}

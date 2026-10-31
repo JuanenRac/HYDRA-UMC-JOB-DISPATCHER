@@ -18,7 +18,7 @@ GPL-3.0-or-later - see LICENSE
   <img src="https://img.shields.io/badge/License-GPL%203.0--or--later-blue.svg" alt="GPL 3.0 or later">
   <img src="https://img.shields.io/badge/Go-1.21%2B-00ADD8.svg" alt="Go">
   <img src="https://img.shields.io/badge/Architecture-Event--Driven-blue.svg" alt="Architecture">
-  <img src="https://img.shields.io/badge/Tests-177%20passing-2ea44f.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/Tests-188%20passing-2ea44f.svg" alt="Tests">
   <img src="https://img.shields.io/badge/Version-0.2.4-0f6cbd.svg" alt="Version">
   <img src="https://img.shields.io/badge/Maturity-functional-0F6CBD.svg" alt="Maturity">
 </p>
@@ -35,7 +35,7 @@ GPL-3.0-or-later - see LICENSE
 |---|---|
 | Versión | `0.2.4` |
 | Madurez | Funcional |
-| Tests | 177 (`go test ./...`) |
+| Tests | 188 (`go test ./...`) |
 | Tecnología | Go / priority queue / HTTP API / SQLite (modernc.org/sqlite, pure Go) |
 | Destino | La Raspberry Pi CM5 de una celda HYDRA-UMC |
 | En hardware real | Todavía no: no consta ninguna ejecución en hardware real para esta versión |
@@ -51,7 +51,7 @@ Cada línea es una parte de este repositorio y la luz dice hasta dónde llega ho
 | Área | Estado | Qué significa aquí |
 |---|---|---|
 | Software | 🟡 | Funciona para su propósito principal; la comprobación de honestidad de arriba lista lo que aún falta |
-| Pruebas | 🟢 | 177 pruebas automáticas, ejecutadas en cada cambio |
+| Pruebas | 🟢 | 188 pruebas automáticas, ejecutadas en cada cambio |
 | Hardware real | 🔴 | Todavía no: no consta ninguna ejecución en hardware real para esta versión |
 | Documentación | 🟢 | README en ocho idiomas, comprobado contra el manifiesto en cada cambio |
 
@@ -111,6 +111,7 @@ flowchart LR
 * 🗂️ **Escrituras atómicas, paginación y trabajos trazables:** una finalización, cancelación, reencolado o barrido de latidos caducados se escribe en SQLite en una sola transacción (la base funciona en modo WAL); `GET /jobs` se puede filtrar y paginar (`status`, `limit`, `offset`, `X-Total-Count`); cada trabajo lleva `SubmittedAtMs`, `AssignedAtMs`, `CompletedAtMs` y un contador `Attempt` que el informe de finalización puede devolver (`attempt`) para que se rechace el informe tardío de una asignación abandonada; `DELETE /robots/{id}` olvida un robot sin trabajo; no se fía de un latido de robot con fecha futura. Hay una descripción legible por máquinas en `docs/openapi.yaml`. *(implementado)*
 * 🕒 **Por qué espera un trabajo:** `GET /dispatch/waiting` lista los trabajos pendientes en orden de despacho con el motivo por el que cada uno no tiene robot (ningún robot registrado, ningún robot con la herramienta, robots adecuados ocupados, robots adecuados en silencio, o un robot libre para la próxima pasada). Es de solo lectura; `POST /dispatch` sigue respondiendo la lista simple de asignaciones.
 * ⏱️ **Tiempo estimado de cada trabajo (apagado por defecto):** con `-eta`, `GET /dispatch/eta` estima cuándo empieza y termina cada trabajo sin acabar, en qué robot y cuándo estará vacía la cola, a partir de lo que tardaron los últimos trabajos terminados de la misma herramienta (un valor por defecto configurable mientras no haya ninguno). Un trabajo que no se puede estimar dice por qué. Sin `-eta` la ruta no existe y nada más cambia; es de solo lectura y se prueba con un reloj inyectado.
+* 🧾 **Un evento de producción por cada trabajo que termina (apagado por defecto):** con `-production-events` y un destino (`-production-events-file` para una línea JSON por evento, `-production-events-url` para un `POST` JSON), cada informe de que un trabajo terminó entrega un `ProductionEvent` del contrato compartido de HYDRA-UMC-SDK (robot, hora de fin, bueno o no, tiempo de ciclo, trabajo), que los informes de producción convierten en OEE. El evento se comprueba antes contra el contrato; un ciclo que no puede describir se omite y se registra, nunca se inventa, y un destino que falla nunca hace fallar el cierre del trabajo. Sin el interruptor no cambia nada; probado con un reloj inyectado.
 
 ## 🔒 Seguridad y protección
 
@@ -143,6 +144,7 @@ HTTP en `127.0.0.1:8090` por defecto; la referencia completa es `docs/API.md` y 
 | `-allow-anonymous` | `false` | permitir una dirección no loopback sin token |
 | `-robot-timeout` | `2m` | silencio tras el cual un robot no recibe trabajo (`0` = apagado) |
 | `-eta`, `JOB_DISPATCHER_ETA=1`, `-eta-default-duration`, `-eta-window` | apagado, `1m`, `20` | activar `GET /dispatch/eta` (inicio y fin estimados de cada trabajo sin acabar y de la cola); la duración supuesta hasta que termine un trabajo de la herramienta (`0` = sin suposición) y cuántos trabajos terminados recientes por herramienta se promedian |
+| `-production-events`, `JOB_DISPATCHER_PRODUCTION_EVENTS=1`, `-production-events-file`, `-production-events-url`, `-production-events-token` | apagado, vacío, vacío, vacío | entregar un `ProductionEvent` del contrato compartido por cada trabajo que termina: una línea JSON por evento en el fichero y/o un `POST` JSON a la URL (con el token bearer); el interruptor necesita al menos un destino |
 | `-db` | vacío (memoria) | ruta del fichero SQLite que guarda la cola |
 | `-tools-file`, `JOB_DISPATCHER_TOOLS_FILE`, `-tools`, `JOB_DISPATCHER_TOOLS` | vacío | la lista de herramientas que un trabajo o robot puede nombrar |
 | `-max-body-bytes`, `-read-header-timeout`, `-read-timeout`, `-write-timeout`, `-idle-timeout` | `65536`, `5s`, `15s`, `30s`, `60s` | mayor cuerpo de petición en bytes (uno mayor recibe `413`) y los límites de tiempo del servidor HTTP; ninguno admite cero |
@@ -159,7 +161,7 @@ curl http://127.0.0.1:8090/health
 
 ## 🧪 Pruebas
 
-177 pruebas de Go se ejecutan con `go test ./...`; están junto al código (`src/api`, `src/dispatcher`, `src/sqlitestore` y `main_test.go`) e incluyen un proceso que se mata y se relanza sobre un fichero SQLite. Sin hardware ni red externa.
+188 pruebas de Go se ejecutan con `go test ./...`; están junto al código (`src/api`, `src/dispatcher`, `src/sqlitestore` y `main_test.go`) e incluyen un proceso que se mata y se relanza sobre un fichero SQLite. Sin hardware ni red externa.
 
 El CI ejecuta `HYDRA_UMC_CI=1 python tools/ci_validate.py`, que comprueba el manifiesto, los documentos, los ocho README y las imágenes.
 

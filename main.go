@@ -73,6 +73,38 @@ func buildToolCatalog(file, list string) (*dispatcher.ToolCatalog, error) {
 	return dispatcher.NewToolCatalog(names), nil
 }
 
+// productionEventsProblem is why the production events cannot be switched on (empty when they can, or are off): the switch needs somewhere to send them.
+func productionEventsProblem(on bool, file, url string) string {
+	if !on {
+		return ""
+	}
+	if file == "" && url == "" {
+		return "-production-events needs -production-events-file and/or -production-events-url"
+	}
+	return ""
+}
+
+// buildProductionSink joins the sinks that were asked for; the HTTP one runs on its own goroutine so a slow receiver never holds up a completion.
+func buildProductionSink(file, url, token string) dispatcher.ProductionEventSink {
+	var sinks []dispatcher.ProductionEventSink
+	if file != "" {
+		sinks = append(sinks, dispatcher.JSONLinesSink(file))
+	}
+	if url != "" {
+		async, _ := dispatcher.AsyncSink(dispatcher.HTTPSink(url, token, 5*time.Second), 256)
+		sinks = append(sinks, async)
+	}
+	return func(event dispatcher.ProductionEvent) error {
+		var first error
+		for _, sink := range sinks {
+			if err := sink(event); err != nil && first == nil {
+				first = err
+			}
+		}
+		return first
+	}
+}
+
 func main() {
 	addr := flag.String("addr", "127.0.0.1:8090", "address to listen on for the HTTP API (loopback by default: another address needs a token)")
 	token := flag.String("token", os.Getenv("JOB_DISPATCHER_TOKEN"), "bearer token every route except GET /health requires (default: the JOB_DISPATCHER_TOKEN environment variable)")
@@ -89,7 +121,14 @@ func main() {
 	etaOn := flag.Bool("eta", os.Getenv("JOB_DISPATCHER_ETA") == "1", "switch on GET /dispatch/eta: the estimated start and end of every unfinished job and of the whole queue (off by default; the environment variable JOB_DISPATCHER_ETA=1 does the same)")
 	etaDefault := flag.Duration("eta-default-duration", time.Minute, "duration assumed for a job until a finished job has been observed (0 = no guess); only with -eta")
 	etaWindow := flag.Int("eta-window", dispatcher.DefaultETAWindow, "how many recent finished jobs per tool the estimate averages; only with -eta")
+	productionOn := flag.Bool("production-events", os.Getenv("JOB_DISPATCHER_PRODUCTION_EVENTS") == "1", "hand over a ProductionEvent of the shared contract (when the cycle ended, how long it took, whether it went well) every time a robot reports that a job ended; needs -production-events-file and/or -production-events-url (off by default; JOB_DISPATCHER_PRODUCTION_EVENTS=1 does the same)")
+	productionFile := flag.String("production-events-file", os.Getenv("JOB_DISPATCHER_PRODUCTION_EVENTS_FILE"), "append every production event as one JSON line to this file; only with -production-events")
+	productionURL := flag.String("production-events-url", os.Getenv("JOB_DISPATCHER_PRODUCTION_EVENTS_URL"), "POST every production event as JSON to this URL; only with -production-events")
+	productionToken := flag.String("production-events-token", os.Getenv("JOB_DISPATCHER_PRODUCTION_EVENTS_TOKEN"), "bearer token sent with -production-events-url (default: the JOB_DISPATCHER_PRODUCTION_EVENTS_TOKEN environment variable)")
 	flag.Parse()
+	if problem := productionEventsProblem(*productionOn, *productionFile, *productionURL); problem != "" {
+		log.Fatalf("[job-dispatcher] refusing to start: %s", problem)
+	}
 	limits := serverLimits{ReadHeaderTimeout: *readHeaderTimeout, ReadTimeout: *readTimeout, WriteTimeout: *writeTimeout, IdleTimeout: *idleTimeout}
 	if problem := limits.problem(*maxBody); problem != "" {
 		log.Fatalf("[job-dispatcher] refusing to start: %s", problem)
@@ -121,6 +160,10 @@ func main() {
 	if *etaOn {
 		engine.SetETA(dispatcher.ETAConfig{Enabled: true, DefaultDuration: *etaDefault, Window: *etaWindow})
 		fmt.Println("[job-dispatcher] GET /dispatch/eta is on: estimates of when each job and the whole queue finish")
+	}
+	if *productionOn {
+		engine.SetProductionEvents(buildProductionSink(*productionFile, *productionURL, *productionToken))
+		fmt.Println("[job-dispatcher] production events are on: a ProductionEvent is handed over for every job that ends")
 	}
 	catalog, err := buildToolCatalog(*toolsFile, *toolsList)
 	if err != nil {

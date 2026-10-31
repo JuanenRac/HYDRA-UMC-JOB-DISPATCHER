@@ -18,7 +18,7 @@ GPL-3.0-or-later - see LICENSE
   <img src="https://img.shields.io/badge/License-GPL%203.0--or--later-blue.svg" alt="GPL 3.0 or later">
   <img src="https://img.shields.io/badge/Go-1.21%2B-00ADD8.svg" alt="Go">
   <img src="https://img.shields.io/badge/Architecture-Event--Driven-blue.svg" alt="Architecture">
-  <img src="https://img.shields.io/badge/Tests-177%20passing-2ea44f.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/Tests-188%20passing-2ea44f.svg" alt="Tests">
   <img src="https://img.shields.io/badge/Version-0.2.4-0f6cbd.svg" alt="Version">
   <img src="https://img.shields.io/badge/Maturity-functional-0F6CBD.svg" alt="Maturity">
 </p>
@@ -35,7 +35,7 @@ GPL-3.0-or-later - see LICENSE
 |---|---|
 | Version | `0.2.4` |
 | Maturity | Functional |
-| Tests | 177 (`go test ./...`) |
+| Tests | 188 (`go test ./...`) |
 | Stack | Go / priority queue / HTTP API / SQLite (modernc.org/sqlite, pure Go) |
 | Target | The Raspberry Pi CM5 of a HYDRA-UMC cell |
 | On real hardware | Not yet: no run on real hardware is recorded for this version |
@@ -51,7 +51,7 @@ Each line is one part of this repository and the light says how far it is today.
 | Area | State | What it means here |
 |---|---|---|
 | Software | 🟡 | Works for its main purpose; the honesty check above lists what is still missing |
-| Tests | 🟢 | 177 automated tests, run on every change |
+| Tests | 🟢 | 188 automated tests, run on every change |
 | Real hardware | 🔴 | Not yet: no run on real hardware is recorded for this version |
 | Documentation | 🟢 | README in eight languages, checked against the manifest on every change |
 
@@ -111,6 +111,7 @@ flowchart LR
 * 🗂️ **Atomic writes, paging and traceable jobs:** a completion, cancellation, requeue or stale sweep is written to SQLite in one transaction (the database runs in WAL mode); `GET /jobs` can be filtered and paged (`status`, `limit`, `offset`, `X-Total-Count`); every job carries `SubmittedAtMs`, `AssignedAtMs`, `CompletedAtMs` and an `Attempt` counter that a completion report may send back (`attempt`) so the late report of an abandoned assignment is refused; `DELETE /robots/{id}` forgets a robot that has no job; a robot heartbeat dated in the future is not trusted. A machine-readable description is in `docs/openapi.yaml`. *(implemented)*
 * 🕒 **Why a job waits:** `GET /dispatch/waiting` lists the pending jobs in dispatch order with the reason each has no robot (no robots registered, no robot with the tool, matching robots busy, matching robots silent, or a robot free for the next pass). It is read-only; `POST /dispatch` still answers the plain list of assignments.
 * ⏱️ **Estimated time of each job (off by default):** with `-eta`, `GET /dispatch/eta` estimates when every unfinished job starts and ends, on which robot, and when the queue will be empty, from how long the recent finished jobs of the same tool took (a configurable default until there are some). A job that cannot be estimated says why. Without `-eta` the route does not exist and nothing else changes; it is read-only and tested with an injected clock.
+* 🧾 **A production event for every job that ends (off by default):** with `-production-events` and a destination (`-production-events-file` for one JSON line per event, `-production-events-url` for a JSON `POST`), each report that a job ended hands over a `ProductionEvent` of the shared contract of HYDRA-UMC-SDK (robot, end time, good or not, cycle time, job), which the production reports turn into OEE. The event is checked against the contract first; a cycle it cannot describe is skipped and logged, never invented, and a sink that fails never fails the completion. Without the switch nothing changes; tested with an injected clock.
 
 ## 🔒 Security & Safety
 
@@ -143,6 +144,7 @@ HTTP on `127.0.0.1:8090` by default; the full reference is `docs/API.md` and `do
 | `-allow-anonymous` | `false` | allow a non-loopback address without a token |
 | `-robot-timeout` | `2m` | silence after which a robot gets no work (`0` = off) |
 | `-eta`, `JOB_DISPATCHER_ETA=1`, `-eta-default-duration`, `-eta-window` | off, `1m`, `20` | switch on `GET /dispatch/eta` (estimated start and end of every unfinished job and of the queue); the duration assumed until a job of the tool has finished (`0` = no guess) and how many recent finished jobs per tool are averaged |
+| `-production-events`, `JOB_DISPATCHER_PRODUCTION_EVENTS=1`, `-production-events-file`, `-production-events-url`, `-production-events-token` | off, empty, empty, empty | hand over a `ProductionEvent` of the shared contract for every job that ends: one JSON line per event in the file and/or a JSON `POST` to the URL (with the bearer token); the switch needs at least one destination |
 | `-db` | empty (memory) | path of the SQLite file that keeps the queue |
 | `-tools-file`, `JOB_DISPATCHER_TOOLS_FILE`, `-tools`, `JOB_DISPATCHER_TOOLS` | empty | the list of tools a job or robot may name |
 | `-max-body-bytes`, `-read-header-timeout`, `-read-timeout`, `-write-timeout`, `-idle-timeout` | `65536`, `5s`, `15s`, `30s`, `60s` | largest request body in bytes (a larger one gets `413`) and the time limits of the HTTP server; none of them accepts zero |
@@ -159,7 +161,7 @@ curl http://127.0.0.1:8090/health
 
 ## 🧪 Testing
 
-177 Go tests run with `go test ./...`; they sit next to the code (`src/api`, `src/dispatcher`, `src/sqlitestore` and `main_test.go`) and include a process that is killed and started again over a SQLite file. No hardware and no outside network.
+188 Go tests run with `go test ./...`; they sit next to the code (`src/api`, `src/dispatcher`, `src/sqlitestore` and `main_test.go`) and include a process that is killed and started again over a SQLite file. No hardware and no outside network.
 
 The CI runs `HYDRA_UMC_CI=1 python tools/ci_validate.py`, which checks the manifest, the documents, the eight READMEs and the pictures.
 
