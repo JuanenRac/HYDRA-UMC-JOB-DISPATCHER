@@ -19,6 +19,47 @@ type ETAConfig struct {
 	// Window is how many of the most recent finished jobs of one tool the average is taken over
 	// (0 = DefaultETAWindow).
 	Window int
+	// Interval adds a range to every estimate (see IntervalConfig). Off by default.
+	Interval IntervalConfig
+}
+
+// IntervalConfig adds a range next to the single value of every estimate: the spread between a
+// low and a high percentile of the durations of the recent finished jobs of the same tool. The
+// zero value is "off": the answer then has no range at all, exactly as before.
+type IntervalConfig struct {
+	// Enabled turns the ranges on. Off by default.
+	Enabled bool
+	// LowPercentile and HighPercentile bound the range, from 0 to 100, low below high (both 0 =
+	// 25 and 75, the quartiles).
+	LowPercentile  int
+	HighPercentile int
+	// MinSamples is how many finished jobs of the tool are needed before a range is given (0 = 3):
+	// with fewer, the range would be an invention, so the estimate says why it has none.
+	MinSamples int
+}
+
+// DefaultIntervalLow, DefaultIntervalHigh and DefaultIntervalMinSamples fill the zero fields of IntervalConfig.
+const (
+	DefaultIntervalLow        = 25
+	DefaultIntervalHigh       = 75
+	DefaultIntervalMinSamples = 3
+)
+
+// Valid reports whether the percentiles make a range (0 <= low < high <= 100, MinSamples not
+// negative). The zero fields count as their defaults.
+func (c IntervalConfig) Valid() bool {
+	c = c.withDefaults()
+	return c.LowPercentile >= 0 && c.LowPercentile < c.HighPercentile && c.HighPercentile <= 100 && c.MinSamples >= 1
+}
+
+func (c IntervalConfig) withDefaults() IntervalConfig {
+	if c.LowPercentile == 0 && c.HighPercentile == 0 {
+		c.LowPercentile, c.HighPercentile = DefaultIntervalLow, DefaultIntervalHigh
+	}
+	if c.MinSamples == 0 {
+		c.MinSamples = DefaultIntervalMinSamples
+	}
+	return c
 }
 
 // DefaultETAWindow is the number of recent finished jobs per tool the estimate averages.
@@ -40,6 +81,12 @@ const (
 	ETAOutcomeUnknown   = "outcome_unknown"
 )
 
+// Why an estimate has no range (JobETA.IntervalReason).
+const (
+	IntervalTooFewSamples = "too_few_samples"     // the tool has finished fewer jobs than the minimum
+	IntervalNoHistory     = "no_history_for_tool" // the duration is the all-tools average or the default, not the tool's own
+)
+
 // JobETA is the estimate for one job that has not ended. Times are unix milliseconds of the
 // engine's own clock.
 type JobETA struct {
@@ -57,6 +104,16 @@ type JobETA struct {
 	// Overdue is true for an assigned job that has already run longer than its expected duration:
 	// its end is then reported as "now".
 	Overdue bool `json:"overdue,omitempty"`
+	// The range, only with the intervals on and enough history of the tool: the start, the end and
+	// the duration at the low and at the high percentile (never outside the single value above).
+	// IntervalReason says why an estimate has no range.
+	StartLowMs     int64  `json:"startLowMs,omitempty"`
+	StartHighMs    int64  `json:"startHighMs,omitempty"`
+	EndLowMs       int64  `json:"endLowMs,omitempty"`
+	EndHighMs      int64  `json:"endHighMs,omitempty"`
+	DurationLowMs  int64  `json:"durationLowMs,omitempty"`
+	DurationHighMs int64  `json:"durationHighMs,omitempty"`
+	IntervalReason string `json:"intervalReason,omitempty"`
 }
 
 // ToolDuration is what the engine has observed for one tool.
@@ -64,15 +121,21 @@ type ToolDuration struct {
 	Tool    string `json:"tool"`
 	Samples int    `json:"samples"`
 	MeanMs  int64  `json:"meanMs"`
+	// LowMs and HighMs are the percentiles of the intervals, only when they are on and the tool has enough samples.
+	LowMs  int64 `json:"lowMs,omitempty"`
+	HighMs int64 `json:"highMs,omitempty"`
 }
 
 // QueueETA is the estimate for the whole queue.
 type QueueETA struct {
 	GeneratedAtMs int64 `json:"generatedAtMs"`
 	// DrainMs is when the last job that has an estimate is expected to end (0 = nothing to wait for).
-	DrainMs  int64          `json:"drainMs"`
-	Observed []ToolDuration `json:"observed"`
-	Jobs     []JobETA       `json:"jobs"`
+	DrainMs int64 `json:"drainMs"`
+	// DrainLowMs and DrainHighMs are the range of DrainMs, only with the intervals on and at least one job with a range.
+	DrainLowMs  int64          `json:"drainLowMs,omitempty"`
+	DrainHighMs int64          `json:"drainHighMs,omitempty"`
+	Observed    []ToolDuration `json:"observed"`
+	Jobs        []JobETA       `json:"jobs"`
 }
 
 // SetETA installs the configuration of the estimates (the zero value switches them off).
@@ -84,6 +147,12 @@ func (e *Engine) SetETA(c ETAConfig) {
 	}
 	if c.DefaultDuration < 0 {
 		c.DefaultDuration = 0
+	}
+	if c.Interval.Enabled {
+		c.Interval = c.Interval.withDefaults()
+		if !c.Interval.Valid() {
+			c.Interval = IntervalConfig{Enabled: true}.withDefaults()
+		}
 	}
 	e.eta = c
 }
@@ -103,10 +172,10 @@ type durationSample struct {
 
 // durationModelLocked averages, per tool, the duration of the most recent finished jobs. It
 // returns the means by tool, the mean over every tool and the number of samples of each tool.
-func (e *Engine) durationModelLocked() (byTool map[string]int64, all int64, samples map[string]int, observed []ToolDuration) {
-	window := e.eta.Window
-	if window <= 0 {
-		window = DefaultETAWindow
+func (e *Engine) durationModelLocked() (byTool map[string]int64, all int64, samples map[string]int, observed []ToolDuration, window map[string][]int64) {
+	size := e.eta.Window
+	if size <= 0 {
+		size = DefaultETAWindow
 	}
 	var list []durationSample
 	for _, j := range e.jobs {
@@ -117,15 +186,17 @@ func (e *Engine) durationModelLocked() (byTool map[string]int64, all int64, samp
 	// newest first; the id-free tie-break keeps the result stable because only sums are taken
 	sort.Slice(list, func(i, k int) bool { return list[i].completedAt > list[k].completedAt })
 	sum := map[string]int64{}
+	window = map[string][]int64{}
 	count := map[string]int{}
 	var allSum int64
 	var allCount int
 	for _, s := range list {
-		if count[s.tool] < window {
+		if count[s.tool] < size {
 			sum[s.tool] += s.ms
 			count[s.tool]++
+			window[s.tool] = append(window[s.tool], s.ms)
 		}
-		if allCount < window {
+		if allCount < size {
 			allSum += s.ms
 			allCount++
 		}
@@ -139,7 +210,24 @@ func (e *Engine) durationModelLocked() (byTool map[string]int64, all int64, samp
 	if allCount > 0 {
 		all = allSum / int64(allCount)
 	}
-	return byTool, all, count, observed
+	return byTool, all, count, observed, window
+}
+
+// percentile returns the p-th percentile (0..100) of the values, by linear interpolation between
+// the two closest ranks, rounded down to a whole millisecond. It does not change its argument.
+func percentile(values []int64, p int) int64 {
+	if len(values) == 0 {
+		return 0
+	}
+	sorted := append([]int64(nil), values...)
+	sort.Slice(sorted, func(i, k int) bool { return sorted[i] < sorted[k] })
+	pos := float64(p) / 100 * float64(len(sorted)-1)
+	lo := int(pos)
+	if lo >= len(sorted)-1 {
+		return sorted[len(sorted)-1]
+	}
+	frac := pos - float64(lo)
+	return sorted[lo] + int64(frac*float64(sorted[lo+1]-sorted[lo]))
 }
 
 type durationModel struct {
@@ -177,13 +265,101 @@ func (e *Engine) QueueETA() (QueueETA, bool) {
 	}
 	now := e.now()
 	nowMs := now.UnixMilli()
-	byTool, all, _, observed := e.durationModelLocked()
+	byTool, all, counts, observed, window := e.durationModelLocked()
 	model := durationModel{byTool: byTool, all: all, def: e.eta.DefaultDuration}
 
 	out := QueueETA{GeneratedAtMs: nowMs, Observed: observed, Jobs: []JobETA{}}
 	if out.Observed == nil {
 		out.Observed = []ToolDuration{}
 	}
+	results, order := e.planLocked(model, now)
+
+	var lowRes, highRes map[string]*JobETA
+	iv := e.eta.Interval
+	if iv.Enabled {
+		// the same plan twice more, with the tools that have enough history at their low and at their high percentile
+		lowModel := durationModel{byTool: map[string]int64{}, all: all, def: model.def}
+		highModel := durationModel{byTool: map[string]int64{}, all: all, def: model.def}
+		for tool, mean := range byTool {
+			lowModel.byTool[tool], highModel.byTool[tool] = mean, mean
+			if counts[tool] >= iv.MinSamples {
+				lowModel.byTool[tool] = percentile(window[tool], iv.LowPercentile)
+				highModel.byTool[tool] = percentile(window[tool], iv.HighPercentile)
+			}
+		}
+		for i := range out.Observed {
+			if tool := out.Observed[i].Tool; counts[tool] >= iv.MinSamples {
+				out.Observed[i].LowMs, out.Observed[i].HighMs = lowModel.byTool[tool], highModel.byTool[tool]
+			}
+		}
+		lowRes, _ = e.planLocked(lowModel, now)
+		highRes, _ = e.planLocked(highModel, now)
+	}
+
+	for _, id := range order {
+		r := results[id]
+		if r.Estimated && r.EndMs > out.DrainMs {
+			out.DrainMs = r.EndMs
+		}
+		if iv.Enabled && r.Estimated {
+			e.attachIntervalLocked(r, lowRes[id], highRes[id], counts)
+			if r.EndLowMs > 0 {
+				if out.DrainLowMs == 0 || r.EndLowMs > out.DrainLowMs {
+					out.DrainLowMs = r.EndLowMs
+				}
+				if r.EndHighMs > out.DrainHighMs {
+					out.DrainHighMs = r.EndHighMs
+				}
+			}
+		}
+		out.Jobs = append(out.Jobs, *r)
+	}
+	return out, true
+}
+
+// attachIntervalLocked writes the range of one estimate from the same plan run with the low and
+// the high durations, or says why there is none. The range never excludes the single value: where
+// a different robot choice in the low or high plan would put a time outside it, the single value
+// is the bound.
+func (e *Engine) attachIntervalLocked(r, low, high *JobETA, counts map[string]int) {
+	job := e.jobs[r.JobID]
+	if job == nil {
+		return
+	}
+	switch {
+	case r.Basis != BasisObservedTool:
+		r.IntervalReason = IntervalNoHistory
+		return
+	case counts[job.RequiredTool] < e.eta.Interval.MinSamples:
+		r.IntervalReason = IntervalTooFewSamples
+		return
+	case low == nil || high == nil || !low.Estimated || !high.Estimated:
+		r.IntervalReason = IntervalNoHistory
+		return
+	}
+	r.StartLowMs, r.StartHighMs = minInt64(low.StartMs, r.StartMs), maxInt64(high.StartMs, r.StartMs)
+	r.EndLowMs, r.EndHighMs = minInt64(low.EndMs, r.EndMs), maxInt64(high.EndMs, r.EndMs)
+	r.DurationLowMs, r.DurationHighMs = minInt64(low.DurationMs, r.DurationMs), maxInt64(high.DurationMs, r.DurationMs)
+}
+
+func minInt64(a, b int64) int64 {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func maxInt64(a, b int64) int64 {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+// planLocked lays the unfinished jobs out in time with the given durations: the whole of the
+// estimate except the ranges. It changes nothing. Caller must hold e.mu.
+func (e *Engine) planLocked(model durationModel, now time.Time) (map[string]*JobETA, []string) {
+	nowMs := now.UnixMilli()
 	results := map[string]*JobETA{}
 	var order []string
 	add := func(j *Job) *JobETA {
@@ -324,7 +500,7 @@ func (e *Engine) QueueETA() (QueueETA, bool) {
 				if ready > start {
 					start = ready
 				}
-				if !found || start < bestStart || (start == bestStart && betterTie(e.robots[r.ID], e.robots[bestID])) {
+				if !found || start < bestStart || (start == bestStart && e.preferLocked(j, e.robots[r.ID], e.robots[bestID])) {
 					bestID, bestStart, found = r.ID, start, true
 				}
 			}
@@ -342,19 +518,7 @@ func (e *Engine) QueueETA() (QueueETA, bool) {
 		}
 	}
 
-	for _, id := range order {
-		r := results[id]
-		if r.Estimated && r.EndMs > out.DrainMs {
-			out.DrainMs = r.EndMs
-		}
-		out.Jobs = append(out.Jobs, *r)
-	}
-	return out, true
-}
-
-// betterTie is the tie-break of the dispatcher itself: the lower Load, then the lower ID.
-func betterTie(r, than *Robot) bool {
-	return than == nil || r.Load < than.Load || (r.Load == than.Load && r.ID < than.ID)
+	return results, order
 }
 
 // robotHeardFromLocked is the freshness part of robotEligibleLocked: true when the check is off

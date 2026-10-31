@@ -203,6 +203,10 @@ type Engine struct {
 	tools *ToolCatalog
 	// eta is the configuration of the time estimates (see eta.go); the zero value is "off".
 	eta ETAConfig
+	// location is the table of location costs (see location.go); the zero value is "off".
+	location LocationConfig
+	// replan says what happens to the jobs of a robot that fails or goes silent (see replan.go); the zero value is "off".
+	replan ReplanConfig
 	// productionSink receives the ProductionEvent of every job that ends; nil (the default) means the events are off (see production_event.go).
 	productionSink ProductionEventSink
 	// now is the engine's own clock, injectable so a test can control it
@@ -701,6 +705,10 @@ func (e *Engine) upsertRobotLocked(r Robot, availabilityGiven bool) {
 			// not just vanish. Recorded here so CompleteJob can refuse to
 			// silently clear it later.
 			existing.selfReportedUnavailable = true
+			if e.replan.Enabled && e.replan.OnFault {
+				// the robot faulted in the middle of its job: the job goes back to the queue
+				e.requeueAllLocked(e.jobsOfRobotLocked(r.ID, false))
+			}
 		}
 		e.recordPersistOutcome(e.persistRobotLocked(existing))
 		return
@@ -929,6 +937,15 @@ func (e *Engine) robotEligibleLocked(r *Robot, j *Job, now time.Time) bool {
 // Location when the job names one, or nil if none qualifies. Caller must hold e.mu.
 func (e *Engine) bestRobotFor(j *Job) *Robot {
 	now := e.now()
+	if e.location.Enabled && j.Location != "" {
+		var closest *Robot
+		for _, r := range e.robots {
+			if e.robotEligibleLocked(r, j, now) && e.preferLocked(j, r, closest) {
+				closest = r
+			}
+		}
+		return closest
+	}
 	var best, bestInLocation *Robot
 	better := func(r, than *Robot) bool {
 		return than == nil || r.Load < than.Load || (r.Load == than.Load && r.ID < than.ID)
@@ -1116,16 +1133,7 @@ func (e *Engine) RequeueJob(jobID, robotID string) error {
 		return fmt.Errorf("%w: job %q is assigned to %q, not %q", ErrRobotMismatch, jobID, j.AssignedRobot, robotID)
 	}
 	e.beginBatchLocked()
-	var robotErr error
-	if robot, ok := e.robots[j.AssignedRobot]; ok {
-		robot.Available = false
-		robot.selfReportedUnavailable = true
-		robotErr = e.persistRobotLocked(robot)
-	}
-	j.AssignedRobot = ""
-	j.AssignedAtMs = 0
-	j.Status = e.computeStatus(j)
-	jobErr := e.persistJobLocked(j)
+	robotErr, jobErr := e.requeueJobLocked(j)
 	e.recordPersistOutcome(robotErr, jobErr, e.commitBatchLocked())
 	return nil
 }
@@ -1155,13 +1163,21 @@ func (e *Engine) RequeueJob(jobID, robotID string) error {
 // Returns the IDs of every job just marked Unknown, so a caller can
 // alert on them.
 func (e *Engine) DetectStaleAssignments(timeout time.Duration) []string {
+	unknown, _ := e.DetectStaleAssignmentsReplan(timeout)
+	return unknown
+}
+
+// DetectStaleAssignmentsReplan is DetectStaleAssignments that also reports the jobs it sent back
+// to the queue. With replanning on for silent robots (ReplanConfig.OnStale) the jobs of a robot
+// that went silent are requeued, in submission order, and the robot is held unavailable until its
+// own next heartbeat: the first result is then empty and the second lists them. With replanning
+// off the second result is always empty and the first is what DetectStaleAssignments returns.
+func (e *Engine) DetectStaleAssignmentsReplan(timeout time.Duration) (unknown, requeued []string) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
 	now := e.now()
-	var newlyUnknown []string
-	var persistErr error
-	e.beginBatchLocked()
+	var stale []*Job
 	for _, j := range e.jobs {
 		if j.Status != StatusAssigned {
 			continue
@@ -1175,17 +1191,26 @@ func (e *Engine) DetectStaleAssignments(timeout time.Duration) []string {
 		if robot.LastHeartbeat.IsZero() || (now.Sub(robot.LastHeartbeat) < timeout && !heartbeatFromFuture(now, robot.LastHeartbeat)) {
 			continue
 		}
+		stale = append(stale, j)
+	}
+	sort.Slice(stale, func(i, k int) bool { return stale[i].seq < stale[k].seq })
+	if e.replan.Enabled && e.replan.OnStale {
+		return nil, e.requeueAllLocked(stale)
+	}
+	var persistErr error
+	e.beginBatchLocked()
+	for _, j := range stale {
 		j.Status = StatusUnknown
-		newlyUnknown = append(newlyUnknown, j.ID)
+		unknown = append(unknown, j.ID)
 		if err := e.persistJobLocked(j); err != nil {
 			persistErr = err
 		}
 	}
 	commitErr := e.commitBatchLocked()
-	if len(newlyUnknown) > 0 {
+	if len(unknown) > 0 {
 		e.recordPersistOutcome(persistErr, commitErr)
 	}
-	return newlyUnknown
+	return unknown, nil
 }
 
 // RemoveRobot forgets a robot (it was decommissioned or registered by mistake). A robot that
