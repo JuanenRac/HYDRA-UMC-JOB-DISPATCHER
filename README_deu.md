@@ -18,7 +18,7 @@ GPL-3.0-or-later - see LICENSE
   <img src="https://img.shields.io/badge/License-GPL%203.0--or--later-blue.svg" alt="GPL 3.0 or later">
   <img src="https://img.shields.io/badge/Go-1.21%2B-00ADD8.svg" alt="Go">
   <img src="https://img.shields.io/badge/Architecture-Event--Driven-blue.svg" alt="Architecture">
-  <img src="https://img.shields.io/badge/Tests-153%20passing-2ea44f.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/Tests-177%20passing-2ea44f.svg" alt="Tests">
   <img src="https://img.shields.io/badge/Version-0.2.4-0f6cbd.svg" alt="Version">
   <img src="https://img.shields.io/badge/Maturity-functional-0F6CBD.svg" alt="Maturity">
 </p>
@@ -35,7 +35,7 @@ GPL-3.0-or-later - see LICENSE
 |---|---|
 | Version | `0.2.4` |
 | Reifegrad | Funktionsfähig |
-| Tests | 153 (`go test ./...`) |
+| Tests | 177 (`go test ./...`) |
 | Technik | Go / priority queue / HTTP API / SQLite (modernc.org/sqlite, pure Go) |
 | Ziel | Der Raspberry Pi CM5 einer HYDRA-UMC-Zelle |
 | Auf echter Hardware | Noch nicht: für diese Version ist kein Lauf auf echter Hardware vermerkt |
@@ -51,7 +51,7 @@ Jede Zeile ist ein Teil dieses Repositorys, und die Ampel sagt, wie weit er heut
 | Bereich | Stand | Was das hier bedeutet |
 |---|---|---|
 | Software | 🟡 | Funktioniert für seinen Hauptzweck; die Ehrlichkeitsprüfung oben nennt, was noch fehlt |
-| Tests | 🟢 | 153 automatische Tests, bei jeder Änderung ausgeführt |
+| Tests | 🟢 | 177 automatische Tests, bei jeder Änderung ausgeführt |
 | Echte Hardware | 🔴 | Noch nicht: für diese Version ist kein Lauf auf echter Hardware vermerkt |
 | Dokumentation | 🟢 | README in acht Sprachen, bei jeder Änderung gegen das Manifest geprüft |
 
@@ -110,6 +110,7 @@ flowchart LR
 * 🧯 **Standardmäßig sicher, und ein Roboter, der nicht mehr antwortet, bekommt keine Arbeit (v0):** Die API lauscht auf `127.0.0.1:8090`, sofern nichts anderes angegeben ist, und eine andere Adresse verlangt ein Bearer-Token (`-token` / `JOB_DISPATCHER_TOKEN`; dann verlangt alles außer `GET /health` es) oder ein ausdrückliches `-allow-anonymous`; der HTTP-Server hat Zeitlimits, und Anfragekörper über 64 KB werden mit `413` abgelehnt. Ein Roboter, der länger als `-robot-timeout` (Standard 2 Minuten) schweigt, bekommt keine neue Arbeit, ein Job kann eine bevorzugte `location` nennen (`POST /jobs`, `POST /jobs/submit`; Roboter an diesem Ort werden bevorzugt, nie verlangt), und der letzte Herzschlag jedes Roboters wird gespeichert (eine Datenbank der Vorversion wird an Ort und Stelle migriert), sodass ein Neustart einen verstummten Roboter nicht mehr verbirgt. *(implementiert)*
 * 🗂️ **Atomare Schreibvorgänge, Seitenabruf und nachvollziehbare Aufträge:** Abschluss, Abbruch, Wiedereinreihung oder Sweep veralteter Heartbeats werden in einer Transaktion in SQLite geschrieben (die Datenbank läuft im WAL-Modus); `GET /jobs` lässt sich filtern und seitenweise abrufen (`status`, `limit`, `offset`, `X-Total-Count`); jeder Auftrag trägt `SubmittedAtMs`, `AssignedAtMs`, `CompletedAtMs` und einen Zähler `Attempt`, den eine Abschlussmeldung zurücksenden darf (`attempt`), damit die späte Meldung einer aufgegebenen Zuweisung abgelehnt wird; `DELETE /robots/{id}` entfernt einen Roboter ohne Auftrag; ein Heartbeat mit Datum in der Zukunft wird nicht beachtet. Eine maschinenlesbare Beschreibung steht in `docs/openapi.yaml`. *(implementiert)*
 * 🕒 **Warum ein Auftrag wartet:** `GET /dispatch/waiting` listet die wartenden Aufträge in Verteilreihenfolge mit dem Grund, warum jeder keinen Roboter hat (kein Roboter registriert, kein Roboter mit dem Werkzeug, passende Roboter belegt, passende Roboter still oder ein Roboter frei für den nächsten Durchlauf). Es ist schreibgeschützt; `POST /dispatch` antwortet weiter mit der einfachen Liste der Zuweisungen.
+* ⏱️ **Geschätzte Zeit jedes Auftrags (standardmäßig aus):** mit `-eta` schätzt `GET /dispatch/eta`, wann jeder unfertige Auftrag beginnt und endet, auf welchem Roboter und wann die Warteschlange leer ist, anhand der Dauer der letzten abgeschlossenen Aufträge desselben Werkzeugs (bis es welche gibt, ein einstellbarer Standardwert). Ein Auftrag, der sich nicht schätzen lässt, nennt den Grund. Ohne `-eta` gibt es die Route nicht und sonst ändert sich nichts; sie ist schreibgeschützt und wird mit einer eingespeisten Uhr getestet.
 
 ## 🔒 Sicherheit und Schutz
 
@@ -141,6 +142,7 @@ HTTP standardmäßig auf `127.0.0.1:8090`; die vollständige Referenz sind `docs
 | `-token`, `JOB_DISPATCHER_TOKEN` | leer | das Bearer-Token der API |
 | `-allow-anonymous` | `false` | eine Nicht-Loopback-Adresse ohne Token erlauben |
 | `-robot-timeout` | `2m` | Stille, nach der ein Roboter keine Arbeit bekommt (`0` = aus) |
+| `-eta`, `JOB_DISPATCHER_ETA=1`, `-eta-default-duration`, `-eta-window` | aus, `1m`, `20` | `GET /dispatch/eta` einschalten (geschätzter Beginn und Ende jedes unfertigen Auftrags und der Warteschlange); die angenommene Dauer, bis ein Auftrag des Werkzeugs abgeschlossen ist (`0` = keine Annahme), und über wie viele jüngste abgeschlossene Aufträge je Werkzeug gemittelt wird |
 | `-db` | leer (Speicher) | Pfad der SQLite-Datei, die die Warteschlange hält |
 | `-tools-file`, `JOB_DISPATCHER_TOOLS_FILE`, `-tools`, `JOB_DISPATCHER_TOOLS` | leer | die Liste der Werkzeuge, die ein Auftrag oder Roboter nennen darf |
 | `-max-body-bytes`, `-read-header-timeout`, `-read-timeout`, `-write-timeout`, `-idle-timeout` | `65536`, `5s`, `15s`, `30s`, `60s` | größter Anfrage-Body in Bytes (ein größerer bekommt `413`) und die Zeitlimits des HTTP-Servers; keines akzeptiert null |
@@ -157,7 +159,7 @@ curl http://127.0.0.1:8090/health
 
 ## 🧪 Tests
 
-153 Go-Tests laufen mit `go test ./...`; sie liegen neben dem Code (`src/api`, `src/dispatcher`, `src/sqlitestore` und `main_test.go`) und enthalten einen Prozess, der über einer SQLite-Datei beendet und neu gestartet wird. Keine Hardware, kein äußeres Netz.
+177 Go-Tests laufen mit `go test ./...`; sie liegen neben dem Code (`src/api`, `src/dispatcher`, `src/sqlitestore` und `main_test.go`) und enthalten einen Prozess, der über einer SQLite-Datei beendet und neu gestartet wird. Keine Hardware, kein äußeres Netz.
 
 Die CI führt `HYDRA_UMC_CI=1 python tools/ci_validate.py` aus; das prüft das Manifest, die Dokumente, die acht READMEs und die Bilder.
 

@@ -18,7 +18,7 @@ GPL-3.0-or-later - see LICENSE
   <img src="https://img.shields.io/badge/License-GPL%203.0--or--later-blue.svg" alt="GPL 3.0 or later">
   <img src="https://img.shields.io/badge/Go-1.21%2B-00ADD8.svg" alt="Go">
   <img src="https://img.shields.io/badge/Architecture-Event--Driven-blue.svg" alt="Architecture">
-  <img src="https://img.shields.io/badge/Tests-153%20passing-2ea44f.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/Tests-177%20passing-2ea44f.svg" alt="Tests">
   <img src="https://img.shields.io/badge/Version-0.2.4-0f6cbd.svg" alt="Version">
   <img src="https://img.shields.io/badge/Maturity-functional-0F6CBD.svg" alt="Maturity">
 </p>
@@ -35,7 +35,7 @@ GPL-3.0-or-later - see LICENSE
 |---|---|
 | Versão | `0.2.4` |
 | Maturidade | Funcional |
-| Testes | 153 (`go test ./...`) |
+| Testes | 177 (`go test ./...`) |
 | Tecnologia | Go / priority queue / HTTP API / SQLite (modernc.org/sqlite, pure Go) |
 | Destino | O Raspberry Pi CM5 de uma célula HYDRA-UMC |
 | Em hardware real | Ainda não: não há registo de execução em hardware real para esta versão |
@@ -51,7 +51,7 @@ Cada linha é uma parte deste repositório e a luz diz até onde chega hoje. É 
 | Área | Estado | O que significa aqui |
 |---|---|---|
 | Software | 🟡 | Funciona para o seu propósito principal; a verificação de honestidade acima lista o que ainda falta |
-| Testes | 🟢 | 153 testes automáticos, executados a cada alteração |
+| Testes | 🟢 | 177 testes automáticos, executados a cada alteração |
 | Hardware real | 🔴 | Ainda não: não há registo de execução em hardware real para esta versão |
 | Documentação | 🟢 | README em oito idiomas, verificado contra o manifesto a cada alteração |
 
@@ -110,6 +110,7 @@ flowchart LR
 * 🧯 **Seguro por defeito, e um robô que deixa de responder não recebe trabalho (v0):** a API escuta em `127.0.0.1:8090` salvo indicação em contrário, e outro endereço exige um token bearer (`-token` / `JOB_DISPATCHER_TOKEN`; então tudo exceto `GET /health` o pede) ou um `-allow-anonymous` explícito; o servidor HTTP tem tempos-limite e os corpos de pedido com mais de 64 KB são recusados com `413`. Um robô calado durante mais de `-robot-timeout` (2 minutos por defeito) não recebe trabalho novo, um trabalho pode indicar uma `location` preferida (`POST /jobs`, `POST /jobs/submit`; preferem-se os robôs dessa localização, nunca se exige), e o último batimento de cada robô é persistido (uma base de dados da versão anterior é migrada no local), pelo que um reinício já não esconde um robô que se calou. *(implementado)*
 * 🗂️ **Escritas atómicas, paginação e trabalhos rastreáveis:** uma conclusão, cancelamento, reenfileiramento ou varrimento de batimentos caducados é escrito no SQLite numa só transação (a base de dados funciona em modo WAL); o `GET /jobs` pode ser filtrado e paginado (`status`, `limit`, `offset`, `X-Total-Count`); cada trabalho traz `SubmittedAtMs`, `AssignedAtMs`, `CompletedAtMs` e um contador `Attempt` que o relatório de conclusão pode devolver (`attempt`) para que o relatório tardio de uma atribuição abandonada seja recusado; o `DELETE /robots/{id}` esquece um robô sem trabalho; um batimento de robô com data futura não é considerado fiável. Há uma descrição legível por máquinas em `docs/openapi.yaml`. *(implementado)*
 * 🕒 **Porque um trabalho espera:** `GET /dispatch/waiting` lista os trabalhos pendentes pela ordem de despacho com o motivo por que cada um não tem robô (nenhum robô registado, nenhum robô com a ferramenta, robôs adequados ocupados, robôs adequados em silêncio, ou um robô livre para a próxima passagem). É só de leitura; `POST /dispatch` continua a responder a lista simples de atribuições.
+* ⏱️ **Tempo estimado de cada trabalho (desligado por predefinição):** com `-eta`, `GET /dispatch/eta` estima quando cada trabalho por concluir começa e termina, em que robô e quando a fila ficará vazia, a partir do tempo que demoraram os últimos trabalhos concluídos da mesma ferramenta (um valor predefinido configurável enquanto não houver nenhum). Um trabalho que não se consegue estimar indica o motivo. Sem `-eta` a rota não existe e mais nada muda; é só de leitura e é testada com um relógio injetado.
 
 ## 🔒 Segurança e proteção
 
@@ -141,6 +142,7 @@ HTTP em `127.0.0.1:8090` por predefinição; a referência completa é `docs/API
 | `-token`, `JOB_DISPATCHER_TOKEN` | vazio | o token Bearer da API |
 | `-allow-anonymous` | `false` | permitir um endereço não loopback sem token |
 | `-robot-timeout` | `2m` | silêncio após o qual um robô não recebe trabalho (`0` = desligado) |
+| `-eta`, `JOB_DISPATCHER_ETA=1`, `-eta-default-duration`, `-eta-window` | desligado, `1m`, `20` | ativar `GET /dispatch/eta` (início e fim estimados de cada trabalho por concluir e da fila); a duração assumida até um trabalho da ferramenta terminar (`0` = sem suposição) e quantos trabalhos concluídos recentes por ferramenta entram na média |
 | `-db` | vazio (memória) | caminho do ficheiro SQLite que guarda a fila |
 | `-tools-file`, `JOB_DISPATCHER_TOOLS_FILE`, `-tools`, `JOB_DISPATCHER_TOOLS` | vazio | a lista de ferramentas que um trabalho ou robô pode nomear |
 | `-max-body-bytes`, `-read-header-timeout`, `-read-timeout`, `-write-timeout`, `-idle-timeout` | `65536`, `5s`, `15s`, `30s`, `60s` | maior corpo de pedido em bytes (um maior recebe `413`) e limites de tempo do servidor HTTP; nenhum aceita zero |
@@ -157,7 +159,7 @@ curl http://127.0.0.1:8090/health
 
 ## 🧪 Testes
 
-153 testes Go correm com `go test ./...`; ficam junto ao código (`src/api`, `src/dispatcher`, `src/sqlitestore` e `main_test.go`) e incluem um processo morto e relançado sobre um ficheiro SQLite. Sem hardware nem rede externa.
+177 testes Go correm com `go test ./...`; ficam junto ao código (`src/api`, `src/dispatcher`, `src/sqlitestore` e `main_test.go`) e incluem um processo morto e relançado sobre um ficheiro SQLite. Sem hardware nem rede externa.
 
 A CI executa `HYDRA_UMC_CI=1 python tools/ci_validate.py`, que verifica o manifesto, os documentos, os oito README e as imagens.
 

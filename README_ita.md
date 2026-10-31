@@ -18,7 +18,7 @@ GPL-3.0-or-later - see LICENSE
   <img src="https://img.shields.io/badge/License-GPL%203.0--or--later-blue.svg" alt="GPL 3.0 or later">
   <img src="https://img.shields.io/badge/Go-1.21%2B-00ADD8.svg" alt="Go">
   <img src="https://img.shields.io/badge/Architecture-Event--Driven-blue.svg" alt="Architecture">
-  <img src="https://img.shields.io/badge/Tests-153%20passing-2ea44f.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/Tests-177%20passing-2ea44f.svg" alt="Tests">
   <img src="https://img.shields.io/badge/Version-0.2.4-0f6cbd.svg" alt="Version">
   <img src="https://img.shields.io/badge/Maturity-functional-0F6CBD.svg" alt="Maturity">
 </p>
@@ -35,7 +35,7 @@ GPL-3.0-or-later - see LICENSE
 |---|---|
 | Versione | `0.2.4` |
 | Maturità | Funzionale |
-| Test | 153 (`go test ./...`) |
+| Test | 177 (`go test ./...`) |
 | Tecnologia | Go / priority queue / HTTP API / SQLite (modernc.org/sqlite, pure Go) |
 | Destinazione | Il Raspberry Pi CM5 di una cella HYDRA-UMC |
 | Su hardware reale | Non ancora: per questa versione non risulta alcuna esecuzione su hardware reale |
@@ -51,7 +51,7 @@ Ogni riga è una parte di questo repository e il semaforo dice a che punto è og
 | Area | Stato | Cosa significa qui |
 |---|---|---|
 | Software | 🟡 | Funziona per il suo scopo principale; la verifica di onestà qui sopra elenca ciò che manca ancora |
-| Test | 🟢 | 153 test automatici, eseguiti a ogni modifica |
+| Test | 🟢 | 177 test automatici, eseguiti a ogni modifica |
 | Hardware reale | 🔴 | Non ancora: per questa versione non risulta alcuna esecuzione su hardware reale |
 | Documentazione | 🟢 | README in otto lingue, verificato rispetto al manifesto a ogni modifica |
 
@@ -110,6 +110,7 @@ flowchart LR
 * 🧯 **Sicuro per impostazione predefinita, e un robot che smette di rispondere non riceve lavoro (v0):** l'API ascolta su `127.0.0.1:8090` salvo diversa indicazione, e un altro indirizzo richiede un token bearer (`-token` / `JOB_DISPATCHER_TOKEN`; allora tutto tranne `GET /health` lo richiede) o un `-allow-anonymous` esplicito; il server HTTP ha timeout e i corpi di richiesta oltre 64 KB sono rifiutati con `413`. Un robot silenzioso per più di `-robot-timeout` (2 minuti per impostazione predefinita) non riceve nuovo lavoro, un lavoro può indicare una `location` preferita (`POST /jobs`, `POST /jobs/submit`; i robot in quella posizione sono preferiti, mai richiesti), e l'ultimo heartbeat di ogni robot è persistito (un database della versione precedente viene migrato sul posto), quindi un riavvio non nasconde più un robot rimasto in silenzio. *(implementato)*
 * 🗂️ **Scritture atomiche, paginazione e lavori tracciabili:** un completamento, un annullamento, un reinserimento o uno scorrimento dei battiti scaduti viene scritto in SQLite in un'unica transazione (il database funziona in modalità WAL); `GET /jobs` si può filtrare e paginare (`status`, `limit`, `offset`, `X-Total-Count`); ogni lavoro porta `SubmittedAtMs`, `AssignedAtMs`, `CompletedAtMs` e un contatore `Attempt` che il rapporto di completamento può rimandare (`attempt`) così il rapporto tardivo di un'assegnazione abbandonata viene rifiutato; `DELETE /robots/{id}` dimentica un robot senza lavoro; un battito di robot con data futura non è considerato attendibile. Una descrizione leggibile dalle macchine è in `docs/openapi.yaml`. *(implementato)*
 * 🕒 **Perché un lavoro attende:** `GET /dispatch/waiting` elenca i lavori in attesa nell'ordine di assegnazione con il motivo per cui ciascuno non ha un robot (nessun robot registrato, nessun robot con lo strumento, robot adatti occupati, robot adatti silenziosi, oppure un robot libero per il prossimo passaggio). È di sola lettura; `POST /dispatch` risponde ancora con l'elenco semplice delle assegnazioni.
+* ⏱️ **Tempo stimato di ogni lavoro (spento per impostazione predefinita):** con `-eta`, `GET /dispatch/eta` stima quando inizia e finisce ogni lavoro non concluso, su quale robot e quando la coda sarà vuota, in base alla durata degli ultimi lavori conclusi con lo stesso strumento (un valore predefinito configurabile finché non ce ne sono). Un lavoro che non si può stimare ne indica il motivo. Senza `-eta` la route non esiste e nient'altro cambia; è di sola lettura e viene provata con un orologio iniettato.
 
 ## 🔒 Sicurezza e protezione
 
@@ -141,6 +142,7 @@ HTTP su `127.0.0.1:8090` per impostazione predefinita; il riferimento completo �
 | `-token`, `JOB_DISPATCHER_TOKEN` | vuoto | il token Bearer dell'API |
 | `-allow-anonymous` | `false` | consentire un indirizzo non loopback senza token |
 | `-robot-timeout` | `2m` | silenzio dopo il quale un robot non riceve lavoro (`0` = spento) |
+| `-eta`, `JOB_DISPATCHER_ETA=1`, `-eta-default-duration`, `-eta-window` | spento, `1m`, `20` | attivare `GET /dispatch/eta` (inizio e fine stimati di ogni lavoro non concluso e della coda); la durata ipotizzata finché un lavoro dello strumento non è concluso (`0` = nessuna ipotesi) e su quanti lavori conclusi recenti per strumento si fa la media |
 | `-db` | vuoto (memoria) | percorso del file SQLite che conserva la coda |
 | `-tools-file`, `JOB_DISPATCHER_TOOLS_FILE`, `-tools`, `JOB_DISPATCHER_TOOLS` | vuoto | l'elenco degli strumenti che un lavoro o un robot può nominare |
 | `-max-body-bytes`, `-read-header-timeout`, `-read-timeout`, `-write-timeout`, `-idle-timeout` | `65536`, `5s`, `15s`, `30s`, `60s` | corpo di richiesta più grande in byte (uno più grande riceve `413`) e limiti di tempo del server HTTP; nessuno accetta zero |
@@ -157,7 +159,7 @@ curl http://127.0.0.1:8090/health
 
 ## 🧪 Test
 
-153 test Go si eseguono con `go test ./...`; stanno accanto al codice (`src/api`, `src/dispatcher`, `src/sqlitestore` e `main_test.go`) e includono un processo ucciso e riavviato su un file SQLite. Né hardware né rete esterna.
+177 test Go si eseguono con `go test ./...`; stanno accanto al codice (`src/api`, `src/dispatcher`, `src/sqlitestore` e `main_test.go`) e includono un processo ucciso e riavviato su un file SQLite. Né hardware né rete esterna.
 
 La CI esegue `HYDRA_UMC_CI=1 python tools/ci_validate.py`, che controlla il manifesto, i documenti, gli otto README e le immagini.
 

@@ -339,6 +339,36 @@ Read-only: the `"pending"` jobs in dispatch order, each with the reason it has n
 
 ---
 
+## `GET /dispatch/eta`
+
+Off by default: the route exists only when the service starts with `-eta` (or `JOB_DISPATCHER_ETA=1`); otherwise it answers the same `404` as any unknown path. Read-only: it estimates, for every job that has not ended, when it starts and ends, and when the queue is expected to be empty. It assigns nothing and changes no state. Requires the token when one is set.
+
+```json
+{
+  "generatedAtMs": 1760000000000,
+  "drainMs": 1760000180000,
+  "observed": [{"tool": "PnP", "samples": 12, "meanMs": 61000}],
+  "jobs": [
+    {"jobId": "weld-42", "status": "assigned", "estimated": true, "robotId": "arm-3", "startMs": 1760000000000, "endMs": 1760000061000, "durationMs": 61000, "basis": "observed_tool"},
+    {"jobId": "weld-43", "status": "pending", "estimated": true, "robotId": "arm-3", "startMs": 1760000061000, "endMs": 1760000122000, "durationMs": 61000, "basis": "observed_tool"},
+    {"jobId": "weld-44", "status": "pending", "estimated": false, "reason": "no_robot_with_required_tool"}
+  ]
+}
+```
+
+`?job=ID` answers only the row of that job (`404` for an unknown job and for one that has already ended). Times are unix milliseconds of the service's own clock.
+
+How the estimate is made:
+
+- **Duration of a job:** the average time from assignment to completion of the most recent finished jobs (`done`, at most `-eta-window`, default 20) of the same tool (`basis` `observed_tool`); when that tool has none yet, the average over every tool (`observed_all`); when nothing has finished yet, `-eta-default-duration` (default 60 s, `basis` `default`; `0` means no guess, so the job gets no estimate).
+- **Robots:** each robot works through its jobs one after another. A robot with an assigned job is free when that job's expected duration is over (`overdue: true` and an end of "now" once it has run longer than expected). A free robot that is available and, when `-robot-timeout` is on, has checked in recently is free now. Any other robot is not counted.
+- **Order:** the waiting jobs (`pending` and `blocked`) are placed in dispatch order (priority, then arrival), each on the matching robot that is free the earliest (ties: the lower load, then the lower ID), and never before the end of the jobs they depend on. The preferred location of a job is not modelled, and the estimate assumes a dispatch pass happens as soon as a robot is free, so the real start can be later when nobody calls `POST /dispatch`.
+- **No estimate:** `estimated` is `false` with a `reason`: `no_robot_with_required_tool`, `no_robot_available`, `no_duration_known`, `dependency_will_not_finish` or `outcome_unknown` (the job is `unknown` after a silent robot). Jobs that can never run (`unreachable`, `failed`, `cancelled`) and finished jobs are not listed.
+
+It is an estimate, not a promise: a job lasts as long as the recent ones of its tool did.
+
+---
+
 ## `POST /jobs/detect-stale`
 
 Marks every `"assigned"` job whose robot has not sent a real heartbeat (a `POST /robots` call) within `timeoutSeconds` as `"unknown"` - see `Status`'s own description above. A caller may invoke this with its own timeout.

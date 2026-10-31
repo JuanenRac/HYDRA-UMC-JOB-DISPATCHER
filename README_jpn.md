@@ -18,7 +18,7 @@ GPL-3.0-or-later - see LICENSE
   <img src="https://img.shields.io/badge/License-GPL%203.0--or--later-blue.svg" alt="GPL 3.0 or later">
   <img src="https://img.shields.io/badge/Go-1.21%2B-00ADD8.svg" alt="Go">
   <img src="https://img.shields.io/badge/Architecture-Event--Driven-blue.svg" alt="Architecture">
-  <img src="https://img.shields.io/badge/Tests-153%20passing-2ea44f.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/Tests-177%20passing-2ea44f.svg" alt="Tests">
   <img src="https://img.shields.io/badge/Version-0.2.4-0f6cbd.svg" alt="Version">
   <img src="https://img.shields.io/badge/Maturity-functional-0F6CBD.svg" alt="Maturity">
 </p>
@@ -35,7 +35,7 @@ GPL-3.0-or-later - see LICENSE
 |---|---|
 | バージョン | `0.2.4` |
 | 成熟度 | 機能する |
-| テスト | 153 (`go test ./...`) |
+| テスト | 177 (`go test ./...`) |
 | 技術 | Go / priority queue / HTTP API / SQLite (modernc.org/sqlite, pure Go) |
 | 対象 | HYDRA-UMC セルの Raspberry Pi CM5 |
 | 実機での確認 | まだです：このバージョンについて実機での動作記録はありません |
@@ -51,7 +51,7 @@ GPL-3.0-or-later - see LICENSE
 | 領域 | 状態 | ここでの意味 |
 |---|---|---|
 | ソフトウェア | 🟡 | 主な目的では動作します。足りない点は上の正直さの確認に書かれています |
-| テスト | 🟢 | 自動テスト 153 件。変更のたびに実行されます |
+| テスト | 🟢 | 自動テスト 177 件。変更のたびに実行されます |
 | 実機 | 🔴 | まだです：このバージョンについて実機での動作記録はありません |
 | ドキュメント | 🟢 | 8 言語の README。変更のたびにマニフェストと照合されます |
 
@@ -114,6 +114,7 @@ flowchart LR
 * 🧯 **デフォルトで安全。応答しなくなったロボットには仕事を渡しません（v0）：** API は指定がなければ `127.0.0.1:8090` で待ち受け、別のアドレスにはベアラートークン（`-token` / `JOB_DISPATCHER_TOKEN`。設定すると `GET /health` 以外のすべてが要求します）か、明示的な `-allow-anonymous` が必要です。HTTP サーバーにはタイムアウトがあり、64 KB を超えるリクエストボディは `413` で拒否されます。`-robot-timeout`（既定 2 分）より長く無応答のロボットには新しい仕事が割り当てられず、ジョブは優先する `location` を指定でき（`POST /jobs`、`POST /jobs/submit`。その場所のロボットが優先され、必須ではありません）、各ロボットの最後のハートビートは永続化されます（旧バージョンのデータベースはその場で移行されます）。そのため再起動しても、無応答になったロボットが見えなくなりません。*（実装済み）*
 * 🗂️ **アトミックな書き込み・ページ送り・追跡可能なジョブ:** 完了・取り消し・再キュー・失効ハートビートの掃引は 1 回のトランザクションで SQLite に書き込まれます(データベースは WAL モード)。`GET /jobs` は絞り込みとページ送りができます(`status`、`limit`、`offset`、`X-Total-Count`)。各ジョブは `SubmittedAtMs`、`AssignedAtMs`、`CompletedAtMs` と、完了報告が送り返せる `Attempt` カウンター(`attempt`)を持ち、破棄された割り当ての遅れた報告は拒否されます。`DELETE /robots/{id}` はジョブのないロボットを削除します。未来の日付のロボットのハートビートは信用しません。機械可読な記述は `docs/openapi.yaml` にあります。 *(実装済み)*
 * 🕒 **ジョブが待たされる理由:** `GET /dispatch/waiting` は、保留中のジョブを割り当て順に並べ、それぞれにロボットがない理由(登録されたロボットなし、そのツールを持つロボットなし、該当ロボットがすべて使用中、該当ロボットから応答がない、次の割り当てで使える空きロボットあり)を付けて返します。読み取り専用で、`POST /dispatch` はこれまでどおり割り当ての一覧だけを返します。
+* ⏱️ **各ジョブの所要時間の見積もり(既定では無効):** `-eta` を付けると、`GET /dispatch/eta` が、未完了の各ジョブがいつ始まりいつ終わるか、どのロボットで行うか、キューがいつ空になるかを、同じツールの直近の完了ジョブの所要時間から見積もります(完了ジョブがない間は設定可能な既定値)。見積もれないジョブには理由が付きます。`-eta` なしではこのルートは存在せず、他は何も変わりません。読み取り専用で、注入した時計でテストしています。
 
 ## 🔒 セキュリティと安全
 
@@ -145,6 +146,7 @@ flowchart LR
 | `-token`, `JOB_DISPATCHER_TOKEN` | 空 | API の Bearer トークン |
 | `-allow-anonymous` | `false` | ループバック以外のアドレスでトークンなしを許可 |
 | `-robot-timeout` | `2m` | この時間沈黙したロボットには仕事を渡さない（`0` = 無効） |
+| `-eta`, `JOB_DISPATCHER_ETA=1`, `-eta-default-duration`, `-eta-window` | 無効、`1m`、`20` | `GET /dispatch/eta` を有効にする(未完了の各ジョブとキューの開始・終了の見積もり)。そのツールのジョブが完了するまでに仮定する所要時間(`0` = 仮定なし)と、ツールごとに平均する直近の完了ジョブ数 |
 | `-db` | 空（メモリ） | キューを保持する SQLite ファイルのパス |
 | `-tools-file`, `JOB_DISPATCHER_TOOLS_FILE`, `-tools`, `JOB_DISPATCHER_TOOLS` | 空 | ジョブやロボットが指定できるツールの一覧 |
 | `-max-body-bytes`, `-read-header-timeout`, `-read-timeout`, `-write-timeout`, `-idle-timeout` | `65536`, `5s`, `15s`, `30s`, `60s` | リクエスト本文の最大バイト数（超えると `413`）と HTTP サーバーの時間制限。どれも 0 は受け付けません |
@@ -161,7 +163,7 @@ curl http://127.0.0.1:8090/health
 
 ## 🧪 テスト
 
-`go test ./...` で Go のテスト 153 件を実行します。テストはコードの隣（`src/api`、`src/dispatcher`、`src/sqlitestore`、`main_test.go`）にあり、SQLite ファイル上でプロセスを強制終了して再起動するテストも含みます。ハードウェアも外部ネットワークも不要です。
+`go test ./...` で Go のテスト 177 件を実行します。テストはコードの隣（`src/api`、`src/dispatcher`、`src/sqlitestore`、`main_test.go`）にあり、SQLite ファイル上でプロセスを強制終了して再起動するテストも含みます。ハードウェアも外部ネットワークも不要です。
 
 CI は `HYDRA_UMC_CI=1 python tools/ci_validate.py` を実行し、マニフェスト、文書、8 つの README、図を検査します。
 

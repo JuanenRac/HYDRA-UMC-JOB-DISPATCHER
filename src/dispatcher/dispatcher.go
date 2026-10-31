@@ -201,6 +201,8 @@ type Engine struct {
 	robotFreshness time.Duration
 	// tools, when set, is the catalog of known tool names; it only logs a warning for an unknown one (see tools.go).
 	tools *ToolCatalog
+	// eta is the configuration of the time estimates (see eta.go); the zero value is "off".
+	eta ETAConfig
 	// now is the engine's own clock, injectable so a test can control it
 	// exactly (see DetectStaleAssignments) - real callers always get
 	// time.Now via the constructors below.

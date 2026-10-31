@@ -281,6 +281,52 @@ paths:
                         - matching_robots_busy
                         - matching_robots_not_heard_from_recently
                         - robot_available_waiting_for_dispatch
+  /dispatch/eta:
+    get:
+      summary: Estimated start and end of every unfinished job and of the queue (only when started with -eta; otherwise 404)
+      parameters:
+        - name: job
+          in: query
+          required: false
+          schema: { type: string }
+          description: Answer only the row of this job.
+      responses:
+        "200":
+          description: The estimate of the queue (or of one job with ?job=).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  generatedAtMs: { type: integer, format: int64 }
+                  drainMs: { type: integer, format: int64, description: When the last estimated job ends (0 = nothing to wait for). }
+                  observed:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        tool: { type: string }
+                        samples: { type: integer }
+                        meanMs: { type: integer, format: int64 }
+                  jobs:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        jobId: { type: string }
+                        status: { type: string }
+                        estimated: { type: boolean }
+                        reason:
+                          type: string
+                          enum: [no_robot_with_required_tool, no_robot_available, no_duration_known, dependency_will_not_finish, outcome_unknown]
+                        robotId: { type: string }
+                        startMs: { type: integer, format: int64 }
+                        endMs: { type: integer, format: int64 }
+                        durationMs: { type: integer, format: int64 }
+                        basis: { type: string, enum: [observed_tool, observed_all, default] }
+                        overdue: { type: boolean }
+        "404":
+          description: The estimates are switched off, or the job is unknown or has ended.
 components:
   securitySchemes:
     bearer:

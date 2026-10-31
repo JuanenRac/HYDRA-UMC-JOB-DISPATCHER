@@ -86,6 +86,9 @@ func main() {
 	readTimeout := flag.Duration("read-timeout", defaultServerLimits.ReadTimeout, "how long a client may take to send a whole request")
 	writeTimeout := flag.Duration("write-timeout", defaultServerLimits.WriteTimeout, "how long the answer to a request may take to be written")
 	idleTimeout := flag.Duration("idle-timeout", defaultServerLimits.IdleTimeout, "how long an idle keep-alive connection is kept open")
+	etaOn := flag.Bool("eta", os.Getenv("JOB_DISPATCHER_ETA") == "1", "switch on GET /dispatch/eta: the estimated start and end of every unfinished job and of the whole queue (off by default; the environment variable JOB_DISPATCHER_ETA=1 does the same)")
+	etaDefault := flag.Duration("eta-default-duration", time.Minute, "duration assumed for a job until a finished job has been observed (0 = no guess); only with -eta")
+	etaWindow := flag.Int("eta-window", dispatcher.DefaultETAWindow, "how many recent finished jobs per tool the estimate averages; only with -eta")
 	flag.Parse()
 	limits := serverLimits{ReadHeaderTimeout: *readHeaderTimeout, ReadTimeout: *readTimeout, WriteTimeout: *writeTimeout, IdleTimeout: *idleTimeout}
 	if problem := limits.problem(*maxBody); problem != "" {
@@ -115,6 +118,10 @@ func main() {
 		fmt.Printf("[job-dispatcher] persisting the mission queue to %s\n", *dbPath)
 	}
 	engine.SetRobotFreshness(*robotTimeout)
+	if *etaOn {
+		engine.SetETA(dispatcher.ETAConfig{Enabled: true, DefaultDuration: *etaDefault, Window: *etaWindow})
+		fmt.Println("[job-dispatcher] GET /dispatch/eta is on: estimates of when each job and the whole queue finish")
+	}
 	catalog, err := buildToolCatalog(*toolsFile, *toolsList)
 	if err != nil {
 		log.Fatalf("[job-dispatcher] %v", err)

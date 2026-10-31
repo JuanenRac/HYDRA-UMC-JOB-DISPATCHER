@@ -66,6 +66,7 @@ func New(engine *dispatcher.Engine) *Server {
 	s.mux.HandleFunc("/robots/", s.handleRobotByID)
 	s.mux.HandleFunc("/dispatch", s.handleDispatch)
 	s.mux.HandleFunc("/dispatch/waiting", s.handleWaiting)
+	s.mux.HandleFunc("/dispatch/eta", s.handleETA)
 	s.mux.HandleFunc("/jobs/detect-stale", s.handleDetectStale)
 	s.mux.HandleFunc("/health", s.handleHealth)
 	return s
@@ -480,6 +481,37 @@ func (s *Server) handleWaiting(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, s.engine.WaitingJobs())
+}
+
+// handleETA answers GET /dispatch/eta: the estimated start and end of every job that has not ended and the time the
+// queue is expected to be empty. While the estimates are switched off (the default) the route does not exist: the
+// answer is the same 404 as for any unknown path. `?job=ID` narrows the answer to one job.
+func (s *Server) handleETA(w http.ResponseWriter, r *http.Request) {
+	queue, enabled := s.engine.QueueETA()
+	if !enabled {
+		http.NotFound(w, r)
+		return
+	}
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", "GET")
+		writeError(w, http.StatusMethodNotAllowed, errors.New("use GET"))
+		return
+	}
+	if id := r.URL.Query().Get("job"); id != "" {
+		for _, j := range queue.Jobs {
+			if j.JobID == id {
+				writeJSON(w, http.StatusOK, j)
+				return
+			}
+		}
+		if _, ok := s.engine.Job(id); ok {
+			writeError(w, http.StatusNotFound, errors.New("the job has ended, so it has no estimate"))
+			return
+		}
+		writeError(w, http.StatusNotFound, errors.New("unknown job"))
+		return
+	}
+	writeJSON(w, http.StatusOK, queue)
 }
 
 type detectStaleRequest struct {
