@@ -304,6 +304,8 @@ Registers a new robot, or updates an existing one's `location`/`tool`/`available
 {"id": "arm-3", "location": "cell-2", "tool": "Laser", "available": true}
 ```
 
+An optional `"stopCapable": true` declares that the robot can confirm a requested stop (see `POST /jobs/stop-ack`); it only matters with replanning on.
+
 **Responses**
 
 | Status | Body | Meaning |
@@ -404,7 +406,7 @@ Marking a job `"unknown"` does not touch its robot's `Available` field: a robot 
 
 | Status | Body | Meaning |
 |---|---|---|
-| 200 | `{"unknownJobIds": ["weld-42"]}` | The IDs of every job just marked `"unknown"` this pass (`[]` if none). With replanning on for silent robots (see [Configuration file](#configuration-file)) the answer also has `requeuedJobIds`, the jobs that went back to the queue instead, and `unknownJobIds` is `[]`. |
+| 200 | `{"unknownJobIds": ["weld-42"]}` | The IDs of every job just marked `"unknown"` this pass (`[]` if none). With replanning on for silent robots (see [Configuration file](#configuration-file)) the answer also has `requeuedJobIds`, the jobs that went back to the queue instead, and `unknownJobIds` is `[]`; `stopRequestedJobIds` (only when not empty) lists the jobs of silent robots that were asked to confirm a stop first (see `POST /jobs/stop-ack`). |
 | 400 | `{"error": "\"timeoutSeconds\" must be a positive number"}` | Missing, zero, negative, or malformed `timeoutSeconds`. |
 
 ---
@@ -431,6 +433,23 @@ The same requeue happens by itself when the configuration file asks for it: `on_
 
 ---
 
+## `GET /jobs/stop-requests` and `POST /jobs/stop-ack`
+
+Off by default: both routes exist only when the configuration file turns replanning on; otherwise they answer the same `404` as any unknown path.
+
+A robot that is silent is not necessarily stopped: it may still be executing its job. A robot that can confirm a stop says so in its heartbeat (`POST /robots` with `"stopCapable": true`; a field left out keeps the last value, and the value lives in memory only, so a robot declares it again after a restart). With `on_stale` on, the first time such a robot is found silent its job is **not** given to another robot: a stop request is recorded (`stopRequestedJobIds` in the `POST /jobs/detect-stale` answer) and the job stays `assigned`. `GET /jobs/stop-requests` lists the open requests, `[{"jobId": "weld-42", "robotId": "arm-3", "requestedAtMs": 1760000000000, "expired": false}]`, for the bridge of the robot to deliver. The robot (or its bridge) answers with `POST /jobs/stop-ack` and `{"robotId": "arm-3", "jobId": "weld-42"}`, and the job goes back to the queue (`{"requeuedJobIds": ["weld-42"]}`); the robot stays held unavailable until its own next heartbeat.
+
+If no acknowledgement arrives within `stop_ack_timeout_seconds` (default 30), the next check decides: with `allow_unconfirmed` off (the default) the job becomes `unknown`, exactly as when replanning is off, because the robot may still be executing it; with `allow_unconfirmed` on it goes back to the queue anyway. An acknowledgement that arrives late still counts: it resolves an `unknown` job by sending it back to the queue. If the robot is heard again before it acknowledged, the request is withdrawn and the job carries on. A silent robot that never declared the capability cannot be asked and keeps the plain replanning (its job goes back to the queue at once).
+
+| Status | Body | Meaning |
+|---|---|---|
+| 200 | `{"requeuedJobIds": ["weld-42"]}` | `stop-ack`: the job went back to the queue. |
+| 400 | `{"error": "\"robotId\" and \"jobId\" are required"}` | `stop-ack`: missing or malformed body. |
+| 404 | `{"error": "job ID does not exist: ..."}` | `stop-ack`: unknown job. |
+| 409 | `{"error": "..."}` | `stop-ack`: the job is not assigned to that robot, or no stop request is open for it (never asked, already acknowledged, or already sent back under `allow_unconfirmed`). |
+
+---
+
 ## Configuration file
 
 The tuned values of three optional behaviours live in a JSON file given with `-config` (or `JOB_DISPATCHER_CONFIG`), never in the code. Every section is optional and every switch is off unless the file turns it on, so no file, an empty file or `{}` change nothing. A misspelt key, a negative cost or percentiles that make no range stop the start with a clear message.
@@ -441,13 +460,13 @@ The tuned values of three optional behaviours live in a JSON file given with `-c
     "enabled": true,
     "costs": {"cell-A": {"cell-B": 5, "cell-C": 1}, "cell-B": {"cell-C": 2}}
   },
-  "replan": {"enabled": true, "on_stale": true, "on_fault": true},
+  "replan": {"enabled": true, "on_stale": true, "on_fault": true, "stop_ack_timeout_seconds": 30, "allow_unconfirmed": false},
   "eta_interval": {"enabled": true, "low_percentile": 25, "high_percentile": 75, "min_samples": 3}
 }
 ```
 
 - **`location_costs`:** a job that names a `location` goes to the eligible robot (available, tool attached, heard from recently) whose location has the lowest declared cost to it, instead of only preferring the robots in exactly that location. `costs[from][to]` is any non-negative number (a distance, a travel time); the table is read both ways and a location is at cost 0 from itself. A pair that is not declared has an unknown cost and ranks after every known one; ties go to the lower load, then the lower ID. A job without a location, and a configuration without this section, behave as before. The location stays a preference, never a requirement. The estimate follows the same rule among the robots free at the same moment.
-- **`replan`:** see `POST /jobs/replan`. `on_stale` and `on_fault` are `true` when the section is enabled unless the file says `false`.
+- **`replan`:** see `POST /jobs/replan`. `on_stale` and `on_fault` are `true` when the section is enabled unless the file says `false`. `stop_ack_timeout_seconds` (greater than 0, at most 86400; default 30) and `allow_unconfirmed` (default `false`) govern the confirmed stop of a silent robot that declared it can confirm one: see `GET /jobs/stop-requests` and `POST /jobs/stop-ack`.
 - **`eta_interval`:** the ranges of `GET /dispatch/eta`; the process refuses to start with it enabled and without `-eta`.
 
 ---

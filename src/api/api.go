@@ -62,6 +62,8 @@ func New(engine *dispatcher.Engine) *Server {
 	s.mux.HandleFunc("/jobs/cancel", s.handleCancelJob)
 	s.mux.HandleFunc("/jobs/requeue", s.handleRequeueJob)
 	s.mux.HandleFunc("/jobs/replan", s.handleReplan)
+	s.mux.HandleFunc("/jobs/stop-requests", s.handleStopRequests)
+	s.mux.HandleFunc("/jobs/stop-ack", s.handleStopAck)
 	s.mux.HandleFunc("/jobs/", s.handleJobByID)
 	s.mux.HandleFunc("/robots", s.handleRobots)
 	s.mux.HandleFunc("/robots/", s.handleRobotByID)
@@ -398,6 +400,8 @@ type robotRequest struct {
 	Location  *string `json:"location"`
 	Tool      *string `json:"tool"`
 	Available *bool   `json:"available"`
+	// StopCapable: the robot declares that it can confirm a requested stop (used only with replanning on).
+	StopCapable *bool `json:"stopCapable"`
 }
 
 func (s *Server) handleRobots(w http.ResponseWriter, r *http.Request) {
@@ -415,10 +419,11 @@ func (s *Server) handleRobots(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.engine.UpdateRobot(dispatcher.RobotUpdate{
-			ID:        req.ID,
-			Location:  req.Location,
-			Tool:      req.Tool,
-			Available: req.Available,
+			ID:          req.ID,
+			Location:    req.Location,
+			Tool:        req.Tool,
+			Available:   req.Available,
+			StopCapable: req.StopCapable,
 		})
 		writeJSON(w, http.StatusOK, s.engine.Robots())
 	default:
@@ -534,7 +539,8 @@ func (s *Server) handleDetectStale(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, errors.New("\"timeoutSeconds\" must be a positive number"))
 		return
 	}
-	unknownJobIDs, requeued := s.engine.DetectStaleAssignmentsReplan(time.Duration(req.TimeoutSeconds * float64(time.Second)))
+	result := s.engine.DetectStaleAssignmentsStop(time.Duration(req.TimeoutSeconds * float64(time.Second)))
+	unknownJobIDs, requeued := result.Unknown, result.Requeued
 	if unknownJobIDs == nil {
 		unknownJobIDs = []string{}
 	}
@@ -545,6 +551,10 @@ func (s *Server) handleDetectStale(w http.ResponseWriter, r *http.Request) {
 			requeued = []string{}
 		}
 		answer["requeuedJobIds"] = requeued
+		if len(result.StopRequested) > 0 {
+			// robots that can confirm a stop were asked to stop; their jobs wait for the acknowledgement
+			answer["stopRequestedJobIds"] = result.StopRequested
+		}
 	}
 	writeJSON(w, http.StatusOK, answer)
 }
@@ -630,6 +640,62 @@ func (s *Server) handleReplan(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Printf("[job-dispatcher] operator replanned robot %q (reason %q): jobs back in the queue: %v", req.RobotID, req.Reason, ids)
 	writeJSON(w, http.StatusOK, map[string]any{"requeuedJobIds": ids})
+}
+
+// handleStopRequests answers GET /jobs/stop-requests: the stop requests made to silent robots that declared they can
+// confirm a stop, for the bridge of the robot to deliver. Off with replanning: the same 404 as for any unknown path.
+func (s *Server) handleStopRequests(w http.ResponseWriter, r *http.Request) {
+	if !s.engine.ReplanEnabled() {
+		http.NotFound(w, r)
+		return
+	}
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", "GET")
+		writeError(w, http.StatusMethodNotAllowed, errors.New("use GET"))
+		return
+	}
+	writeJSON(w, http.StatusOK, s.engine.StopRequests())
+}
+
+type stopAckRequest struct {
+	RobotID string `json:"robotId"`
+	JobID   string `json:"jobId"`
+}
+
+// handleStopAck answers POST /jobs/stop-ack: the robot confirms that it stopped the job it was asked to stop, and the job
+// goes back to the queue. Off with replanning: the same 404 as for any unknown path.
+func (s *Server) handleStopAck(w http.ResponseWriter, r *http.Request) {
+	if !s.engine.ReplanEnabled() {
+		http.NotFound(w, r)
+		return
+	}
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", "POST")
+		writeError(w, http.StatusMethodNotAllowed, errors.New("use POST"))
+		return
+	}
+	var req stopAckRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, bodyErrorStatus(err), err)
+		return
+	}
+	if req.RobotID == "" || req.JobID == "" {
+		writeError(w, http.StatusBadRequest, errors.New("\"robotId\" and \"jobId\" are required"))
+		return
+	}
+	if err := s.engine.AckStop(req.RobotID, req.JobID); err != nil {
+		status := http.StatusConflict
+		switch {
+		case errors.Is(err, dispatcher.ErrUnknownJob):
+			status = http.StatusNotFound
+		case errors.Is(err, dispatcher.ErrReplanOff):
+			status = http.StatusBadRequest
+		}
+		writeError(w, status, err)
+		return
+	}
+	log.Printf("[job-dispatcher] robot %q confirmed the stop of job %q: back in the queue", req.RobotID, req.JobID)
+	writeJSON(w, http.StatusOK, map[string]any{"requeuedJobIds": []string{req.JobID}})
 }
 
 // handleJobByID answers GET /jobs/{id} with one job, so a client does not have to download

@@ -91,6 +91,9 @@ type Robot struct {
 	Tool      string // currently attached URTC tool head, e.g. "PnP", "Laser", "" if none
 	Available bool   // false while it is executing an assigned job
 	Load      int    // completed-job counter this session, used to balance ties (lower = preferred)
+	// StopCapable is the robot's own declaration that it can confirm a requested stop (see stopconfirm.go).
+	// Declared by the robot in its heartbeat, kept in memory only, false until it says otherwise.
+	StopCapable bool `json:"stopCapable,omitempty"`
 	// set when a heartbeat reports Available=false WHILE this robot
 	// has an active assignment - this project's own guard in UpsertRobot already
 	// refuses to let that heartbeat touch Available directly (the
@@ -207,6 +210,8 @@ type Engine struct {
 	location LocationConfig
 	// replan says what happens to the jobs of a robot that fails or goes silent (see replan.go); the zero value is "off".
 	replan ReplanConfig
+	// stopReq holds the stop requests made to silent robots, by job ID (see stopconfirm.go); in memory only.
+	stopReq map[string]*stopRequest
 	// productionSink receives the ProductionEvent of every job that ends; nil (the default) means the events are off (see production_event.go).
 	productionSink ProductionEventSink
 	// now is the engine's own clock, injectable so a test can control it
@@ -406,14 +411,14 @@ var (
 	// The dispatcher cannot stop physical work, so it never pretends to.
 	ErrJobInFlight = errors.New("job may be running on a robot; it can only be ended by that robot's own report")
 	// ErrJobFinished is returned by CancelJob for a job that already ended.
-	ErrJobFinished = errors.New("job already finished")
-	ErrRobotMismatch  = errors.New("robot ID does not match the job's assigned robot")
+	ErrJobFinished   = errors.New("job already finished")
+	ErrRobotMismatch = errors.New("robot ID does not match the job's assigned robot")
 	// ErrRobotBusy is returned by RemoveRobot for a robot that still has a job assigned to it.
 	ErrRobotBusy = errors.New("robot still has a job assigned to it")
 	// ErrAttemptMismatch is returned by CompleteJobAttempt when the report belongs to an older
 	// assignment of the job than the current one.
 	ErrAttemptMismatch = errors.New("attempt does not match the job's current assignment")
-	ErrInvalidJob     = errors.New("invalid job")
+	ErrInvalidJob      = errors.New("invalid job")
 )
 
 // AddJob submits a new job to the queue. DependsOn entries must already
@@ -629,6 +634,8 @@ type RobotUpdate struct {
 	Location  *string
 	Tool      *string
 	Available *bool
+	// StopCapable, when given, is the robot's declaration that it can confirm a requested stop.
+	StopCapable *bool
 }
 
 // UpdateRobot applies a partial heartbeat. A lightweight heartbeat that only names the robot
@@ -638,7 +645,10 @@ func (e *Engine) UpdateRobot(u RobotUpdate) {
 	defer e.mu.Unlock()
 	r := Robot{ID: u.ID}
 	if existing, ok := e.robots[u.ID]; ok {
-		r.Location, r.Tool = existing.Location, existing.Tool
+		r.Location, r.Tool, r.StopCapable = existing.Location, existing.Tool, existing.StopCapable
+	}
+	if u.StopCapable != nil {
+		r.StopCapable = *u.StopCapable
 	}
 	if u.Location != nil {
 		r.Location = *u.Location
@@ -670,6 +680,7 @@ func (e *Engine) upsertRobotLocked(r Robot, availabilityGiven bool) {
 	if existing, ok := e.robots[r.ID]; ok {
 		existing.Location = r.Location
 		existing.Tool = r.Tool
+		existing.StopCapable = r.StopCapable
 		// This call arriving at all is itself a real heartbeat, whether or
 		// not this project's own guard below lets it change Available - recorded
 		// unconditionally so DetectStaleAssignments sees this robot as
@@ -1173,6 +1184,13 @@ func (e *Engine) DetectStaleAssignments(timeout time.Duration) []string {
 // own next heartbeat: the first result is then empty and the second lists them. With replanning
 // off the second result is always empty and the first is what DetectStaleAssignments returns.
 func (e *Engine) DetectStaleAssignmentsReplan(timeout time.Duration) (unknown, requeued []string) {
+	r := e.DetectStaleAssignmentsStop(timeout)
+	return r.Unknown, r.Requeued
+}
+
+// DetectStaleAssignmentsStop is DetectStaleAssignmentsReplan with the whole answer, including the
+// stop requests made to silent robots that declare they can confirm a stop (see stopconfirm.go).
+func (e *Engine) DetectStaleAssignmentsStop(timeout time.Duration) StaleResult {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
@@ -1189,28 +1207,55 @@ func (e *Engine) DetectStaleAssignmentsReplan(timeout time.Duration) (unknown, r
 		// a heartbeat from the future (the clock stepped backwards since) says nothing about
 		// the robot being alive now, so it is treated as silence
 		if robot.LastHeartbeat.IsZero() || (now.Sub(robot.LastHeartbeat) < timeout && !heartbeatFromFuture(now, robot.LastHeartbeat)) {
+			delete(e.stopReq, j.ID) // the robot is back: a stop request that was never confirmed is withdrawn
 			continue
 		}
 		stale = append(stale, j)
 	}
 	sort.Slice(stale, func(i, k int) bool { return stale[i].seq < stale[k].seq })
+	var res StaleResult
 	if e.replan.Enabled && e.replan.OnStale {
-		return nil, e.requeueAllLocked(stale)
+		var back []*Job
+		for _, j := range stale {
+			switch e.stopDecisionLocked(j, now) {
+			case stopRequeue:
+				back = append(back, j)
+			case stopRequested:
+				res.StopRequested = append(res.StopRequested, j.ID)
+			case stopUnknown:
+				stale2 := j
+				res.Unknown = append(res.Unknown, stale2.ID)
+			}
+		}
+		if len(back) > 0 {
+			res.Requeued = e.requeueAllLocked(back)
+		}
+		e.markUnknownLocked(res.Unknown)
+		return res
+	}
+	for _, j := range stale {
+		res.Unknown = append(res.Unknown, j.ID)
+	}
+	e.markUnknownLocked(res.Unknown)
+	return res
+}
+
+// markUnknownLocked marks the given assigned jobs "unknown" in one transaction. Caller must hold e.mu.
+func (e *Engine) markUnknownLocked(ids []string) {
+	if len(ids) == 0 {
+		return
 	}
 	var persistErr error
 	e.beginBatchLocked()
-	for _, j := range stale {
+	for _, id := range ids {
+		j := e.jobs[id]
 		j.Status = StatusUnknown
-		unknown = append(unknown, j.ID)
 		if err := e.persistJobLocked(j); err != nil {
 			persistErr = err
 		}
 	}
 	commitErr := e.commitBatchLocked()
-	if len(unknown) > 0 {
-		e.recordPersistOutcome(persistErr, commitErr)
-	}
-	return unknown, nil
+	e.recordPersistOutcome(persistErr, commitErr)
 }
 
 // RemoveRobot forgets a robot (it was decommissioned or registered by mistake). A robot that

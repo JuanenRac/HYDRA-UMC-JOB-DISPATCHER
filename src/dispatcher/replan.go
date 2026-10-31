@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"time"
 )
 
 // ReplanConfig says what happens to the jobs of a robot that fails or goes silent. The zero value
@@ -21,6 +22,14 @@ type ReplanConfig struct {
 	// OnFault sends the assigned job of a robot that reports itself unavailable in the middle of
 	// the job back to the queue.
 	OnFault bool
+	// StopAckTimeout is how long a silent robot that declared it can confirm a stop has to acknowledge
+	// the stop request before the job is treated as unconfirmed (see stopconfirm.go). Zero means
+	// DefaultStopAckTimeout. It comes from the configuration file.
+	StopAckTimeout time.Duration
+	// AllowUnconfirmed lets a job go back to the queue when the stop request was not acknowledged in time.
+	// Off by default: the job then becomes "unknown", exactly as when replanning is off, because the
+	// robot may still be executing it.
+	AllowUnconfirmed bool
 }
 
 // ErrReplanOff is returned by ReplanRobot while replanning is switched off.
@@ -51,6 +60,7 @@ func (e *Engine) requeueJobLocked(j *Job) (robotErr, jobErr error) {
 		robot.selfReportedUnavailable = true
 		robotErr = e.persistRobotLocked(robot)
 	}
+	delete(e.stopReq, j.ID)
 	j.AssignedRobot = ""
 	j.AssignedAtMs = 0
 	j.Status = e.computeStatus(j)

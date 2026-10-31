@@ -4,6 +4,8 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+- **A robot that goes silent is asked to stop before its job goes to another robot, with replanning on:** a robot that declares `stopCapable` in its heartbeat gets a stop request when it is found silent (`GET /jobs/stop-requests`), and its job goes back to the queue only after it acknowledges (`POST /jobs/stop-ack`). Without an acknowledgement within `stop_ack_timeout_seconds` (default 30, in the configuration file) the job becomes `unknown` as before; `allow_unconfirmed` (default `false`) lets it go back to the queue anyway. A late acknowledgement resolves an `unknown` job. A robot that did not declare the capability keeps the plain replanning. Tests run on a simulated clock.
+
 ## [0.2.5] - The closest robot by a table of costs, replanning of the jobs of a failed robot, a range next to every estimate, estimated times and a production event for every job that ends, all off by default
 
 - **Closest robot by a declared table of costs, off by default:** a configuration file given with `-config` (or `JOB_DISPATCHER_CONFIG`) can declare `location_costs`, a table of non-negative costs between locations (a distance, a travel time). With it on, a job that names a location goes to the eligible robot whose location has the lowest cost to it, ties by load and then ID, and a pair that is not declared ranks after every known one; the location stays a preference, never a requirement, and `GET /dispatch/eta` follows the same rule among the robots free at the same moment. Without the section nothing changes. The values live in the file, never in the code.

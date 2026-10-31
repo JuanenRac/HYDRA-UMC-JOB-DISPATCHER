@@ -18,7 +18,7 @@ GPL-3.0-or-later - see LICENSE
   <img src="https://img.shields.io/badge/License-GPL%203.0--or--later-blue.svg" alt="GPL 3.0 or later">
   <img src="https://img.shields.io/badge/Go-1.21%2B-00ADD8.svg" alt="Go">
   <img src="https://img.shields.io/badge/Architecture-Event--Driven-blue.svg" alt="Architecture">
-  <img src="https://img.shields.io/badge/Tests-188%20passing-2ea44f.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/Tests-243%20passing-2ea44f.svg" alt="Tests">
   <img src="https://img.shields.io/badge/Version-0.2.5-0f6cbd.svg" alt="Version">
   <img src="https://img.shields.io/badge/Maturity-functional-0F6CBD.svg" alt="Maturity">
 </p>
@@ -35,7 +35,7 @@ GPL-3.0-or-later - see LICENSE
 |---|---|
 | Version | `0.2.5` |
 | Reifegrad | Funktionsfähig |
-| Tests | 188 (`go test ./...`) |
+| Tests | 243 (`go test ./...`) |
 | Technik | Go / priority queue / HTTP API / SQLite (modernc.org/sqlite, pure Go) |
 | Ziel | Der Raspberry Pi CM5 einer HYDRA-UMC-Zelle |
 | Auf echter Hardware | Noch nicht: für diese Version ist kein Lauf auf echter Hardware vermerkt |
@@ -51,7 +51,7 @@ Jede Zeile ist ein Teil dieses Repositorys, und die Ampel sagt, wie weit er heut
 | Bereich | Stand | Was das hier bedeutet |
 |---|---|---|
 | Software | 🟡 | Funktioniert für seinen Hauptzweck; die Ehrlichkeitsprüfung oben nennt, was noch fehlt |
-| Tests | 🟢 | 188 automatische Tests, bei jeder Änderung ausgeführt |
+| Tests | 🟢 | 243 automatische Tests, bei jeder Änderung ausgeführt |
 | Echte Hardware | 🔴 | Noch nicht: für diese Version ist kein Lauf auf echter Hardware vermerkt |
 | Dokumentation | 🟢 | README in acht Sprachen, bei jeder Änderung gegen das Manifest geprüft |
 
@@ -133,6 +133,7 @@ HTTP standardmäßig auf `127.0.0.1:8090`; die vollständige Referenz sind `docs
 |---|---|
 | `/jobs`, `/jobs/submit`, `/jobs/{id}` | Aufträge auflisten, einreichen und lesen |
 | `/jobs/replan` | die Aufträge eines ausgefallenen Roboters zurück in die Warteschlange stellen (nur wenn die Konfigurationsdatei die Neuplanung einschaltet; sonst 404) |
+| `/jobs/stop-requests`, `/jobs/stop-ack` | einen verstummten Roboter, der einen Stopp bestätigen kann, zum Stoppen seines Auftrags auffordern und seine Bestätigung abwarten, bevor der Auftrag an einen anderen Roboter geht (nur bei eingeschalteter Neuplanung; sonst 404) |
 | `/jobs/complete`, `/jobs/cancel`, `/jobs/requeue`, `/jobs/detect-stale` | einen Auftrag abschließen, abbrechen oder neu einreihen; die Aufträge verstummter Roboter finden |
 | `/robots`, `/robots/{id}`, `/dispatch` | einen Roboter und seine Werkzeuge anmelden; den nächsten passenden Auftrag anfordern |
 | `GET /health` | lebt der Dienst (ohne Token offen) |
@@ -164,7 +165,7 @@ curl http://127.0.0.1:8090/health
 
 ## 🧪 Tests
 
-188 Go-Tests laufen mit `go test ./...`; sie liegen neben dem Code (`src/api`, `src/dispatcher`, `src/sqlitestore` und `main_test.go`) und enthalten einen Prozess, der über einer SQLite-Datei beendet und neu gestartet wird. Keine Hardware, kein äußeres Netz.
+243 Go-Tests laufen mit `go test ./...`; sie liegen neben dem Code (`src/api`, `src/dispatcher`, `src/sqlitestore` und `main_test.go`) und enthalten einen Prozess, der über einer SQLite-Datei beendet und neu gestartet wird. Keine Hardware, kein äußeres Netz.
 
 Die CI führt `HYDRA_UMC_CI=1 python tools/ci_validate.py` aus; das prüft das Manifest, die Dokumente, die acht READMEs und die Bilder.
 

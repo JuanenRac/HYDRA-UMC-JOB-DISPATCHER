@@ -221,7 +221,11 @@ func main() {
 			ticker := time.NewTicker(*robotTimeout / 2)
 			defer ticker.Stop()
 			for range ticker.C {
-				unknown, requeued := engine.DetectStaleAssignmentsReplan(*robotTimeout)
+				result := engine.DetectStaleAssignmentsStop(*robotTimeout)
+				unknown, requeued := result.Unknown, result.Requeued
+				if len(result.StopRequested) > 0 {
+					log.Printf("[job-dispatcher] robot silent for over %s: stop requested for jobs: %v (GET /jobs/stop-requests)", *robotTimeout, result.StopRequested)
+				}
 				if len(unknown) > 0 {
 					log.Printf("[job-dispatcher] robot silent for over %s: jobs now unknown: %v", *robotTimeout, unknown)
 				}

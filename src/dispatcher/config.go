@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"time"
 )
 
 // FileConfig is the content of the JSON file named by -config: the tuned values of location
@@ -31,6 +32,10 @@ type ReplanSection struct {
 	Enabled bool  `json:"enabled"`
 	OnStale *bool `json:"on_stale,omitempty"`
 	OnFault *bool `json:"on_fault,omitempty"`
+	// StopAckTimeoutSeconds: how long a silent robot that can confirm a stop has to acknowledge the request (default 30).
+	StopAckTimeoutSeconds *float64 `json:"stop_ack_timeout_seconds,omitempty"`
+	// AllowUnconfirmed: send the job back to the queue even if the stop was not acknowledged (default false).
+	AllowUnconfirmed bool `json:"allow_unconfirmed,omitempty"`
 }
 
 // IntervalSection is the "eta_interval" section; it needs the estimates (-eta) to do anything.
@@ -76,6 +81,11 @@ func (c FileConfig) Validate() error {
 	if err := c.LocationSetting().Validate(); err != nil {
 		return fmt.Errorf("configuration: %w", err)
 	}
+	if c.Replan != nil && c.Replan.StopAckTimeoutSeconds != nil {
+		if v := *c.Replan.StopAckTimeoutSeconds; !(v > 0) || v > 86400 {
+			return fmt.Errorf("configuration: replan.stop_ack_timeout_seconds must be greater than 0 and at most 86400")
+		}
+	}
 	if c.ETAInterval != nil && c.ETAInterval.Enabled && !c.IntervalSetting().Valid() {
 		return fmt.Errorf("configuration: eta_interval needs 0 <= low_percentile < high_percentile <= 100 and min_samples of at least 1")
 	}
@@ -96,7 +106,11 @@ func (c FileConfig) ReplanSetting() ReplanConfig {
 		return ReplanConfig{}
 	}
 	on := func(p *bool) bool { return p == nil || *p }
-	return ReplanConfig{Enabled: true, OnStale: on(c.Replan.OnStale), OnFault: on(c.Replan.OnFault)}
+	cfg := ReplanConfig{Enabled: true, OnStale: on(c.Replan.OnStale), OnFault: on(c.Replan.OnFault), AllowUnconfirmed: c.Replan.AllowUnconfirmed}
+	if c.Replan.StopAckTimeoutSeconds != nil {
+		cfg.StopAckTimeout = time.Duration(*c.Replan.StopAckTimeoutSeconds * float64(time.Second))
+	}
+	return cfg
 }
 
 // IntervalSetting is the setting of the "eta_interval" section (off when absent); it goes into ETAConfig.Interval.

@@ -195,7 +195,50 @@ paths:
                 properties:
                   unknownJobIds: { type: array, items: { type: string } }
                   requeuedJobIds: { type: array, items: { type: string }, description: Only with replanning on for silent robots - the jobs that went back to the queue. }
+                stopRequestedJobIds: { type: array, items: { type: string }, description: Only with replanning on and not empty - the jobs of silent robots that can confirm a stop and were asked to stop first. }
         "400": { $ref: "#/components/responses/Error" }
+  /jobs/stop-requests:
+    get:
+      summary: The open stop requests made to silent robots that can confirm a stop (only when the configuration file turns replanning on; otherwise 404)
+      responses:
+        "200":
+          description: The requests, in job order.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    jobId: { type: string }
+                    robotId: { type: string }
+                    requestedAtMs: { type: integer, format: int64 }
+                    expired: { type: boolean, description: True once the acknowledgement did not arrive in time. }
+  /jobs/stop-ack:
+    post:
+      summary: The robot confirms it stopped the job; the job goes back to the queue (only when the configuration file turns replanning on; otherwise 404)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [robotId, jobId]
+              properties:
+                robotId: { type: string }
+                jobId: { type: string }
+      responses:
+        "200":
+          description: The job went back to the queue.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  requeuedJobIds: { type: array, items: { type: string } }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
   /jobs/replan:
     post:
       summary: Declare a robot failed and send its jobs back to the queue (only when the configuration file turns replanning on; otherwise 404)
@@ -243,6 +286,7 @@ paths:
                 location: { type: string }
                 tool: { type: string }
                 available: { type: boolean }
+                stopCapable: { type: boolean, description: The robot declares that it can confirm a requested stop; used only with replanning on. }
       responses:
         "200":
           description: The whole registry.
@@ -443,5 +487,6 @@ components:
         Location: { type: string }
         Tool: { type: string }
         Available: { type: boolean }
+        stopCapable: { type: boolean, description: Present when the robot declared that it can confirm a stop. }
         Load: { type: integer }
         LastHeartbeat: { type: string, format: date-time }
