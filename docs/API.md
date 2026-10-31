@@ -175,6 +175,8 @@ Same fields as `POST /jobs`, plus:
 
 - `dedupKey` (string, optional) - identifies the logical unit of work behind this submission, independent of `id`. Omitted or empty means no deduplication: behaves exactly like `POST /jobs`.
 
+**Taking the common Operation of the SDK.** A body with `operation_id` (what HYDRA-UMC-SEMANTIC-PLANNER hands over, the `OperationIntake` schema of `docs/openapi.yaml`) becomes a job whose `id` and `dedupKey` are the id of the operation, so posting it again is the same job (`"duplicate"`); `priority`, `required_tool`, `location` and `depends_on` are read from its `params`. Only an operation in the state `received` with `schema_version` `1.0` is taken; anything else is a `400`.
+
 **Responses**
 
 | Status | Body | Meaning |
@@ -237,6 +239,10 @@ Marks an assigned (or `"unknown"` - see `POST /jobs/detect-stale` below) job as 
 | 409 | `{"error": "..."}` | `robotId` does not match the job's own real `AssignedRobot`, or `attempt` is not the job's current one - the job/robot state is left completely untouched, not partially applied. |
 
 Clients written before `robotId` became required (it answers `400` without it) must send it: the robot a job was given by `POST /dispatch` is in the `AssignedRobot` field of `GET /jobs/{id}`.
+
+### Production event of a job that ends
+
+Off by default. With `-production-events` (or `JOB_DISPATCHER_PRODUCTION_EVENTS=1`) and a destination, every report that a job ended hands over one `ProductionEvent` of the shared contract of HYDRA-UMC-SDK: `source_id` (the robot), `at_utc` (the end of the job), `good` (whether it went well), `cycle_time_s` (the time between its assignment and its end) and `job_id`. Destinations: `-production-events-file` (one JSON line per event) and/or `-production-events-url` (a JSON `POST` with the bearer token of `-production-events-token`, sent on its own goroutine so a slow receiver never holds up a completion). The event is checked against the contract before it leaves; a cycle the contract cannot describe (no start time, longer than a week, an id outside the contract) is logged and skipped instead of invented. The production reports (HYDRA-UMC-PRODUCTION-REPORTS) turn these events into OEE. The response of this route is not changed.
 
 ---
 
