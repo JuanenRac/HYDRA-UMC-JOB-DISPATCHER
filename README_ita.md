@@ -155,7 +155,7 @@ HTTP su `127.0.0.1:8090` per impostazione predefinita; il riferimento completo �
 
 ## 🚀 Avvio rapido
 
-Richiede Go 1.21 o successivo (il driver SQLite è Go puro, senza compilatore C) e Python 3 solo per gli strumenti del progetto.
+Richiede Go 1.25 o successivo (il driver SQLite è Go puro, senza compilatore C) e Python 3 solo per gli strumenti del progetto.
 
 ```bash
 bash run.sh        # Linux, macOS (run.bat on Windows)

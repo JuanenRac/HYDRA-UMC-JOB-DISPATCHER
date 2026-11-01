@@ -155,7 +155,7 @@ HTTP en `127.0.0.1:8090` por defecto; la referencia completa es `docs/API.md` y 
 
 ## 🚀 Inicio rápido
 
-Requiere Go 1.21 o superior (el controlador de SQLite es Go puro, sin compilador de C) y Python 3 solo para las herramientas del proyecto.
+Requiere Go 1.25 o superior (el controlador de SQLite es Go puro, sin compilador de C) y Python 3 solo para las herramientas del proyecto.
 
 ```bash
 bash run.sh        # Linux, macOS (run.bat on Windows)

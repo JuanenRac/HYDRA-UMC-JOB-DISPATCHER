@@ -4,6 +4,8 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+- **The system library moves to a release without known advisories:** `golang.org/x/sys` 0.47.0. It needs Go 1.25, so the minimum Go of the project goes from 1.21 to 1.25 (`go.mod` and the README).
+
 ## [0.2.7] - The configuration file can be reloaded while the service runs and the documentation says who delivers the stop requests
 
 - **The configuration file can be reloaded while the service runs:** `POST /admin/reload-config` (only when `-config` was given; from this machine only, with the token when one is set) re-reads it and installs the location costs, the replanning and the range of the estimates. A file that cannot be used changes nothing: `422` and the previous values stay in force. The SERVER calls it after it writes the two replanning options.
