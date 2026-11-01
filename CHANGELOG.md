@@ -4,6 +4,8 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+## [0.2.7] - The configuration file can be reloaded while the service runs and the documentation says who delivers the stop requests
+
 - **The configuration file can be reloaded while the service runs:** `POST /admin/reload-config` (only when `-config` was given; from this machine only, with the token when one is set) re-reads it and installs the location costs, the replanning and the range of the estimates. A file that cannot be used changes nothing: `422` and the previous values stay in force. The SERVER calls it after it writes the two replanning options.
 
 - **The documentation says who delivers the stop requests:** HYDRA-UMC-SERVER reads `GET /jobs/stop-requests`, stops the robot and sends `POST /jobs/stop-ack`, behind its own switch.
