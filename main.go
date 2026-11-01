@@ -212,6 +212,7 @@ func main() {
 	}
 	if *token != "" {
 		server.RequireToken(*token)
+	server.SetVersion(Version)
 		fmt.Println("[job-dispatcher] every route except GET /health requires a bearer token")
 	} else if !isLoopbackAddr(*addr) {
 		fmt.Println("[job-dispatcher] WARNING: -allow-anonymous: this API is open to the network")

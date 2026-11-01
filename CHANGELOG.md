@@ -4,6 +4,8 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+- **`GET /metrics` in the text format of Prometheus:** the version, the uptime, the responses by class of status (2xx to 5xx) and the health, the aggregate of the checks of the service (the persistence store answers); only numbers about the service, never a job, a robot, a path, an address or a token. Behind the token when the service has one (`401` without it). The code is the canonical `service_metrics.go` of HYDRA-UMC-SDK, copied byte for byte.
+
 - **The system library moves to a release without known advisories:** `golang.org/x/sys` 0.47.0. It needs Go 1.25, so the minimum Go of the project goes from 1.21 to 1.25 (`go.mod` and the README).
 
 ## [0.2.7] - The configuration file can be reloaded while the service runs and the documentation says who delivers the stop requests

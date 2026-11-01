@@ -42,6 +42,10 @@ type Server struct {
 	maxBody int64
 	// reloader runs POST /admin/reload-config; nil (no configuration file was given) leaves the route unknown.
 	reloader ConfigReloader
+	// version is published by GET /metrics; metrics holds the counters and metricsHandler wraps the routes with them.
+	version        string
+	metrics        *ServiceMetrics
+	metricsHandler http.Handler
 }
 
 // ConfigReloader re-reads the configuration file and installs it. It returns a summary of the values now in force or, when nothing
@@ -83,10 +87,23 @@ func New(engine *dispatcher.Engine) *Server {
 	s.mux.HandleFunc("/jobs/detect-stale", s.handleDetectStale)
 	s.mux.HandleFunc("/admin/reload-config", s.handleReloadConfig)
 	s.mux.HandleFunc("/health", s.handleHealth)
+	s.metrics = NewServiceMetrics("hydra-umc-job-dispatcher")
+	s.metricsHandler = s.metrics.Middleware(http.HandlerFunc(s.serveRoutes),
+		func() string { return s.version },
+		func(r *http.Request) bool { return s.token == "" || s.authorized(r) },
+		func() map[string]bool { return map[string]bool{"persistence": s.engine.LastPersistError() == nil} })
 	return s
 }
 
+// SetVersion names the version that GET /metrics publishes.
+func (s *Server) SetVersion(version string) { s.version = version }
+
+// ServeHTTP counts every answer and serves GET /metrics (the token when one is set, 401 without it; numbers only), then hands over to the routes.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	s.metricsHandler.ServeHTTP(w, r)
+}
+
+func (s *Server) serveRoutes(w http.ResponseWriter, r *http.Request) {
 	if s.token != "" && r.URL.Path != "/health" && !s.authorized(r) {
 		w.Header().Set("WWW-Authenticate", "Bearer")
 		writeError(w, http.StatusUnauthorized, errors.New("a valid Authorization: Bearer token is required"))
