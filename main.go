@@ -205,6 +205,11 @@ func main() {
 	}
 	server := api.New(engine)
 	server.SetMaxBodyBytes(*maxBody)
+	if *configPath != "" {
+		// the service can re-read its configuration file while it runs (POST /admin/reload-config, from this machine only)
+		server.SetConfigReloader(newConfigReloader(*configPath, engine, *etaOn, *etaDefault, *etaWindow).Reload)
+		fmt.Println("[job-dispatcher] POST /admin/reload-config re-reads the configuration file (from this machine only; an invalid file changes nothing)")
+	}
 	if *token != "" {
 		server.RequireToken(*token)
 		fmt.Println("[job-dispatcher] every route except GET /health requires a bearer token")

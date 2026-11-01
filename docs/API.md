@@ -450,9 +450,15 @@ If no acknowledgement arrives within `stop_ack_timeout_seconds` (default 30), th
 
 ---
 
+## `POST /admin/reload-config`
+
+Off unless the service was started with a configuration file (`-config`, see below): without one the route answers the same `404` as any unknown path. It re-reads that file and installs, while the service runs, the values it can change: the table of `location_costs`, the `replan` section and the range of `eta_interval` (which needs `-eta`, as at start). What is fixed by the switches of the process (`-eta`, the address, the token, the database) is not in the file and stays as started.
+
+Only a caller on this machine may use it (a request from another address is a `403`, whatever its token), and the bearer token is required as for every other route when one is set. A file that cannot be used (unreadable, not valid JSON, an unknown key, a value out of range, or a range for the estimates without `-eta`) changes nothing: the answer is `422` with the reason and `"kept": "the previous values"`, and the values in force stay exactly as they were. A reload that works answers `200` with `{"reloaded": true, "applied": {...}}` (the replanning in force, whether location costs and ranges are on). Two reloads never interleave. A stop request that was open when the values changed keeps its place; the timeout and `allow_unconfirmed` in force are read at the next check.
+
 ## Configuration file
 
-The tuned values of three optional behaviours live in a JSON file given with `-config` (or `JOB_DISPATCHER_CONFIG`), never in the code. Every section is optional and every switch is off unless the file turns it on, so no file, an empty file or `{}` change nothing. A misspelt key, a negative cost or percentiles that make no range stop the start with a clear message.
+The tuned values of three optional behaviours live in a JSON file given with `-config` (or `JOB_DISPATCHER_CONFIG`), never in the code. The file is read when the service starts and again on `POST /admin/reload-config`. Every section is optional and every switch is off unless the file turns it on, so no file, an empty file or `{}` change nothing. A misspelt key, a negative cost or percentiles that make no range stop the start with a clear message.
 
 ```json
 {

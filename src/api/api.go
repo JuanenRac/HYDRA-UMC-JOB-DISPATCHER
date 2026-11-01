@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -39,7 +40,16 @@ type Server struct {
 	token  string
 	// maxBody is the largest request body any route reads (MaxBodyBytes unless SetMaxBodyBytes changed it).
 	maxBody int64
+	// reloader runs POST /admin/reload-config; nil (no configuration file was given) leaves the route unknown.
+	reloader ConfigReloader
 }
+
+// ConfigReloader re-reads the configuration file and installs it. It returns a summary of the values now in force or, when nothing
+// was changed, the reason.
+type ConfigReloader func() (map[string]any, error)
+
+// SetConfigReloader switches POST /admin/reload-config on. Without it the route answers like any unknown path.
+func (s *Server) SetConfigReloader(fn ConfigReloader) { s.reloader = fn }
 
 // RequireToken makes every route except GET /health demand `Authorization: Bearer <token>`
 // (compared in constant time). An empty token leaves the API open, as before - the caller
@@ -71,6 +81,7 @@ func New(engine *dispatcher.Engine) *Server {
 	s.mux.HandleFunc("/dispatch/waiting", s.handleWaiting)
 	s.mux.HandleFunc("/dispatch/eta", s.handleETA)
 	s.mux.HandleFunc("/jobs/detect-stale", s.handleDetectStale)
+	s.mux.HandleFunc("/admin/reload-config", s.handleReloadConfig)
 	s.mux.HandleFunc("/health", s.handleHealth)
 	return s
 }
@@ -640,6 +651,34 @@ func (s *Server) handleReplan(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Printf("[job-dispatcher] operator replanned robot %q (reason %q): jobs back in the queue: %v", req.RobotID, req.Reason, ids)
 	writeJSON(w, http.StatusOK, map[string]any{"requeuedJobIds": ids})
+}
+
+// handleReloadConfig answers POST /admin/reload-config: the service re-reads its configuration file (-config) and installs the values it
+// can change while it runs. Only a caller on this machine may ask (as well as the token, when one is set), and a file that is not valid
+// changes nothing: the answer is 422 and the previous values stay in force. Without a configuration file the route does not exist.
+func (s *Server) handleReloadConfig(w http.ResponseWriter, r *http.Request) {
+	if s.reloader == nil {
+		http.NotFound(w, r)
+		return
+	}
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", "POST")
+		writeError(w, http.StatusMethodNotAllowed, errors.New("use POST"))
+		return
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if ip := net.ParseIP(host); err != nil || ip == nil || !ip.IsLoopback() {
+		writeError(w, http.StatusForbidden, errors.New("the configuration is reloaded only on request from this machine"))
+		return
+	}
+	summary, err := s.reloader()
+	if err != nil {
+		log.Printf("[job-dispatcher] reload of the configuration refused, the previous values stay in force: %v", err)
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]any{"error": err.Error(), "kept": "the previous values"})
+		return
+	}
+	log.Printf("[job-dispatcher] configuration reloaded: %v", summary)
+	writeJSON(w, http.StatusOK, map[string]any{"reloaded": true, "applied": summary})
 }
 
 // handleStopRequests answers GET /jobs/stop-requests: the stop requests made to silent robots that declared they can

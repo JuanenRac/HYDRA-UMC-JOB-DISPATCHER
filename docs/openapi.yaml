@@ -239,6 +239,30 @@ paths:
         "400": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
+  /admin/reload-config:
+    post:
+      summary: Re-read the configuration file (-config) and install the values that can change while the service runs; only from this machine, and only when a configuration file was given (otherwise 404)
+      responses:
+        "200":
+          description: The values now in force.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  reloaded: { type: boolean }
+                  applied: { type: object }
+        "403": { $ref: "#/components/responses/Error" }
+        "405": { $ref: "#/components/responses/Error" }
+        "422":
+          description: The file cannot be used (unreadable, not valid, or asking for something the running switches do not allow). Nothing changed; the previous values stay in force.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: { type: string }
+                  kept: { type: string }
   /jobs/replan:
     post:
       summary: Declare a robot failed and send its jobs back to the queue (only when the configuration file turns replanning on; otherwise 404)
