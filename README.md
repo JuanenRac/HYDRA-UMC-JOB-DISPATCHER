@@ -18,7 +18,7 @@ GPL-3.0-or-later - see LICENSE
   <img src="https://img.shields.io/badge/License-GPL%203.0--or--later-blue.svg" alt="GPL 3.0 or later">
   <img src="https://img.shields.io/badge/Go-1.21%2B-00ADD8.svg" alt="Go">
   <img src="https://img.shields.io/badge/Architecture-Event--Driven-blue.svg" alt="Architecture">
-  <img src="https://img.shields.io/badge/Tests-243%20passing-2ea44f.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/Tests-248%20passing-2ea44f.svg" alt="Tests">
   <img src="https://img.shields.io/badge/Version-0.2.7-0f6cbd.svg" alt="Version">
   <img src="https://img.shields.io/badge/Maturity-functional-0F6CBD.svg" alt="Maturity">
 </p>
@@ -35,7 +35,7 @@ GPL-3.0-or-later - see LICENSE
 |---|---|
 | Version | `0.2.7` |
 | Maturity | Functional |
-| Tests | 243 (`go test ./...`) |
+| Tests | 248 (`go test ./...`) |
 | Stack | Go / priority queue / HTTP API / SQLite (modernc.org/sqlite, pure Go) |
 | Target | The Raspberry Pi CM5 of a HYDRA-UMC cell |
 | On real hardware | Not yet: no run on real hardware is recorded for this version |
@@ -51,7 +51,7 @@ Each line is one part of this repository and the light says how far it is today.
 | Area | State | What it means here |
 |---|---|---|
 | Software | 🟡 | Works for its main purpose; the honesty check above lists what is still missing |
-| Tests | 🟢 | 243 automated tests, run on every change |
+| Tests | 🟢 | 248 automated tests, run on every change |
 | Real hardware | 🔴 | Not yet: no run on real hardware is recorded for this version |
 | Documentation | 🟢 | README in eight languages, checked against the manifest on every change |
 
@@ -165,7 +165,7 @@ curl http://127.0.0.1:8090/health
 
 ## 🧪 Testing
 
-243 Go tests run with `go test ./...`; they sit next to the code (`src/api`, `src/dispatcher`, `src/sqlitestore` and `main_test.go`) and include a process that is killed and started again over a SQLite file. No hardware and no outside network.
+248 Go tests run with `go test ./...`; they sit next to the code (`src/api`, `src/dispatcher`, `src/sqlitestore` and `main_test.go`) and include a process that is killed and started again over a SQLite file. No hardware and no outside network.
 
 The CI runs `HYDRA_UMC_CI=1 python tools/ci_validate.py`, which checks the manifest, the documents, the eight READMEs and the pictures.
 

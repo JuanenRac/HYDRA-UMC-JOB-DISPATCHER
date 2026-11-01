@@ -18,7 +18,7 @@ GPL-3.0-or-later - see LICENSE
   <img src="https://img.shields.io/badge/License-GPL%203.0--or--later-blue.svg" alt="GPL 3.0 or later">
   <img src="https://img.shields.io/badge/Go-1.21%2B-00ADD8.svg" alt="Go">
   <img src="https://img.shields.io/badge/Architecture-Event--Driven-blue.svg" alt="Architecture">
-  <img src="https://img.shields.io/badge/Tests-243%20passing-2ea44f.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/Tests-248%20passing-2ea44f.svg" alt="Tests">
   <img src="https://img.shields.io/badge/Version-0.2.7-0f6cbd.svg" alt="Version">
   <img src="https://img.shields.io/badge/Maturity-functional-0F6CBD.svg" alt="Maturity">
 </p>
@@ -35,7 +35,7 @@ GPL-3.0-or-later - see LICENSE
 |---|---|
 | Version | `0.2.7` |
 | Maturité | Fonctionnel |
-| Tests | 243 (`go test ./...`) |
+| Tests | 248 (`go test ./...`) |
 | Technologie | Go / priority queue / HTTP API / SQLite (modernc.org/sqlite, pure Go) |
 | Cible | Le Raspberry Pi CM5 d'une cellule HYDRA-UMC |
 | Sur matériel réel | Pas encore : aucune exécution sur du matériel réel n'est consignée pour cette version |
@@ -51,7 +51,7 @@ Chaque ligne est une partie de ce dépôt et le feu dit où elle en est aujourd'
 | Domaine | État | Ce que cela veut dire ici |
 |---|---|---|
 | Logiciel | 🟡 | Fonctionne pour son usage principal ; la vérification d'honnêteté ci-dessus liste ce qui manque encore |
-| Tests | 🟢 | 243 tests automatiques, exécutés à chaque modification |
+| Tests | 🟢 | 248 tests automatiques, exécutés à chaque modification |
 | Matériel réel | 🔴 | Pas encore : aucune exécution sur du matériel réel n'est consignée pour cette version |
 | Documentation | 🟢 | README en huit langues, vérifié par rapport au manifeste à chaque modification |
 
@@ -165,7 +165,7 @@ curl http://127.0.0.1:8090/health
 
 ## 🧪 Tests
 
-243 tests Go s'exécutent avec `go test ./...` ; ils sont à côté du code (`src/api`, `src/dispatcher`, `src/sqlitestore` et `main_test.go`) et incluent un processus tué puis relancé sur un fichier SQLite. Ni matériel ni réseau extérieur.
+248 tests Go s'exécutent avec `go test ./...` ; ils sont à côté du code (`src/api`, `src/dispatcher`, `src/sqlitestore` et `main_test.go`) et incluent un processus tué puis relancé sur un fichier SQLite. Ni matériel ni réseau extérieur.
 
 La CI exécute `HYDRA_UMC_CI=1 python tools/ci_validate.py`, qui vérifie le manifeste, les documents, les huit README et les images.
 
