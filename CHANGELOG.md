@@ -4,6 +4,8 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+- **The documentation says who delivers the stop requests:** HYDRA-UMC-SERVER reads `GET /jobs/stop-requests`, stops the robot and sends `POST /jobs/stop-ack`, behind its own switch.
+
 ## [0.2.6] - A robot that goes silent is asked to stop before its job goes to another robot, with replanning on
 
 - **A robot that goes silent is asked to stop before its job goes to another robot, with replanning on:** a robot that declares `stopCapable` in its heartbeat gets a stop request when it is found silent (`GET /jobs/stop-requests`), and its job goes back to the queue only after it acknowledges (`POST /jobs/stop-ack`). Without an acknowledgement within `stop_ack_timeout_seconds` (default 30, in the configuration file) the job becomes `unknown` as before; `allow_unconfirmed` (default `false`) lets it go back to the queue anyway. A late acknowledgement resolves an `unknown` job. A robot that did not declare the capability keeps the plain replanning. Tests run on a simulated clock.
