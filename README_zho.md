@@ -255,6 +255,7 @@ HYDRA-UMC-JOB-DISPATCHER/
 ├── main.go / version.go                         入口、选项和版本
 ├── main_test.go                                 入口的测试
 ├── server_limits.go / server_limits_test.go     HTTP 服务器的时间与大小限制及其测试
+├── reload.go / reload_test.go                   重新读取配置文件及其测试
 ├── go.mod / go.sum                              Go 模块与校验和
 ├── bump_version.py / bump_manifest_version.py   显式的版本提升
 ├── run.sh run.bat                               启动服务

@@ -253,6 +253,7 @@ HYDRA-UMC-JOB-DISPATCHER/
 ├── main.go / version.go                         ingresso, opzioni e versione
 ├── main_test.go                                 test del punto di ingresso
 ├── server_limits.go / server_limits_test.go     i limiti di tempo e dimensione del server HTTP e i loro test
+├── reload.go / reload_test.go                   rilegge il file di configurazione e i suoi test
 ├── go.mod / go.sum                              modulo Go e checksum
 ├── bump_version.py / bump_manifest_version.py   aumento di versione esplicito
 ├── run.sh run.bat                               avviare il servizio

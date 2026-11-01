@@ -278,6 +278,20 @@
           }
         },
         {
+          "name": "reload.go  reload_test.go",
+          "tree_name": "reload.go / reload_test.go",
+          "desc": {
+            "en": "reloads the configuration file, and its tests",
+            "es": "relee el fichero de configuración, y sus pruebas",
+            "de": "liest die Konfigurationsdatei neu, und ihre Tests",
+            "fr": "relit le fichier de configuration, et ses tests",
+            "it": "rilegge il file di configurazione e i suoi test",
+            "ja": "設定ファイルの再読み込みとそのテスト",
+            "zh": "重新读取配置文件及其测试",
+            "pt": "volta a ler o ficheiro de configuração, e os seus testes"
+          }
+        },
+        {
           "name": "go.mod  go.sum",
           "desc": {
             "en": "Go module and checksums",
