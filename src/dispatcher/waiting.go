@@ -15,6 +15,7 @@ const (
 	WaitRobotsBusy      = "matching_robots_busy"
 	WaitRobotsStale     = "matching_robots_not_heard_from_recently"
 	WaitForItsTurn      = "robot_available_waiting_for_dispatch"
+	WaitToolUnconfirmed = "robot_tool_not_confirmed_by_its_controller"
 )
 
 // WaitingJob is a pending job and the reason the next pass would, or would not, assign it.
@@ -54,7 +55,7 @@ func (e *Engine) waitReasonLocked(j *Job, now time.Time) string {
 	if len(e.robots) == 0 {
 		return WaitNoRobots
 	}
-	withTool, available := 0, 0
+	withTool, available, unconfirmed := 0, 0, 0
 	for _, r := range e.robots {
 		if j.RequiredTool != "" && r.Tool != j.RequiredTool {
 			continue
@@ -62,6 +63,9 @@ func (e *Engine) waitReasonLocked(j *Job, now time.Time) string {
 		withTool++
 		if r.Available {
 			available++
+			if !e.toolConfirmedLocked(r, j, now) {
+				unconfirmed++
+			}
 		}
 		if e.robotEligibleLocked(r, j, now) {
 			return WaitForItsTurn
@@ -72,6 +76,8 @@ func (e *Engine) waitReasonLocked(j *Job, now time.Time) string {
 		return WaitNoRobotWithTool
 	case available == 0:
 		return WaitRobotsBusy
+	case unconfirmed == available:
+		return WaitToolUnconfirmed
 	default:
 		return WaitRobotsStale
 	}

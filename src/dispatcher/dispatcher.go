@@ -214,6 +214,10 @@ type Engine struct {
 	stopReq map[string]*stopRequest
 	// productionSink receives the ProductionEvent of every job that ends; nil (the default) means the events are off (see production_event.go).
 	productionSink ProductionEventSink
+	// events announces what happens to the jobs (see events.go); nil (the default) means nothing is announced.
+	events *EventHub
+	// toolCheck confirms the tool a robot really carries before a job that needs one is given to it (see toolconfirm.go); the zero value is off.
+	toolCheck toolConfirmation
 	// now is the engine's own clock, injectable so a test can control it
 	// exactly (see DetectStaleAssignments) - real callers always get
 	// time.Now via the constructors below.
@@ -904,6 +908,7 @@ func (e *Engine) DispatchOnce() []Assignment {
 			}
 			continue
 		}
+		e.emitLocked(EventAssigned, j)
 		assignments = append(assignments, Assignment{JobID: j.ID, RobotID: robot.ID})
 	}
 	if persisted {
@@ -936,6 +941,9 @@ func (e *Engine) robotEligibleLocked(r *Robot, j *Job, now time.Time) bool {
 		return false
 	}
 	if j.RequiredTool != "" && r.Tool != j.RequiredTool {
+		return false
+	}
+	if !e.toolConfirmedLocked(r, j, now) {
 		return false
 	}
 	if e.robotFreshness > 0 && (r.LastHeartbeat.IsZero() || heartbeatFromFuture(now, r.LastHeartbeat) || now.Sub(r.LastHeartbeat) > e.robotFreshness) {
@@ -1051,6 +1059,11 @@ func (e *Engine) CompleteJobAttempt(jobID string, success bool, robotID string, 
 		j.Status = StatusFailed
 	}
 	sink, event = e.productionEventLocked(j)
+	if success {
+		e.emitLocked(EventDone, j)
+	} else {
+		e.emitLocked(EventFailed, j)
+	}
 	// finishing THIS job only ever ends the scheduler's own
 	// reservation on the robot - it must never be read as "the robot
 	// itself is healthy again". A heartbeat reporting Available=false
@@ -1250,6 +1263,7 @@ func (e *Engine) markUnknownLocked(ids []string) {
 	for _, id := range ids {
 		j := e.jobs[id]
 		j.Status = StatusUnknown
+		e.emitLocked(EventUnknown, j)
 		if err := e.persistJobLocked(j); err != nil {
 			persistErr = err
 		}

@@ -7,7 +7,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -19,6 +21,8 @@ type FileConfig struct {
 	Replan        *ReplanSection      `json:"replan,omitempty"`
 	ETAInterval   *IntervalSection    `json:"eta_interval,omitempty"`
 	Maintenance   *MaintenanceSection `json:"maintenance,omitempty"`
+	Events        *EventsSection      `json:"events,omitempty"`
+	ToolConfirm   *ToolConfirmSection `json:"tool_confirmation,omitempty"`
 }
 
 // MaintenanceSection is the "maintenance" section: proposals of maintenance orders raised by a sustained drift. They only propose; a
@@ -31,6 +35,38 @@ type MaintenanceSection struct {
 	MaxOpen         *int     `json:"max_open,omitempty"`
 	CooldownSeconds *float64 `json:"cooldown_seconds,omitempty"`
 	ExpireSeconds   *float64 `json:"expire_seconds,omitempty"`
+}
+
+// EventsSection is the "events" section: the stream of job events and the signed webhooks. Off unless enabled. A webhook secret is
+// never in the file: secret_env names the environment variable that holds it.
+type EventsSection struct {
+	Enabled          bool             `json:"enabled"`
+	SSE              bool             `json:"sse,omitempty"`
+	Buffer           *int             `json:"buffer,omitempty"`
+	AllowedHosts     []string         `json:"allowed_hosts,omitempty"`
+	TimeoutSeconds   *float64         `json:"timeout_seconds,omitempty"`
+	MaxAttempts      *int             `json:"max_attempts,omitempty"`
+	RetrySeconds     *float64         `json:"retry_seconds,omitempty"`
+	KeepAliveSeconds *float64         `json:"keepalive_seconds,omitempty"`
+	Webhooks         []WebhookSection `json:"webhooks,omitempty"`
+}
+
+// WebhookSection is one destination of the "events" section.
+type WebhookSection struct {
+	URL       string   `json:"url"`
+	SecretEnv string   `json:"secret_env"`
+	Types     []string `json:"types,omitempty"`
+}
+
+// ToolConfirmSection is the "tool_confirmation" section: ask the controller of the robot which tool it really carries before a job that
+// needs one is given to it. url_template contains "{robot}". token_env names the environment variable with the bearer token (optional).
+type ToolConfirmSection struct {
+	Enabled        bool     `json:"enabled"`
+	URLTemplate    string   `json:"url_template,omitempty"`
+	TokenEnv       string   `json:"token_env,omitempty"`
+	TTLSeconds     *float64 `json:"ttl_seconds,omitempty"`
+	TimeoutSeconds *float64 `json:"timeout_seconds,omitempty"`
+	OnUnconfirmed  string   `json:"on_unconfirmed,omitempty"`
 }
 
 // LocationSection is the "location_costs" section: the declared table of costs between locations.
@@ -112,6 +148,17 @@ func (c FileConfig) Validate() error {
 			}
 		}
 	}
+	if err := c.EventsSetting().Validate(); err != nil {
+		return fmt.Errorf("configuration: %w", err)
+	}
+	if err := c.ToolConfirmSetting().Validate(); err != nil {
+		return fmt.Errorf("configuration: %w", err)
+	}
+	if t := c.ToolConfirm; t != nil && t.Enabled {
+		if u, err := url.Parse(t.URLTemplate); err != nil || !strings.Contains(t.URLTemplate, "{robot}") || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil {
+			return fmt.Errorf("configuration: tool_confirmation.url_template must be an http(s) URL without credentials that contains {robot}")
+		}
+	}
 	if c.ETAInterval != nil && c.ETAInterval.Enabled && !c.IntervalSetting().Valid() {
 		return fmt.Errorf("configuration: eta_interval needs 0 <= low_percentile < high_percentile <= 100 and min_samples of at least 1")
 	}
@@ -167,6 +214,49 @@ func (c FileConfig) MaintenanceSetting() MaintenanceConfig {
 	}
 	if m.ExpireSeconds != nil {
 		cfg.ExpireAfter = time.Duration(*m.ExpireSeconds * float64(time.Second))
+	}
+	return cfg
+}
+
+func seconds(p *float64, def time.Duration) time.Duration {
+	if p == nil {
+		return def
+	}
+	return time.Duration(*p * float64(time.Second))
+}
+
+// EventsSetting is the setting of the "events" section (off when absent).
+func (c FileConfig) EventsSetting() EventsConfig {
+	if c.Events == nil || !c.Events.Enabled {
+		return EventsConfig{}
+	}
+	e := c.Events
+	cfg := DefaultEventsConfig()
+	cfg.Enabled, cfg.SSE, cfg.AllowedHosts = true, e.SSE, e.AllowedHosts
+	if e.Buffer != nil {
+		cfg.Buffer = *e.Buffer
+	}
+	if e.MaxAttempts != nil {
+		cfg.MaxAttempts = *e.MaxAttempts
+	}
+	cfg.Timeout = seconds(e.TimeoutSeconds, cfg.Timeout)
+	cfg.RetryDelay = seconds(e.RetrySeconds, cfg.RetryDelay)
+	cfg.KeepAlive = seconds(e.KeepAliveSeconds, cfg.KeepAlive)
+	for _, w := range e.Webhooks {
+		cfg.Webhooks = append(cfg.Webhooks, WebhookConfig{URL: w.URL, SecretEnv: w.SecretEnv, Types: w.Types})
+	}
+	return cfg
+}
+
+// ToolConfirmSetting is the setting of the "tool_confirmation" section (off when absent). The default policy is the conservative one.
+func (c FileConfig) ToolConfirmSetting() ToolConfirmConfig {
+	if c.ToolConfirm == nil || !c.ToolConfirm.Enabled {
+		return ToolConfirmConfig{}
+	}
+	t := c.ToolConfirm
+	cfg := ToolConfirmConfig{Enabled: true, TTL: seconds(t.TTLSeconds, 30*time.Second), OnUnconfirmed: t.OnUnconfirmed}
+	if cfg.OnUnconfirmed == "" {
+		cfg.OnUnconfirmed = UnconfirmedSkip
 	}
 	return cfg
 }

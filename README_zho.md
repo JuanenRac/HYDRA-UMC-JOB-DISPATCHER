@@ -18,7 +18,7 @@ GPL-3.0-or-later - see LICENSE
   <img src="https://img.shields.io/badge/License-GPL%203.0--or--later-blue.svg" alt="GPL 3.0 or later">
   <img src="https://img.shields.io/badge/Go-1.21%2B-00ADD8.svg" alt="Go">
   <img src="https://img.shields.io/badge/Architecture-Event--Driven-blue.svg" alt="Architecture">
-  <img src="https://img.shields.io/badge/Tests-248%20passing-2ea44f.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/Tests-285%20passing-2ea44f.svg" alt="Tests">
   <img src="https://img.shields.io/badge/Version-0.2.8-0f6cbd.svg" alt="Version">
   <img src="https://img.shields.io/badge/Maturity-functional-0F6CBD.svg" alt="Maturity">
 </p>
@@ -35,7 +35,7 @@ GPL-3.0-or-later - see LICENSE
 |---|---|
 | 版本 | `0.2.8` |
 | 成熟度 | 可用 |
-| 测试 | 248 (`go test ./...`) |
+| 测试 | 285 (`go test ./...`) |
 | 技术栈 | Go / priority queue / HTTP API / SQLite (modernc.org/sqlite, pure Go) |
 | 目标 | HYDRA-UMC 工作单元的 Raspberry Pi CM5 |
 | 真实硬件 | 尚未：此版本没有在真实硬件上运行的记录 |
@@ -51,7 +51,7 @@ GPL-3.0-or-later - see LICENSE
 | 领域 | 状态 | 在这里的含义 |
 |---|---|---|
 | 软件 | 🟡 | 主要用途可用；上面的诚实性检查列出了仍然缺少的内容 |
-| 测试 | 🟢 | 248 项自动测试，每次变更都会运行 |
+| 测试 | 🟢 | 285 项自动测试，每次变更都会运行 |
 | 真实硬件 | 🔴 | 尚未：此版本没有在真实硬件上运行的记录 |
 | 接口与协议 | 🟡 | 提供的路由或消息已有文档，并用客户端测试过；尚未被所有客户端使用 |
 | 集成 | 🟠 | 在 CM5 测试台上与其他服务一起运行，其消息遵循 SDK 的共享契约 |
@@ -123,6 +123,8 @@ flowchart LR
 * ⏱️ **每个作业的预计时间(默认关闭):** 加上 `-eta` 后,`GET /dispatch/eta` 会根据同一工具最近已完成作业的耗时(尚无记录时使用可配置的默认值),估算每个未完成作业何时开始和结束、由哪台机器人执行,以及队列何时清空。无法估算的作业会说明原因。不加 `-eta` 时该路由不存在,其他一切不变;它是只读的,并用注入的时钟进行测试。
 * 🧾 **每个结束的作业都会生成一个生产事件(默认关闭):** 加上 `-production-events` 和目标(`-production-events-file` 每个事件一行 JSON,`-production-events-url` 发送 JSON `POST`)后,每次收到作业结束的报告都会交出一个 HYDRA-UMC-SDK 共享合约的 `ProductionEvent`(机器人、结束时间、是否合格、周期时间、作业),生产报告会据此计算 OEE。事件先按合约检查;合约无法描述的周期会被跳过并记录,绝不捏造,目标出错也不会使结束操作失败。不加开关则一切不变;用注入的时钟进行测试。
 * 🧭 **最近的机器人、重新规划与区间(默认全部关闭):** 配置文件(`-config`)保存调好的数值,每个部分除非另行说明否则关闭:`location_costs` 把指明位置的作业交给到该位置声明成本最低的机器人,`replan`(`POST /jobs/replan`,对静默或故障的机器人也会自动进行)按顺序把故障机器人的作业放回队列,不重复也不丢失,`eta_interval` 在每个估计旁加上从低到高的区间(同一工具最近时长的四分位数),或说明为何无法给出。没有该文件时一切照旧;已用注入时钟和固定种子的随机场景测试。
+* 📣 **作业事件：事件流与带签名的 Webhook（默认关闭）：** 在配置文件的 `events` 段开启后，`GET /events` 以服务器发送事件的形式推送 `assigned`、`done`、`failed` 和 `unknown`（带 `Last-Event-ID` 重连的客户端可在缓冲区仍保留时补回遗漏的事件），每个 Webhook 收到同样的事件，以 HMAC-SHA256 签名的 `POST`（`X-Hydra-Signature`；密钥从环境变量读取，绝不写在文件里）发送，只发往 `allowed_hosts` 中列出的主机，不跟随重定向，重试次数有上限。发布事件从不等待接收方。
+* 🔎 **工具的物理确认（默认关闭）：** 开启 `tool_confirmation` 段后，每次 `POST /dispatch` 先向每个空闲机器人的控制器（文件中带 `{robot}` 的 URL，通常是机器人的服务器）询问它实际装的是哪种工具，需要工具的作业只交给回答一致的机器人。回答在 `ttl_seconds` 后失效；不回答的机器人被跳过（`on_unconfirmed`：默认 `skip`，`allow` 则信任申报的工具），`GET /dispatch/waiting` 会显示 `robot_tool_not_confirmed_by_its_controller`。
 
 ## 🔒 安全与防护
 
@@ -175,7 +177,7 @@ curl http://127.0.0.1:8090/health
 
 ## 🧪 测试
 
-运行 `go test ./...` 会执行 248 个 Go 测试；它们位于代码旁（`src/api`、`src/dispatcher`、`src/sqlitestore` 和 `main_test.go`），包括在 SQLite 文件上杀掉并重启进程的测试；不需要硬件和外部网络。
+运行 `go test ./...` 会执行 285 个 Go 测试；它们位于代码旁（`src/api`、`src/dispatcher`、`src/sqlitestore` 和 `main_test.go`），包括在 SQLite 文件上杀掉并重启进程的测试；不需要硬件和外部网络。
 
 CI 运行 `HYDRA_UMC_CI=1 python tools/ci_validate.py`，检查清单、文档、八个 README 和图片。
 

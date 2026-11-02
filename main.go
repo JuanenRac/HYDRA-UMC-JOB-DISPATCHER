@@ -162,6 +162,7 @@ func main() {
 	fmt.Println("Priority-based mission queue: routes jobs to the best-available robot in the fleet based on location, tool and current load.")
 
 	var engine *dispatcher.Engine
+	var eventsHub *dispatcher.EventHub
 	if *dbPath == "" {
 		fmt.Println("[job-dispatcher] -db not set: purely in-memory, the mission queue does NOT survive a restart")
 		engine = dispatcher.NewEngine()
@@ -208,7 +209,31 @@ func main() {
 	if fileConfig.MaintenanceSetting().Enabled {
 		fmt.Println("[job-dispatcher] maintenance proposals are on: a drift can only PROPOSE an order; a person approves or rejects it (POST /maintenance/proposals/approve)")
 	}
+	if events := fileConfig.EventsSetting(); events.Enabled {
+		hub, err := dispatcher.NewEventHub(events)
+		if err != nil {
+			log.Fatalf("[job-dispatcher] refusing to start: %v", err)
+		}
+		engine.SetEvents(hub)
+		eventsHub = hub
+		fmt.Printf("[job-dispatcher] job events are on: stream %v, %d signed webhook(s) (a change of this section needs a restart)\n", events.SSE, len(events.Webhooks))
+	}
+	if tc := fileConfig.ToolConfirmSetting(); tc.Enabled {
+		token := ""
+		if env := fileConfig.ToolConfirm.TokenEnv; env != "" {
+			token = os.Getenv(env)
+		}
+		timeout := 5 * time.Second
+		if fileConfig.ToolConfirm.TimeoutSeconds != nil {
+			timeout = time.Duration(*fileConfig.ToolConfirm.TimeoutSeconds * float64(time.Second))
+		}
+		if err := engine.SetToolConfirmation(tc, dispatcher.HTTPToolFetcher(fileConfig.ToolConfirm.URLTemplate, token, timeout)); err != nil {
+			log.Fatalf("[job-dispatcher] refusing to start: %v", err)
+		}
+		fmt.Printf("[job-dispatcher] tool confirmation is on: a job that needs a tool only goes to a robot whose controller confirms it (unconfirmed: %s)\n", tc.OnUnconfirmed)
+	}
 	server := api.New(engine)
+	server.SetEvents(eventsHub)
 	server.SetMaintenance(board)
 	server.SetMaxBodyBytes(*maxBody)
 	if *configPath != "" {

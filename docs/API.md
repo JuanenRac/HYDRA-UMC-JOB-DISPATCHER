@@ -343,7 +343,7 @@ Read-only: the `"pending"` jobs in dispatch order, each with the reason it has n
 [{"jobId": "weld-43", "priority": 5, "requiredTool": "Laser", "reason": "matching_robots_busy"}]
 ```
 
-`reason` is one of `no_robots_registered`, `no_robot_with_required_tool` (no robot has that tool attached), `matching_robots_busy`, `matching_robots_not_heard_from_recently` (they are free but their heartbeat is older than the freshness window) or `robot_available_waiting_for_dispatch` (a robot is free; the next `POST /dispatch` takes it). Requires the token when one is set.
+`reason` is one of `no_robots_registered`, `no_robot_with_required_tool` (no robot has that tool attached), `matching_robots_busy`, `matching_robots_not_heard_from_recently` (they are free but their heartbeat is older than the freshness window) or `robot_available_waiting_for_dispatch` (a robot is free; the next `POST /dispatch` takes it) or `robot_tool_not_confirmed_by_its_controller` (a robot with the tool is free but its controller has not confirmed the tool, see the `tool_confirmation` section). Requires the token when one is set.
 
 ---
 
@@ -467,9 +467,35 @@ Off unless the configuration file turns the `maintenance` section on: until then
 
 The same bearer token protects the four routes; telling the proposer from the approver by role is the job of the layer in front (the SERVER relay), not of this service.
 
+## `GET /events` and the webhooks
+
+Off unless the configuration file turns the `events` section on (`"enabled": true`, plus `"sse": true` for this route): until then `GET /events` answers the same `404` as any unknown path and nothing is published. The events tell a listener what happened to a job so that it does not have to poll: `assigned` (a dispatch pass gave the job to a robot), `done`, `failed` (the robot reported the end) and `unknown` (the robot went silent while it held the job). Publishing an event only appends it to a bounded buffer in memory; it never waits for a receiver and never changes what the dispatcher does.
+
+- `GET /events[?types=done,failed][&since=N]` is a stream of server-sent events (`text/event-stream`). Every event is `id: N`, `event: <type>` and `data: {"id":N,"type":"done","jobId":"...","robotId":"...","attempt":1,"atMs":1700000000000}`; the ids go up by one. A client that reconnects with the header `Last-Event-ID: N` (or `?since=N`) receives first what it missed, as far as the buffer (`buffer`, default 256) still holds it, and then follows. A comment line `: keepalive` is sent every `keepalive_seconds` (default 15). A reader that falls behind is dropped and must reconnect. `types` narrows the stream to the listed types; an unknown type is a `400`. The route needs the token when one is set.
+- **Webhooks** (`webhooks` in the same section) receive the same events, each as a `POST` with a JSON body and the headers `X-Hydra-Event`, `X-Hydra-Event-Id`, `X-Hydra-Timestamp` (Unix seconds) and `X-Hydra-Signature: sha256=<hex>`, the HMAC-SHA256 of `"<timestamp>.<body>"` with the secret of the destination. A receiver recomputes it, compares in constant time and refuses an old timestamp. The secret is never in the file: `secret_env` names the environment variable that holds it, and the process refuses to start when it is empty. A destination is accepted only when its host (with its port, when it names one) is listed in `allowed_hosts`; it must be `https`, except for this machine (`localhost`, `127.0.0.1`, `::1`); it cannot carry a user name or a password; redirects are never followed. A delivery that does not get a `2xx` is retried up to `max_attempts` times (default 3, `retry_seconds` apart, growing) and then given up with a line in the log. `types` limits a destination to some event types. A change of the `events` section needs a restart.
+
+```json
+{
+  "events": {
+    "enabled": true, "sse": true, "buffer": 256, "keepalive_seconds": 15,
+    "allowed_hosts": ["orchestrator.local:8114"],
+    "timeout_seconds": 5, "max_attempts": 3, "retry_seconds": 1,
+    "webhooks": [{"url": "https://orchestrator.local:8114/events/job-dispatcher", "secret_env": "JOB_DISPATCHER_HOOK_SECRET", "types": ["assigned", "done", "failed", "unknown"]}]
+  }
+}
+```
+
+## Physical confirmation of the tool
+
+Off unless the configuration file turns the `tool_confirmation` section on. A robot declares the tool it carries in its heartbeat, but the controller of the robot reads the identifier of the tool head from the bus. With the section on, every `POST /dispatch` first asks the controller of each free robot which tool it really carries (`GET` on `url_template`, with `{robot}` replaced by the escaped robot id; the answer is JSON with `tool_id`, or `tool`; the bearer token comes from the environment variable named by `token_env`) and a job that needs a tool only goes to a robot whose confirmed tool is that one. The questions are asked without holding the queue. An answer is valid for `ttl_seconds` (default 30). A robot that does not answer, or whose answer is older than that, is handled by `on_unconfirmed`: `skip` (the default and the conservative choice) does not offer it the job, `allow` trusts the declared tool. A job that needs no tool is never held up. The contract of the route of the server that answers is described in the documentation of that project.
+
+```json
+{"tool_confirmation": {"enabled": true, "url_template": "http://127.0.0.1:18080/api/robots/{robot}/tool", "token_env": "JOB_DISPATCHER_SERVER_TOKEN", "ttl_seconds": 30, "timeout_seconds": 5, "on_unconfirmed": "skip"}}
+```
+
 ## Configuration file
 
-The tuned values of four optional behaviours live in a JSON file given with `-config` (or `JOB_DISPATCHER_CONFIG`), never in the code. The file is read when the service starts and again on `POST /admin/reload-config`. Every section is optional and every switch is off unless the file turns it on, so no file, an empty file or `{}` change nothing. A misspelt key, a negative cost or percentiles that make no range stop the start with a clear message.
+The tuned values of six optional behaviours live in a JSON file given with `-config` (or `JOB_DISPATCHER_CONFIG`), never in the code. The file is read when the service starts and again on `POST /admin/reload-config`. Every section is optional and every switch is off unless the file turns it on, so no file, an empty file or `{}` change nothing. A misspelt key, a negative cost or percentiles that make no range stop the start with a clear message.
 
 ```json
 {
@@ -486,6 +512,8 @@ The tuned values of four optional behaviours live in a JSON file given with `-co
 - **`location_costs`:** a job that names a `location` goes to the eligible robot (available, tool attached, heard from recently) whose location has the lowest declared cost to it, instead of only preferring the robots in exactly that location. `costs[from][to]` is any non-negative number (a distance, a travel time); the table is read both ways and a location is at cost 0 from itself. A pair that is not declared has an unknown cost and ranks after every known one; ties go to the lower load, then the lower ID. A job without a location, and a configuration without this section, behave as before. The location stays a preference, never a requirement. The estimate follows the same rule among the robots free at the same moment.
 - **`replan`:** see `POST /jobs/replan`. `on_stale` and `on_fault` are `true` when the section is enabled unless the file says `false`. `stop_ack_timeout_seconds` (greater than 0, at most 86400; default 30) and `allow_unconfirmed` (default `false`) govern the confirmed stop of a silent robot that declared it can confirm one: see `GET /jobs/stop-requests` and `POST /jobs/stop-ack`.
 - **`eta_interval`:** the ranges of `GET /dispatch/eta`; the process refuses to start with it enabled and without `-eta`.
+- **`events`:** the stream of job events and the signed webhooks, see `GET /events` and the webhooks. Off unless `enabled` is `true`; secrets only by environment variable; read at start (a change needs a restart).
+- **`tool_confirmation`:** the physical confirmation of the tool, see above. Off unless `enabled` is `true`; read at start.
 - **`maintenance`:** the proposals of maintenance orders (see `POST /maintenance/proposals`), off unless `enabled` is `true`. `priority` (0 to 1000, default 1), `required_tool` and `location` are those of the job an approval submits; `max_open` (1 to 10000, default 100), `cooldown_seconds` (default 86400) and `expire_seconds` (default 604800, 0 = never) bound the list. It can be reloaded while the service runs.
 
 ---

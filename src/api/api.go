@@ -44,6 +44,8 @@ type Server struct {
 	reloader ConfigReloader
 	// maintenance holds the maintenance proposals; nil or switched off leaves their routes unknown (404).
 	maintenance *dispatcher.MaintenanceBoard
+	// events is the hub of job events; nil or without the stream leaves GET /events unknown (404).
+	events *dispatcher.EventHub
 	// version is published by GET /metrics; metrics holds the counters and metricsHandler wraps the routes with them.
 	version        string
 	metrics        *ServiceMetrics
@@ -91,6 +93,7 @@ func New(engine *dispatcher.Engine) *Server {
 	s.mux.HandleFunc("/maintenance/proposals", s.handleMaintenanceProposals)
 	s.mux.HandleFunc("/maintenance/proposals/approve", s.handleMaintenanceDecision)
 	s.mux.HandleFunc("/maintenance/proposals/reject", s.handleMaintenanceDecision)
+	s.mux.HandleFunc("/events", s.handleEvents)
 	s.mux.HandleFunc("/health", s.handleHealth)
 	s.metrics = NewServiceMetrics("hydra-umc-job-dispatcher")
 	s.metricsHandler = s.metrics.Middleware(http.HandlerFunc(s.serveRoutes),
@@ -504,6 +507,7 @@ func (s *Server) handleDispatch(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, errors.New("use POST"))
 		return
 	}
+	s.engine.ConfirmTools() // asks the controllers which tool each robot carries; nothing when the confirmation is off
 	assignments := s.engine.DispatchOnce()
 	if assignments == nil {
 		assignments = []dispatcher.Assignment{}

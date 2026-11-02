@@ -18,7 +18,7 @@ GPL-3.0-or-later - see LICENSE
   <img src="https://img.shields.io/badge/License-GPL%203.0--or--later-blue.svg" alt="GPL 3.0 or later">
   <img src="https://img.shields.io/badge/Go-1.21%2B-00ADD8.svg" alt="Go">
   <img src="https://img.shields.io/badge/Architecture-Event--Driven-blue.svg" alt="Architecture">
-  <img src="https://img.shields.io/badge/Tests-248%20passing-2ea44f.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/Tests-285%20passing-2ea44f.svg" alt="Tests">
   <img src="https://img.shields.io/badge/Version-0.2.8-0f6cbd.svg" alt="Version">
   <img src="https://img.shields.io/badge/Maturity-functional-0F6CBD.svg" alt="Maturity">
 </p>
@@ -35,7 +35,7 @@ GPL-3.0-or-later - see LICENSE
 |---|---|
 | Version | `0.2.8` |
 | Reifegrad | Funktionsfähig |
-| Tests | 248 (`go test ./...`) |
+| Tests | 285 (`go test ./...`) |
 | Technik | Go / priority queue / HTTP API / SQLite (modernc.org/sqlite, pure Go) |
 | Ziel | Der Raspberry Pi CM5 einer HYDRA-UMC-Zelle |
 | Auf echter Hardware | Noch nicht: für diese Version ist kein Lauf auf echter Hardware vermerkt |
@@ -51,7 +51,7 @@ Jede Zeile ist ein Teil dieses Repositorys, und die Ampel sagt, wie weit er heut
 | Bereich | Stand | Was das hier bedeutet |
 |---|---|---|
 | Software | 🟡 | Funktioniert für seinen Hauptzweck; die Ehrlichkeitsprüfung oben nennt, was noch fehlt |
-| Tests | 🟢 | 248 automatische Tests, bei jeder Änderung ausgeführt |
+| Tests | 🟢 | 285 automatische Tests, bei jeder Änderung ausgeführt |
 | Echte Hardware | 🔴 | Noch nicht: für diese Version ist kein Lauf auf echter Hardware vermerkt |
 | Schnittstelle und Protokolle | 🟡 | Die angebotenen Routen oder Nachrichten sind dokumentiert und mit einem Client getestet; noch nicht jeder Client hat sie benutzt |
 | Integration | 🟠 | Es läuft zusammen mit den anderen Diensten auf dem CM5-Prüfstand, und seine Nachrichten folgen den gemeinsamen Verträgen des SDK |
@@ -120,6 +120,8 @@ flowchart LR
 * ⏱️ **Geschätzte Zeit jedes Auftrags (standardmäßig aus):** mit `-eta` schätzt `GET /dispatch/eta`, wann jeder unfertige Auftrag beginnt und endet, auf welchem Roboter und wann die Warteschlange leer ist, anhand der Dauer der letzten abgeschlossenen Aufträge desselben Werkzeugs (bis es welche gibt, ein einstellbarer Standardwert). Ein Auftrag, der sich nicht schätzen lässt, nennt den Grund. Ohne `-eta` gibt es die Route nicht und sonst ändert sich nichts; sie ist schreibgeschützt und wird mit einer eingespeisten Uhr getestet.
 * 🧾 **Ein Produktionsereignis für jeden beendeten Auftrag (standardmäßig aus):** mit `-production-events` und einem Ziel (`-production-events-file` für eine JSON-Zeile je Ereignis, `-production-events-url` für einen JSON-`POST`) übergibt jede Meldung, dass ein Auftrag beendet ist, ein `ProductionEvent` des gemeinsamen Vertrags von HYDRA-UMC-SDK (Roboter, Endzeit, gut oder nicht, Zykluszeit, Auftrag), das die Produktionsberichte in OEE umrechnen. Das Ereignis wird zuvor gegen den Vertrag geprüft; ein Zyklus, den er nicht beschreiben kann, wird übersprungen und protokolliert, nie erfunden, und ein ausfallendes Ziel lässt den Abschluss nie scheitern. Ohne den Schalter ändert sich nichts; mit eingespeister Uhr getestet.
 * 🧭 **Nächster Roboter, Neuplanung und Bereiche (alles standardmäßig aus):** eine Konfigurationsdatei (`-config`) enthält die abgestimmten Werte, und jeder Abschnitt ist aus, solange er nichts anderes sagt: `location_costs` schickt einen Auftrag mit Ortsangabe an den Roboter mit den niedrigsten deklarierten Kosten dorthin, `replan` (`POST /jobs/replan`, oder von selbst bei einem verstummten oder gestörten Roboter) stellt die Aufträge eines ausgefallenen Roboters der Reihe nach wieder in die Warteschlange, ohne einen zu doppeln oder zu verlieren, und `eta_interval` fügt jeder Schätzung einen Bereich von niedrig bis hoch (Quartile der jüngsten Dauern desselben Werkzeugs) hinzu oder nennt den Grund, warum das nicht geht. Ohne die Datei ändert sich nichts; getestet mit eingespeister Uhr und Zufallsszenarien mit festem Startwert.
+* 📣 **Auftragsereignisse: ein Strom und signierte Webhooks (standardmäßig aus):** Mit dem Abschnitt `events` der Konfigurationsdatei liefert `GET /events` `assigned`, `done`, `failed` und `unknown` als Server-Sent Events (ein Client, der sich mit `Last-Event-ID` neu verbindet, erhält das Verpasste, solange der Puffer es noch hält), und jeder Webhook bekommt dieselben Ereignisse als `POST`, signiert mit HMAC-SHA256 (`X-Hydra-Signature`; das Geheimnis wird aus einer Umgebungsvariable gelesen, nie aus der Datei), nur an einen in `allowed_hosts` aufgeführten Host, ohne Weiterleitungen zu folgen und mit begrenzter Wiederholungszahl. Das Veröffentlichen eines Ereignisses wartet nie auf einen Empfänger.
+* 🔎 **Physische Bestätigung des Werkzeugs (standardmäßig aus):** Mit dem Abschnitt `tool_confirmation` fragt jeder Durchlauf von `POST /dispatch` zuerst die Steuerung jedes freien Roboters (eine URL mit `{robot}` in der Datei, normalerweise der Server des Roboters), welches Werkzeug er wirklich trägt, und ein Auftrag, der ein Werkzeug braucht, geht nur an einen Roboter, dessen Antwort passt. Eine Antwort verfällt nach `ttl_seconds`; ein Roboter, der nicht antwortet, wird übersprungen (`on_unconfirmed`: standardmäßig `skip`, `allow` vertraut dem angegebenen Werkzeug), und `GET /dispatch/waiting` meldet `robot_tool_not_confirmed_by_its_controller`.
 
 ## 🔒 Sicherheit und Schutz
 
@@ -172,7 +174,7 @@ curl http://127.0.0.1:8090/health
 
 ## 🧪 Tests
 
-248 Go-Tests laufen mit `go test ./...`; sie liegen neben dem Code (`src/api`, `src/dispatcher`, `src/sqlitestore` und `main_test.go`) und enthalten einen Prozess, der über einer SQLite-Datei beendet und neu gestartet wird. Keine Hardware, kein äußeres Netz.
+285 Go-Tests laufen mit `go test ./...`; sie liegen neben dem Code (`src/api`, `src/dispatcher`, `src/sqlitestore` und `main_test.go`) und enthalten einen Prozess, der über einer SQLite-Datei beendet und neu gestartet wird. Keine Hardware, kein äußeres Netz.
 
 Die CI führt `HYDRA_UMC_CI=1 python tools/ci_validate.py` aus; das prüft das Manifest, die Dokumente, die acht READMEs und die Bilder.
 

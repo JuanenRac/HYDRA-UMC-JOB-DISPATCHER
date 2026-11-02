@@ -18,7 +18,7 @@ GPL-3.0-or-later - see LICENSE
   <img src="https://img.shields.io/badge/License-GPL%203.0--or--later-blue.svg" alt="GPL 3.0 or later">
   <img src="https://img.shields.io/badge/Go-1.21%2B-00ADD8.svg" alt="Go">
   <img src="https://img.shields.io/badge/Architecture-Event--Driven-blue.svg" alt="Architecture">
-  <img src="https://img.shields.io/badge/Tests-248%20passing-2ea44f.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/Tests-285%20passing-2ea44f.svg" alt="Tests">
   <img src="https://img.shields.io/badge/Version-0.2.8-0f6cbd.svg" alt="Version">
   <img src="https://img.shields.io/badge/Maturity-functional-0F6CBD.svg" alt="Maturity">
 </p>
@@ -35,7 +35,7 @@ GPL-3.0-or-later - see LICENSE
 |---|---|
 | Version | `0.2.8` |
 | Maturity | Functional |
-| Tests | 248 (`go test ./...`) |
+| Tests | 285 (`go test ./...`) |
 | Stack | Go / priority queue / HTTP API / SQLite (modernc.org/sqlite, pure Go) |
 | Target | The Raspberry Pi CM5 of a HYDRA-UMC cell |
 | On real hardware | Not yet: no run on real hardware is recorded for this version |
@@ -51,7 +51,7 @@ Each line is one part of this repository and the light says how far it is today.
 | Area | State | What it means here |
 |---|---|---|
 | Software | 🟡 | Works for its main purpose; the honesty check above lists what is still missing |
-| Tests | 🟢 | 248 automated tests, run on every change |
+| Tests | 🟢 | 285 automated tests, run on every change |
 | Real hardware | 🔴 | Not yet: no run on real hardware is recorded for this version |
 | Interface and protocols | 🟡 | The routes or messages it offers are documented and tested with a client; not every client has used them yet |
 | Integration | 🟠 | It runs together with the other services on the CM5 test bench and its messages follow the shared contracts of the SDK |
@@ -120,6 +120,8 @@ flowchart LR
 * ⏱️ **Estimated time of each job (off by default):** with `-eta`, `GET /dispatch/eta` estimates when every unfinished job starts and ends, on which robot, and when the queue will be empty, from how long the recent finished jobs of the same tool took (a configurable default until there are some). A job that cannot be estimated says why. Without `-eta` the route does not exist and nothing else changes; it is read-only and tested with an injected clock.
 * 🧾 **A production event for every job that ends (off by default):** with `-production-events` and a destination (`-production-events-file` for one JSON line per event, `-production-events-url` for a JSON `POST`), each report that a job ended hands over a `ProductionEvent` of the shared contract of HYDRA-UMC-SDK (robot, end time, good or not, cycle time, job), which the production reports turn into OEE. The event is checked against the contract first; a cycle it cannot describe is skipped and logged, never invented, and a sink that fails never fails the completion. Without the switch nothing changes; tested with an injected clock.
 * 🧭 **Closest robot, replanning and ranges (all off by default):** a configuration file (`-config`) holds the tuned values and each section is off unless it says so: `location_costs` sends a job that names a location to the robot with the lowest declared cost to it, `replan` (`POST /jobs/replan`, or by itself for a robot that went silent or faulted) sends the jobs of a failed robot back to the queue in order without duplicating or losing any, and `eta_interval` adds a low-to-high range (quartiles of the recent durations of the same tool) next to every estimate, or says why it cannot. Without the file nothing changes; tested with an injected clock and seeded random scenarios.
+* 📣 **Job events: a stream and signed webhooks (off by default):** with the `events` section of the configuration file, `GET /events` streams `assigned`, `done`, `failed` and `unknown` as server-sent events (a client that reconnects with `Last-Event-ID` gets what it missed while the buffer still holds it) and every webhook receives the same events as a `POST` signed with HMAC-SHA256 (`X-Hydra-Signature`; the secret is read from an environment variable, never from the file), only to a host listed in `allowed_hosts`, without following redirects and with a bounded number of retries. Publishing an event never waits for a receiver.
+* 🔎 **Physical confirmation of the tool (off by default):** with the `tool_confirmation` section, a pass of `POST /dispatch` first asks the controller of each free robot (a URL with `{robot}` in the file, normally the server of the robot) which tool it really carries, and a job that needs a tool only goes to a robot whose answer matches. An answer expires after `ttl_seconds`; a robot that does not answer is skipped (`on_unconfirmed`: `skip` by default, `allow` trusts the declared tool) and `GET /dispatch/waiting` says `robot_tool_not_confirmed_by_its_controller`.
 
 ## 🔒 Security & Safety
 
@@ -172,7 +174,7 @@ curl http://127.0.0.1:8090/health
 
 ## 🧪 Testing
 
-248 Go tests run with `go test ./...`; they sit next to the code (`src/api`, `src/dispatcher`, `src/sqlitestore` and `main_test.go`) and include a process that is killed and started again over a SQLite file. No hardware and no outside network.
+285 Go tests run with `go test ./...`; they sit next to the code (`src/api`, `src/dispatcher`, `src/sqlitestore` and `main_test.go`) and include a process that is killed and started again over a SQLite file. No hardware and no outside network.
 
 The CI runs `HYDRA_UMC_CI=1 python tools/ci_validate.py`, which checks the manifest, the documents, the eight READMEs and the pictures.
 

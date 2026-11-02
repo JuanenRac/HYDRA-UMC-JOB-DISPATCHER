@@ -435,6 +435,21 @@ paths:
                         - matching_robots_busy
                         - matching_robots_not_heard_from_recently
                         - robot_available_waiting_for_dispatch
+                        - robot_tool_not_confirmed_by_its_controller
+  /events:
+    get:
+      summary: Stream of job events as server-sent events (only when the events section of the configuration file is enabled with sse; otherwise 404). Reconnect with Last-Event-ID to receive what was missed
+      parameters:
+        - { name: types, in: query, required: false, description: "Comma-separated event types (assigned, done, failed, unknown)", schema: { type: string } }
+        - { name: since, in: query, required: false, description: "Only events with an id greater than this", schema: { type: integer, format: int64 } }
+      responses:
+        "200":
+          description: A text/event-stream; each event has id, event and a JSON data line {id, type, jobId, robotId, attempt, atMs}.
+          content:
+            text/event-stream:
+              schema: { type: string }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
   /dispatch/eta:
     get:
       summary: Estimated start and end of every unfinished job and of the queue (only when started with -eta; otherwise 404)
