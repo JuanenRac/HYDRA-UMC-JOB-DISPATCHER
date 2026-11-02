@@ -126,6 +126,7 @@ flowchart LR
 * 🧭 **最も近いロボット、再計画、範囲(すべて既定ではオフ):** 設定ファイル(`-config`)に調整済みの値を置き、各セクションは指定しない限りオフです。`location_costs` は場所を指定したジョブを、その場所までの宣言済みコストが最も低いロボットへ送り、`replan`(`POST /jobs/replan`、または応答しなくなった/故障したロボットでは自動)は故障したロボットのジョブを重複も欠落もなく順番どおりキューへ戻し、`eta_interval` は各見積もりに低〜高の範囲(同じツールの直近の所要時間の四分位)を添えるか、できない理由を示します。ファイルがなければ何も変わりません。注入した時計と固定シードの乱数シナリオでテスト済み。
 * 📣 **ジョブのイベント：ストリームと署名付き Webhook（既定はオフ）：** 設定ファイルの `events` セクションで、`GET /events` が `assigned`、`done`、`failed`、`unknown` をサーバー送信イベントとして流します（`Last-Event-ID` 付きで再接続したクライアントは、バッファに残っている範囲で取りこぼしを受け取ります）。各 Webhook には同じイベントが HMAC-SHA256 で署名された `POST`（`X-Hydra-Signature`。シークレットは環境変数から読み、ファイルには書きません）として届き、送り先は `allowed_hosts` に載ったホストだけで、リダイレクトには従わず、再試行回数にも上限があります。イベントの発行が受信側を待つことはありません。
 * 🔎 **ツールの物理的な確認（既定はオフ）：** `tool_confirmation` セクションを有効にすると、`POST /dispatch` の各パスはまず空いている各ロボットのコントローラー（ファイル内の `{robot}` を含む URL。通常はロボットのサーバー）に実際に搭載しているツールを問い合わせ、ツールを要するジョブは回答が一致するロボットにだけ渡されます。回答は `ttl_seconds` で失効し、答えないロボットは飛ばされ（`on_unconfirmed`：既定は `skip`、`allow` は申告されたツールを信用）、`GET /dispatch/waiting` は `robot_tool_not_confirmed_by_its_controller` と示します。
+* 🩺 **gRPC のヘルスサービス（既定ではオフ）：** 設定ファイルの `health_grpc` セクションを有効にすると、共有 `HealthService` の `Check()` とストリーミングの `Watch()` がループバックで応答します（別のアドレスにはベアラートークンが必要）。キューが応答しストアが書き込みを受け付ける間は OK、ストアがエラーを報告したときは劣化、キューが応答しないときは異常です。接続と開いているストリームには上限があり、各ストリームはクライアントとともに終わります。本物の gRPC クライアントで本物のサーバーに対してテスト済みで、実際のウォッチドッグ、ロボット、セルに対しては一度も試していません。[`docs/HEALTH_GRPC.md`](docs/HEALTH_GRPC.md) を参照。
 
 ## 🔒 セキュリティと安全
 
@@ -252,7 +253,9 @@ HYDRA-UMC-JOB-DISPATCHER/
 ├── src/
 │   ├── dispatcher/                              キュー、ツール別の振り分け、段階、復旧
 │   ├── api/                                     HTTP の窓口、トークン、制限
-│   └── sqlitestore/                             任意の永続キュー（純 Go の SQLite）
+│   ├── sqlitestore/                             任意の永続キュー（純 Go の SQLite）
+│   ├── healthgrpc/                              gRPC のヘルスサービス（既定ではオフ）
+│   └── healthpb/                                共有ヘルス契約のバインディング
 ├── docs/                                        API リファレンスと OpenAPI ファイル
 ├── systemd/                                     CM5 用のサービスユニット
 ├── tools/                                       ビルド・テスト実行、バージョン引き上げ、CI 検証、README と図の生成・検査
@@ -267,6 +270,7 @@ HYDRA-UMC-JOB-DISPATCHER/
 ├── main_test.go                                 エントリーのテスト
 ├── server_limits.go / server_limits_test.go     HTTP サーバーの時間・サイズ制限とそのテスト
 ├── reload.go / reload_test.go                   設定ファイルの再読み込みとそのテスト
+├── health_grpc.go / health_grpc_test.go         gRPC ヘルスサービスの設定とそのテスト
 ├── go.mod / go.sum                              Go モジュールとチェックサム
 ├── bump_version.py / bump_manifest_version.py   明示的なバージョン引き上げ
 ├── run.sh run.bat                               サービスを起動

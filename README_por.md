@@ -122,6 +122,7 @@ flowchart LR
 * 🧭 **Robô mais próximo, replaneamento e intervalos (tudo desligado por predefinição):** um ficheiro de configuração (`-config`) guarda os valores afinados e cada secção está desligada, a menos que diga o contrário: `location_costs` envia um trabalho que indica uma localização para o robô com o menor custo declarado até ela, `replan` (`POST /jobs/replan`, ou por si só para um robô que ficou mudo ou avariou) devolve à fila, por ordem, os trabalhos de um robô avariado sem duplicar nem perder nenhum, e `eta_interval` junta a cada estimativa um intervalo de baixo a alto (quartis das durações recentes da mesma ferramenta) ou diz porque não pode. Sem o ficheiro nada muda; testado com relógio injetado e cenários aleatórios com semente fixa.
 * 📣 **Eventos dos trabalhos: um fluxo e webhooks assinados (desligado por predefinição):** com a secção `events` do ficheiro de configuração, `GET /events` emite `assigned`, `done`, `failed` e `unknown` como eventos enviados pelo servidor (um cliente que se religa com `Last-Event-ID` recebe o que perdeu enquanto o buffer ainda o guardar) e cada webhook recebe os mesmos eventos num `POST` assinado com HMAC-SHA256 (`X-Hydra-Signature`; o segredo é lido de uma variável de ambiente, nunca do ficheiro), só para um anfitrião listado em `allowed_hosts`, sem seguir redirecionamentos e com um número limitado de tentativas. Publicar um evento nunca espera por um recetor.
 * 🔎 **Confirmação física da ferramenta (desligada por predefinição):** com a secção `tool_confirmation`, cada passagem de `POST /dispatch` pergunta primeiro ao controlador de cada robô livre (um URL com `{robot}` no ficheiro, normalmente o servidor do robô) que ferramenta leva realmente, e um trabalho que precisa de uma ferramenta só vai para um robô cuja resposta coincide. Uma resposta caduca após `ttl_seconds`; um robô que não responde é ignorado (`on_unconfirmed`: `skip` por predefinição, `allow` confia na ferramenta declarada) e `GET /dispatch/waiting` indica `robot_tool_not_confirmed_by_its_controller`.
+* 🩺 **Serviço de saúde por gRPC (desligado por omissão):** com a secção `health_grpc` do ficheiro de configuração, `Check()` e o `Watch()` em fluxo do `HealthService` partilhado respondem em loopback (outro endereço exige um token de portador): OK enquanto a fila responder e o armazém aceitar escritas, degradado quando o armazém indicou um erro, não saudável quando a fila não responde. As ligações e os fluxos abertos são limitados e cada fluxo termina com o seu cliente. Testado com um cliente gRPC real contra o servidor real; nunca contra um vigia real, um robô ou uma célula. Ver [`docs/HEALTH_GRPC.md`](docs/HEALTH_GRPC.md).
 
 ## 🔒 Segurança e proteção
 
@@ -246,7 +247,9 @@ HYDRA-UMC-JOB-DISPATCHER/
 ├── src/
 │   ├── dispatcher/                              a fila, o encaminhamento por ferramenta, etapas, recuperação
 │   ├── api/                                     a interface HTTP, token, limites
-│   └── sqlitestore/                             fila durável opcional (SQLite em Go puro)
+│   ├── sqlitestore/                             fila durável opcional (SQLite em Go puro)
+│   ├── healthgrpc/                              o serviço de saúde por gRPC (desligado por omissão)
+│   └── healthpb/                                ligações do contrato de saúde partilhado
 ├── docs/                                        a referência da API e o ficheiro OpenAPI
 ├── systemd/                                     unidade de serviço para o CM5
 ├── tools/                                       executor de compilação e testes, subida de versão, validador de CI, geradores e verificações de README e imagens
@@ -261,6 +264,7 @@ HYDRA-UMC-JOB-DISPATCHER/
 ├── main_test.go                                 testes do ponto de entrada
 ├── server_limits.go / server_limits_test.go     os limites de tempo e tamanho do servidor HTTP e os seus testes
 ├── reload.go / reload_test.go                   volta a ler o ficheiro de configuração, e os seus testes
+├── health_grpc.go / health_grpc_test.go         as definições do serviço de saúde gRPC e os seus testes
 ├── go.mod / go.sum                              módulo Go e somas
 ├── bump_version.py / bump_manifest_version.py   subida de versão explícita
 ├── run.sh run.bat                               arrancar o serviço

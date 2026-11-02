@@ -122,6 +122,7 @@ flowchart LR
 * 🧭 **Closest robot, replanning and ranges (all off by default):** a configuration file (`-config`) holds the tuned values and each section is off unless it says so: `location_costs` sends a job that names a location to the robot with the lowest declared cost to it, `replan` (`POST /jobs/replan`, or by itself for a robot that went silent or faulted) sends the jobs of a failed robot back to the queue in order without duplicating or losing any, and `eta_interval` adds a low-to-high range (quartiles of the recent durations of the same tool) next to every estimate, or says why it cannot. Without the file nothing changes; tested with an injected clock and seeded random scenarios.
 * 📣 **Job events: a stream and signed webhooks (off by default):** with the `events` section of the configuration file, `GET /events` streams `assigned`, `done`, `failed` and `unknown` as server-sent events (a client that reconnects with `Last-Event-ID` gets what it missed while the buffer still holds it) and every webhook receives the same events as a `POST` signed with HMAC-SHA256 (`X-Hydra-Signature`; the secret is read from an environment variable, never from the file), only to a host listed in `allowed_hosts`, without following redirects and with a bounded number of retries. Publishing an event never waits for a receiver.
 * 🔎 **Physical confirmation of the tool (off by default):** with the `tool_confirmation` section, a pass of `POST /dispatch` first asks the controller of each free robot (a URL with `{robot}` in the file, normally the server of the robot) which tool it really carries, and a job that needs a tool only goes to a robot whose answer matches. An answer expires after `ttl_seconds`; a robot that does not answer is skipped (`on_unconfirmed`: `skip` by default, `allow` trusts the declared tool) and `GET /dispatch/waiting` says `robot_tool_not_confirmed_by_its_controller`.
+* 🩺 **Health service over gRPC (off by default):** with the `health_grpc` section of the configuration file, `Check()` and the streaming `Watch()` of the shared `HealthService` answer on loopback (another address needs a bearer token): OK while the queue answers and the store accepts writes, degraded when the store reported an error, unhealthy when the queue does not answer. Connections and open streams are limited and every stream ends with its client. Tested with a real gRPC client against the real server; never against a live watchdog, a robot or a cell. See [`docs/HEALTH_GRPC.md`](docs/HEALTH_GRPC.md).
 
 ## 🔒 Security & Safety
 
@@ -247,7 +248,9 @@ HYDRA-UMC-JOB-DISPATCHER/
 ├── src/
 │   ├── dispatcher/                              the queue, routing by tool, stages, recovery
 │   ├── api/                                     the HTTP surface, token, limits
-│   └── sqlitestore/                             optional durable queue (pure Go SQLite)
+│   ├── sqlitestore/                             optional durable queue (pure Go SQLite)
+│   ├── healthgrpc/                              the health service over gRPC (off by default)
+│   └── healthpb/                                bindings of the shared health contract
 ├── docs/                                        the API reference and the OpenAPI file
 ├── systemd/                                     service unit for the CM5
 ├── tools/                                       build and test runner, version bump, CI validator, README and picture generators and checks
@@ -262,6 +265,7 @@ HYDRA-UMC-JOB-DISPATCHER/
 ├── main_test.go                                 tests of the entry point
 ├── server_limits.go / server_limits_test.go     the time and size limits of the HTTP server, and their tests
 ├── reload.go / reload_test.go                   reloads the configuration file, and its tests
+├── health_grpc.go / health_grpc_test.go         the settings of the gRPC health service, and their tests
 ├── go.mod / go.sum                              Go module and checksums
 ├── bump_version.py / bump_manifest_version.py   explicit version bump
 ├── run.sh run.bat                               start the service

@@ -495,7 +495,7 @@ Off unless the configuration file turns the `tool_confirmation` section on. A ro
 
 ## Configuration file
 
-The tuned values of six optional behaviours live in a JSON file given with `-config` (or `JOB_DISPATCHER_CONFIG`), never in the code. The file is read when the service starts and again on `POST /admin/reload-config`. Every section is optional and every switch is off unless the file turns it on, so no file, an empty file or `{}` change nothing. A misspelt key, a negative cost or percentiles that make no range stop the start with a clear message.
+The tuned values of seven optional behaviours live in a JSON file given with `-config` (or `JOB_DISPATCHER_CONFIG`), never in the code. The file is read when the service starts and again on `POST /admin/reload-config`. Every section is optional and every switch is off unless the file turns it on, so no file, an empty file or `{}` change nothing. A misspelt key, a negative cost or percentiles that make no range stop the start with a clear message.
 
 ```json
 {
@@ -514,6 +514,7 @@ The tuned values of six optional behaviours live in a JSON file given with `-con
 - **`eta_interval`:** the ranges of `GET /dispatch/eta`; the process refuses to start with it enabled and without `-eta`.
 - **`events`:** the stream of job events and the signed webhooks, see `GET /events` and the webhooks. Off unless `enabled` is `true`; secrets only by environment variable; read at start (a change needs a restart).
 - **`tool_confirmation`:** the physical confirmation of the tool, see above. Off unless `enabled` is `true`; read at start.
+- **`health_grpc`:** the health service of the shared contract over gRPC (`Check()` and `Watch()`), off unless `enabled` is `true`; loopback by default, a token on any other address; read at start. See [`HEALTH_GRPC.md`](HEALTH_GRPC.md).
 - **`maintenance`:** the proposals of maintenance orders (see `POST /maintenance/proposals`), off unless `enabled` is `true`. `priority` (0 to 1000, default 1), `required_tool` and `location` are those of the job an approval submits; `max_open` (1 to 10000, default 100), `cooldown_seconds` (default 86400) and `expire_seconds` (default 604800, 0 = never) bound the list. It can be reloaded while the service runs.
 
 ---

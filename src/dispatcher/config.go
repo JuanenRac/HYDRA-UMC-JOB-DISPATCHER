@@ -23,6 +23,40 @@ type FileConfig struct {
 	Maintenance   *MaintenanceSection `json:"maintenance,omitempty"`
 	Events        *EventsSection      `json:"events,omitempty"`
 	ToolConfirm   *ToolConfirmSection `json:"tool_confirmation,omitempty"`
+	HealthGRPC    *HealthGRPCSection  `json:"health_grpc,omitempty"`
+}
+
+// HealthGRPCSection is the "health_grpc" section: the health service of the shared contract over gRPC. Off unless enabled; it
+// listens on loopback unless listen says otherwise, and an address other than loopback needs a token. token_env names the
+// environment variable with the bearer token (when absent the token of the HTTP API is used). A change of this section needs a
+// restart.
+type HealthGRPCSection struct {
+	Enabled              bool     `json:"enabled"`
+	Listen               string   `json:"listen,omitempty"`
+	TokenEnv             string   `json:"token_env,omitempty"`
+	MaxConnections       *int     `json:"max_connections,omitempty"`
+	MaxWatchers          *int     `json:"max_watchers,omitempty"`
+	WatchIntervalSeconds *float64 `json:"watch_interval_seconds,omitempty"`
+	KeepaliveSeconds     *float64 `json:"keepalive_seconds,omitempty"`
+}
+
+// Validate refuses values outside the ranges the service can work with.
+func (h *HealthGRPCSection) Validate() error {
+	if h == nil || !h.Enabled {
+		return nil
+	}
+	for name, v := range map[string]*int{"max_connections": h.MaxConnections, "max_watchers": h.MaxWatchers} {
+		if v != nil && (*v < 1 || *v > 1024) {
+			return fmt.Errorf("health_grpc.%s must be between 1 and 1024", name)
+		}
+	}
+	if v := h.WatchIntervalSeconds; v != nil && !(*v >= 0.1 && *v <= 60) {
+		return fmt.Errorf("health_grpc.watch_interval_seconds must be between 0.1 and 60")
+	}
+	if v := h.KeepaliveSeconds; v != nil && !(*v >= 1 && *v <= 3600) {
+		return fmt.Errorf("health_grpc.keepalive_seconds must be between 1 and 3600")
+	}
+	return nil
 }
 
 // MaintenanceSection is the "maintenance" section: proposals of maintenance orders raised by a sustained drift. They only propose; a
@@ -158,6 +192,9 @@ func (c FileConfig) Validate() error {
 		if u, err := url.Parse(t.URLTemplate); err != nil || !strings.Contains(t.URLTemplate, "{robot}") || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil {
 			return fmt.Errorf("configuration: tool_confirmation.url_template must be an http(s) URL without credentials that contains {robot}")
 		}
+	}
+	if err := c.HealthGRPC.Validate(); err != nil {
+		return fmt.Errorf("configuration: %w", err)
 	}
 	if c.ETAInterval != nil && c.ETAInterval.Enabled && !c.IntervalSetting().Valid() {
 		return fmt.Errorf("configuration: eta_interval needs 0 <= low_percentile < high_percentile <= 100 and min_samples of at least 1")

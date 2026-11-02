@@ -56,6 +56,32 @@
             "zh": "可选的持久队列（纯 Go 的 SQLite）",
             "pt": "fila durável opcional (SQLite em Go puro)"
           }
+        },
+        {
+          "name": "healthgrpc/",
+          "desc": {
+            "en": "the health service over gRPC (off by default)",
+            "es": "el servicio de salud por gRPC (apagado por defecto)",
+            "de": "der Gesundheitsdienst über gRPC (standardmäßig aus)",
+            "fr": "le service de santé par gRPC (désactivé par défaut)",
+            "it": "il servizio di salute via gRPC (spento di default)",
+            "ja": "gRPC のヘルスサービス（既定ではオフ）",
+            "zh": "gRPC 健康服务（默认关闭）",
+            "pt": "o serviço de saúde por gRPC (desligado por omissão)"
+          }
+        },
+        {
+          "name": "healthpb/",
+          "desc": {
+            "en": "bindings of the shared health contract",
+            "es": "enlaces del contrato de salud compartido",
+            "de": "Bindings des gemeinsamen Gesundheitsvertrags",
+            "fr": "liaisons du contrat de santé partagé",
+            "it": "binding del contratto di salute condiviso",
+            "ja": "共有ヘルス契約のバインディング",
+            "zh": "共享健康契约的绑定",
+            "pt": "ligações do contrato de saúde partilhado"
+          }
         }
       ]
     },
@@ -290,6 +316,20 @@
             "zh": "重新读取配置文件及其测试",
             "pt": "volta a ler o ficheiro de configuração, e os seus testes"
           }
+        },
+        {
+          "name": "health_grpc.go  health_grpc_test.go",
+          "desc": {
+            "en": "the settings of the gRPC health service, and their tests",
+            "es": "los ajustes del servicio de salud gRPC, y sus pruebas",
+            "de": "die Einstellungen des gRPC-Gesundheitsdienstes und ihre Tests",
+            "fr": "les réglages du service de santé gRPC, et leurs tests",
+            "it": "le impostazioni del servizio di salute gRPC e i loro test",
+            "ja": "gRPC ヘルスサービスの設定とそのテスト",
+            "zh": "gRPC 健康服务的设置及其测试",
+            "pt": "as definições do serviço de saúde gRPC e os seus testes"
+          },
+          "tree_name": "health_grpc.go / health_grpc_test.go"
         },
         {
           "name": "go.mod  go.sum",

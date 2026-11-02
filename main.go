@@ -29,6 +29,7 @@ import (
 
 	"github.com/JuanenRac/HYDRA-UMC-JOB-DISPATCHER/src/api"
 	"github.com/JuanenRac/HYDRA-UMC-JOB-DISPATCHER/src/dispatcher"
+	"github.com/JuanenRac/HYDRA-UMC-JOB-DISPATCHER/src/healthgrpc"
 	"github.com/JuanenRac/HYDRA-UMC-JOB-DISPATCHER/src/sqlitestore"
 )
 
@@ -157,6 +158,10 @@ func main() {
 	if problem := startupProblem(*addr, *token, *allowAnonymous); problem != "" {
 		log.Fatalf("[job-dispatcher] refusing to start: %s", problem)
 	}
+	healthGRPC, err := healthGRPCSettings(fileConfig.HealthGRPC, *token, os.Getenv)
+	if err != nil {
+		log.Fatalf("[job-dispatcher] refusing to start: %v", err)
+	}
 
 	fmt.Printf("HYDRA-UMC-JOB-DISPATCHER v%s\n", Version)
 	fmt.Println("Priority-based mission queue: routes jobs to the best-available robot in the fleet based on location, tool and current load.")
@@ -247,6 +252,14 @@ func main() {
 		fmt.Println("[job-dispatcher] every route except GET /health requires a bearer token")
 	} else if !isLoopbackAddr(*addr) {
 		fmt.Println("[job-dispatcher] WARNING: -allow-anonymous: this API is open to the network")
+	}
+
+	if healthGRPC != nil {
+		health, err := healthgrpc.Start(*healthGRPC, healthgrpc.QueueSource(engine, Version, *dbPath != ""))
+		if err != nil {
+			log.Fatalf("[job-dispatcher] the gRPC health service could not start: %v", err)
+		}
+		fmt.Printf("[job-dispatcher] gRPC health service (Check, Watch) listening on %s (a change of its section needs a restart)\n", health.Addr())
 	}
 
 	fmt.Printf("[job-dispatcher] HTTP API listening on %s\n", *addr)
