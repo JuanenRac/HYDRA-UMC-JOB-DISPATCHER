@@ -203,16 +203,22 @@ func main() {
 		engine.SetToolCatalog(catalog)
 		fmt.Printf("[job-dispatcher] tool catalog: %d known tool(s); an unknown tool name is only warned about\n", len(catalog.Names()))
 	}
+	board := dispatcher.NewMaintenanceBoard(engine)
+	board.SetConfig(fileConfig.MaintenanceSetting())
+	if fileConfig.MaintenanceSetting().Enabled {
+		fmt.Println("[job-dispatcher] maintenance proposals are on: a drift can only PROPOSE an order; a person approves or rejects it (POST /maintenance/proposals/approve)")
+	}
 	server := api.New(engine)
+	server.SetMaintenance(board)
 	server.SetMaxBodyBytes(*maxBody)
 	if *configPath != "" {
 		// the service can re-read its configuration file while it runs (POST /admin/reload-config, from this machine only)
-		server.SetConfigReloader(newConfigReloader(*configPath, engine, *etaOn, *etaDefault, *etaWindow).Reload)
+		server.SetConfigReloader(newConfigReloader(*configPath, engine, *etaOn, *etaDefault, *etaWindow).withBoard(board).Reload)
 		fmt.Println("[job-dispatcher] POST /admin/reload-config re-reads the configuration file (from this machine only; an invalid file changes nothing)")
 	}
 	if *token != "" {
 		server.RequireToken(*token)
-	server.SetVersion(Version)
+		server.SetVersion(Version)
 		fmt.Println("[job-dispatcher] every route except GET /health requires a bearer token")
 	} else if !isLoopbackAddr(*addr) {
 		fmt.Println("[job-dispatcher] WARNING: -allow-anonymous: this API is open to the network")

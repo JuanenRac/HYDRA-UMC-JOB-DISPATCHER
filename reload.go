@@ -22,11 +22,18 @@ import (
 type configReloader struct {
 	path       string
 	engine     *dispatcher.Engine
+	board      *dispatcher.MaintenanceBoard
 	etaOn      bool
 	etaDefault time.Duration
 	etaWindow  int
 
 	mu sync.Mutex // two reloads never interleave
+}
+
+// withBoard lets a reload also install the "maintenance" section.
+func (r *configReloader) withBoard(b *dispatcher.MaintenanceBoard) *configReloader {
+	r.board = b
+	return r
 }
 
 func newConfigReloader(path string, engine *dispatcher.Engine, etaOn bool, etaDefault time.Duration, etaWindow int) *configReloader {
@@ -42,6 +49,9 @@ func (r *configReloader) apply(cfg dispatcher.FileConfig) error {
 		r.engine.SetETA(dispatcher.ETAConfig{Enabled: true, DefaultDuration: r.etaDefault, Window: r.etaWindow, Interval: cfg.IntervalSetting()})
 	}
 	r.engine.SetReplan(cfg.ReplanSetting())
+	if r.board != nil {
+		r.board.SetConfig(cfg.MaintenanceSetting())
+	}
 	return nil
 }
 
@@ -68,5 +78,6 @@ func (r *configReloader) Reload() (map[string]any, error) {
 		},
 		"locationCosts": cfg.LocationSetting().Enabled,
 		"etaInterval":   r.etaOn && cfg.IntervalSetting().Enabled,
+		"maintenance":   cfg.MaintenanceSetting().Enabled,
 	}, nil
 }

@@ -263,6 +263,67 @@ paths:
                 properties:
                   error: { type: string }
                   kept: { type: string }
+  /maintenance/proposals:
+    get:
+      summary: List the maintenance proposals, newest first (only when the maintenance section of the configuration file is enabled; otherwise 404)
+      parameters:
+        - { name: status, in: query, required: false, schema: { type: string, enum: [proposed, approved, rejected, expired] } }
+      responses:
+        "200":
+          description: The proposals.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  proposals: { type: array, items: { $ref: "#/components/schemas/MaintenanceProposal" } }
+        "404": { $ref: "#/components/responses/Error" }
+    post:
+      summary: Propose a maintenance order for a source with a sustained drift. It is only a proposal; it never reaches the queue until a person approves it
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [source, reason]
+              properties:
+                source: { type: string }
+                reason: { type: string }
+                score: { type: number }
+                drift: { type: number }
+      responses:
+        "200":
+          description: An open proposal for the source existed; its evidence was updated.
+        "201":
+          description: Proposal created.
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /maintenance/proposals/approve:
+    post:
+      summary: A person approves a proposal; one ordinary job is submitted
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProposalDecision" }
+      responses:
+        "200": { description: Approved; the answer carries the proposal and the job. }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /maintenance/proposals/reject:
+    post:
+      summary: A person rejects a proposal; no job is created
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProposalDecision" }
+      responses:
+        "200": { description: Rejected. }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
   /jobs/replan:
     post:
       summary: Declare a robot failed and send its jobs back to the queue (only when the configuration file turns replanning on; otherwise 404)
@@ -446,6 +507,28 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/ErrorBody" }
   schemas:
+    ProposalDecision:
+      type: object
+      required: [id]
+      properties:
+        id: { type: string }
+        by: { type: string, maxLength: 128 }
+        reason: { type: string, maxLength: 500 }
+    MaintenanceProposal:
+      type: object
+      properties:
+        id: { type: string }
+        source: { type: string }
+        reason: { type: string }
+        score: { type: number }
+        drift: { type: number }
+        status: { type: string, enum: [proposed, approved, rejected, expired] }
+        jobId: { type: string }
+        createdAtMs: { type: integer }
+        updatedAtMs: { type: integer }
+        decidedAtMs: { type: integer }
+        decidedBy: { type: string }
+        decisionReason: { type: string }
     ErrorBody:
       type: object
       properties:

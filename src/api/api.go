@@ -42,6 +42,8 @@ type Server struct {
 	maxBody int64
 	// reloader runs POST /admin/reload-config; nil (no configuration file was given) leaves the route unknown.
 	reloader ConfigReloader
+	// maintenance holds the maintenance proposals; nil or switched off leaves their routes unknown (404).
+	maintenance *dispatcher.MaintenanceBoard
 	// version is published by GET /metrics; metrics holds the counters and metricsHandler wraps the routes with them.
 	version        string
 	metrics        *ServiceMetrics
@@ -86,6 +88,9 @@ func New(engine *dispatcher.Engine) *Server {
 	s.mux.HandleFunc("/dispatch/eta", s.handleETA)
 	s.mux.HandleFunc("/jobs/detect-stale", s.handleDetectStale)
 	s.mux.HandleFunc("/admin/reload-config", s.handleReloadConfig)
+	s.mux.HandleFunc("/maintenance/proposals", s.handleMaintenanceProposals)
+	s.mux.HandleFunc("/maintenance/proposals/approve", s.handleMaintenanceDecision)
+	s.mux.HandleFunc("/maintenance/proposals/reject", s.handleMaintenanceDecision)
 	s.mux.HandleFunc("/health", s.handleHealth)
 	s.metrics = NewServiceMetrics("hydra-umc-job-dispatcher")
 	s.metricsHandler = s.metrics.Middleware(http.HandlerFunc(s.serveRoutes),

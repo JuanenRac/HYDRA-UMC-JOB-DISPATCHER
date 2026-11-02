@@ -456,9 +456,20 @@ Off unless the service was started with a configuration file (`-config`, see bel
 
 Only a caller on this machine may use it (a request from another address is a `403`, whatever its token), and the bearer token is required as for every other route when one is set. A file that cannot be used (unreadable, not valid JSON, an unknown key, a value out of range, or a range for the estimates without `-eta`) changes nothing: the answer is `422` with the reason and `"kept": "the previous values"`, and the values in force stay exactly as they were. A reload that works answers `200` with `{"reloaded": true, "applied": {...}}` (the replanning in force, whether location costs and ranges are on). Two reloads never interleave. A stop request that was open when the values changed keeps its place; the timeout and `allow_unconfirmed` in force are read at the next check.
 
+## `GET /maintenance/proposals`, `POST /maintenance/proposals`, `POST /maintenance/proposals/approve` and `POST /maintenance/proposals/reject`
+
+Off unless the configuration file turns the `maintenance` section on: until then the four routes answer the same `404` as any unknown path. A maintenance order raised by a sustained drift (see the anomaly detector) is only a **proposal**: it waits in a list of its own, never reaches the queue and is never given to a robot, and nothing here stops a machine. A person approves it (the dispatcher then submits one ordinary job `maint-<proposal id>` with the priority, tool and location of the section) or rejects it.
+
+- `POST /maintenance/proposals` with `{"source": "...", "reason": "...", "score": 3.2, "drift": 1.1}` (the source is 1 to 128 characters of letters, digits, `_ - . :`; the reason 1 to 500 characters without control characters; both numbers finite) answers `201` with `{"proposal": {...}, "created": true}`. A second proposal for a source that already has an open one updates its evidence and answers `200` with `"created": false`. A source whose last proposal was decided less than `cooldown_seconds` ago is refused with `409`, and so is any proposal once `max_open` wait for a decision (`400`).
+- `GET /maintenance/proposals[?status=proposed|approved|rejected|expired]` answers `{"proposals": [...]}`, newest first.
+- `POST /maintenance/proposals/approve` and `.../reject` with `{"id": "...", "by": "...", "reason": "..."}` (`by` up to 128 and `reason` up to 500 characters; `reason` is kept only on a rejection). `404` for an unknown id, `409` for a proposal that is not open any more.
+- An open proposal nobody decides is closed as `expired` after `expire_seconds`. The list is kept in memory: a restart clears it (the detector proposes again while the drift lasts); an approved proposal is an ordinary job and persists like any other.
+
+The same bearer token protects the four routes; telling the proposer from the approver by role is the job of the layer in front (the SERVER relay), not of this service.
+
 ## Configuration file
 
-The tuned values of three optional behaviours live in a JSON file given with `-config` (or `JOB_DISPATCHER_CONFIG`), never in the code. The file is read when the service starts and again on `POST /admin/reload-config`. Every section is optional and every switch is off unless the file turns it on, so no file, an empty file or `{}` change nothing. A misspelt key, a negative cost or percentiles that make no range stop the start with a clear message.
+The tuned values of four optional behaviours live in a JSON file given with `-config` (or `JOB_DISPATCHER_CONFIG`), never in the code. The file is read when the service starts and again on `POST /admin/reload-config`. Every section is optional and every switch is off unless the file turns it on, so no file, an empty file or `{}` change nothing. A misspelt key, a negative cost or percentiles that make no range stop the start with a clear message.
 
 ```json
 {
@@ -467,13 +478,15 @@ The tuned values of three optional behaviours live in a JSON file given with `-c
     "costs": {"cell-A": {"cell-B": 5, "cell-C": 1}, "cell-B": {"cell-C": 2}}
   },
   "replan": {"enabled": true, "on_stale": true, "on_fault": true, "stop_ack_timeout_seconds": 30, "allow_unconfirmed": false},
-  "eta_interval": {"enabled": true, "low_percentile": 25, "high_percentile": 75, "min_samples": 3}
+  "eta_interval": {"enabled": true, "low_percentile": 25, "high_percentile": 75, "min_samples": 3},
+  "maintenance": {"enabled": true, "priority": 1, "required_tool": "", "location": "", "max_open": 100, "cooldown_seconds": 86400, "expire_seconds": 604800}
 }
 ```
 
 - **`location_costs`:** a job that names a `location` goes to the eligible robot (available, tool attached, heard from recently) whose location has the lowest declared cost to it, instead of only preferring the robots in exactly that location. `costs[from][to]` is any non-negative number (a distance, a travel time); the table is read both ways and a location is at cost 0 from itself. A pair that is not declared has an unknown cost and ranks after every known one; ties go to the lower load, then the lower ID. A job without a location, and a configuration without this section, behave as before. The location stays a preference, never a requirement. The estimate follows the same rule among the robots free at the same moment.
 - **`replan`:** see `POST /jobs/replan`. `on_stale` and `on_fault` are `true` when the section is enabled unless the file says `false`. `stop_ack_timeout_seconds` (greater than 0, at most 86400; default 30) and `allow_unconfirmed` (default `false`) govern the confirmed stop of a silent robot that declared it can confirm one: see `GET /jobs/stop-requests` and `POST /jobs/stop-ack`.
 - **`eta_interval`:** the ranges of `GET /dispatch/eta`; the process refuses to start with it enabled and without `-eta`.
+- **`maintenance`:** the proposals of maintenance orders (see `POST /maintenance/proposals`), off unless `enabled` is `true`. `priority` (0 to 1000, default 1), `required_tool` and `location` are those of the job an approval submits; `max_open` (1 to 10000, default 100), `cooldown_seconds` (default 86400) and `expire_seconds` (default 604800, 0 = never) bound the list. It can be reloaded while the service runs.
 
 ---
 

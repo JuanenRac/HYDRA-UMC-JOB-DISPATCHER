@@ -4,6 +4,8 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+- **Maintenance proposals from a sustained drift, off by default:** with `"maintenance": {"enabled": true}` in the configuration file the service accepts `POST /maintenance/proposals` (a source, a reason, the latest score and the drift), lists them with `GET /maintenance/proposals` and lets a person decide with `POST /maintenance/proposals/approve` or `/reject`. A proposal never reaches the queue and never stops a machine: approving it submits one ordinary job with the priority, tool and location of the section; the list is bounded (`max_open`), a decided source waits `cooldown_seconds` before it can be proposed again and an open proposal nobody decides expires. Without the section the four routes answer `404`. The section is reloaded by `POST /admin/reload-config`. 11 new tests.
+
 - **`GET /metrics` in the text format of Prometheus:** the version, the uptime, the responses by class of status (2xx to 5xx) and the health, the aggregate of the checks of the service (the persistence store answers); only numbers about the service, never a job, a robot, a path, an address or a token. Behind the token when the service has one (`401` without it). The code is the canonical `service_metrics.go` of HYDRA-UMC-SDK, copied byte for byte.
 
 - **The system library moves to a release without known advisories:** `golang.org/x/sys` 0.47.0. It needs Go 1.25, so the minimum Go of the project goes from 1.21 to 1.25 (`go.mod` and the README).

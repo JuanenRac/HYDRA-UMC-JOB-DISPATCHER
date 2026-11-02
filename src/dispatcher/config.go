@@ -15,9 +15,22 @@ import (
 // preference, replanning and estimate ranges. Every section is optional and every switch inside is
 // off unless the file turns it on, so a missing file, an empty file or `{}` change nothing.
 type FileConfig struct {
-	LocationCosts *LocationSection `json:"location_costs,omitempty"`
-	Replan        *ReplanSection   `json:"replan,omitempty"`
-	ETAInterval   *IntervalSection `json:"eta_interval,omitempty"`
+	LocationCosts *LocationSection    `json:"location_costs,omitempty"`
+	Replan        *ReplanSection      `json:"replan,omitempty"`
+	ETAInterval   *IntervalSection    `json:"eta_interval,omitempty"`
+	Maintenance   *MaintenanceSection `json:"maintenance,omitempty"`
+}
+
+// MaintenanceSection is the "maintenance" section: proposals of maintenance orders raised by a sustained drift. They only propose; a
+// person approves or rejects each one. Priority, required_tool and location describe the job that approving one submits.
+type MaintenanceSection struct {
+	Enabled         bool     `json:"enabled"`
+	Priority        *int     `json:"priority,omitempty"`
+	RequiredTool    string   `json:"required_tool,omitempty"`
+	Location        string   `json:"location,omitempty"`
+	MaxOpen         *int     `json:"max_open,omitempty"`
+	CooldownSeconds *float64 `json:"cooldown_seconds,omitempty"`
+	ExpireSeconds   *float64 `json:"expire_seconds,omitempty"`
 }
 
 // LocationSection is the "location_costs" section: the declared table of costs between locations.
@@ -86,6 +99,19 @@ func (c FileConfig) Validate() error {
 			return fmt.Errorf("configuration: replan.stop_ack_timeout_seconds must be greater than 0 and at most 86400")
 		}
 	}
+	if m := c.Maintenance; m != nil {
+		if m.Priority != nil && (*m.Priority < 0 || *m.Priority > 1000) {
+			return fmt.Errorf("configuration: maintenance.priority must be between 0 and 1000")
+		}
+		if m.MaxOpen != nil && (*m.MaxOpen < 1 || *m.MaxOpen > 10000) {
+			return fmt.Errorf("configuration: maintenance.max_open must be between 1 and 10000")
+		}
+		for name, v := range map[string]*float64{"cooldown_seconds": m.CooldownSeconds, "expire_seconds": m.ExpireSeconds} {
+			if v != nil && (!(*v >= 0) || *v > 31536000) {
+				return fmt.Errorf("configuration: maintenance.%s must be between 0 and 31536000", name)
+			}
+		}
+	}
 	if c.ETAInterval != nil && c.ETAInterval.Enabled && !c.IntervalSetting().Valid() {
 		return fmt.Errorf("configuration: eta_interval needs 0 <= low_percentile < high_percentile <= 100 and min_samples of at least 1")
 	}
@@ -119,4 +145,28 @@ func (c FileConfig) IntervalSetting() IntervalConfig {
 		return IntervalConfig{}
 	}
 	return IntervalConfig{Enabled: c.ETAInterval.Enabled, LowPercentile: c.ETAInterval.LowPercentile, HighPercentile: c.ETAInterval.HighPercentile, MinSamples: c.ETAInterval.MinSamples}
+}
+
+// MaintenanceSetting is the board setting of the "maintenance" section (off when absent).
+func (c FileConfig) MaintenanceSetting() MaintenanceConfig {
+	if c.Maintenance == nil || !c.Maintenance.Enabled {
+		return MaintenanceConfig{}
+	}
+	m := c.Maintenance
+	cfg := DefaultMaintenanceConfig()
+	cfg.Enabled = true
+	cfg.RequiredTool, cfg.Location = m.RequiredTool, m.Location
+	if m.Priority != nil {
+		cfg.Priority = *m.Priority
+	}
+	if m.MaxOpen != nil {
+		cfg.MaxOpen = *m.MaxOpen
+	}
+	if m.CooldownSeconds != nil {
+		cfg.Cooldown = time.Duration(*m.CooldownSeconds * float64(time.Second))
+	}
+	if m.ExpireSeconds != nil {
+		cfg.ExpireAfter = time.Duration(*m.ExpireSeconds * float64(time.Second))
+	}
+	return cfg
 }
