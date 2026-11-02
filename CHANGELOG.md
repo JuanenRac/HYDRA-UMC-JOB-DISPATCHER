@@ -4,6 +4,8 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+- **The manifest declares the gRPC health port:** the `service` block of `hydra-umc.project.json` names `grpc_port` (50090) and `grpc_service` (`hydra.common.v1.HealthService`), so the registry of ports of the SDK lists the loopback gRPC health service next to the HTTP port and a clash between the two is caught.
+
 ## [0.2.9] - A gRPC health service with a streaming watch that reports the queue and the store, maintenance proposals that a person approves, signed events and a confirmation of the tool of a robot
 
 - **The health service over gRPC, off by default:** with the `health_grpc` section of the configuration file the dispatcher serves `Check()` and the streaming `Watch()` of the shared `HealthService`, so HYDRA-UMC-NODE-HEALING can follow it without polling `GET /health`. It listens on loopback unless told otherwise (an address reachable from the network needs a bearer token, or the service does not start), says OK while the queue answers and the store accepts writes (DEGRADED when the store reported an error, UNHEALTHY when the queue does not answer), limits connections and open streams, pings idle clients, and ends every stream goroutine when its client goes away or the service stops. The bindings of the contract are in `src/healthpb`. See `docs/HEALTH_GRPC.md`. Tested with a real gRPC client against the real server; never against a live watchdog, a robot or a cell.
