@@ -243,7 +243,7 @@ func (c FileConfig) EventsSetting() EventsConfig {
 	cfg.RetryDelay = seconds(e.RetrySeconds, cfg.RetryDelay)
 	cfg.KeepAlive = seconds(e.KeepAliveSeconds, cfg.KeepAlive)
 	for _, w := range e.Webhooks {
-		cfg.Webhooks = append(cfg.Webhooks, WebhookConfig{URL: w.URL, SecretEnv: w.SecretEnv, Types: w.Types})
+		cfg.Webhooks = append(cfg.Webhooks, WebhookConfig(w))
 	}
 	return cfg
 }
