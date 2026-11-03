@@ -169,7 +169,7 @@ flowchart LR
 
 ## 🚀 クイックスタート
 
-Go 1.25 以上が必要です（SQLite ドライバーは純 Go で C コンパイラ不要）。Python 3 はプロジェクトのツールにだけ使います。
+Go 1.26 以上が必要です（SQLite ドライバーは純 Go で C コンパイラ不要）。Python 3 はプロジェクトのツールにだけ使います。
 
 ```bash
 bash run.sh        # Linux, macOS (run.bat on Windows)

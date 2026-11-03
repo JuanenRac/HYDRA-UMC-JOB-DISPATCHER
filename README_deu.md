@@ -165,7 +165,7 @@ HTTP standardmäßig auf `127.0.0.1:8090`; die vollständige Referenz sind `docs
 
 ## 🚀 Schnellstart
 
-Benötigt Go 1.25 oder neuer (der SQLite-Treiber ist reines Go, kein C-Compiler) und Python 3 nur für die Projektwerkzeuge.
+Benötigt Go 1.26 oder neuer (der SQLite-Treiber ist reines Go, kein C-Compiler) und Python 3 nur für die Projektwerkzeuge.
 
 ```bash
 bash run.sh        # Linux, macOS (run.bat on Windows)

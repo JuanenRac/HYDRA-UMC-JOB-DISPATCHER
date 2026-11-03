@@ -165,7 +165,7 @@ HTTP sur `127.0.0.1:8090` par défaut ; la référence complète est `docs/API.m
 
 ## 🚀 Démarrage rapide
 
-Nécessite Go 1.25 ou plus récent (le pilote SQLite est en Go pur, sans compilateur C) et Python 3 seulement pour les outils du projet.
+Nécessite Go 1.26 ou plus récent (le pilote SQLite est en Go pur, sans compilateur C) et Python 3 seulement pour les outils du projet.
 
 ```bash
 bash run.sh        # Linux, macOS (run.bat on Windows)

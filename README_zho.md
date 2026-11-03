@@ -168,7 +168,7 @@ flowchart LR
 
 ## 🚀 快速开始
 
-需要 Go 1.25 或更高版本（SQLite 驱动是纯 Go，无需 C 编译器）；Python 3 仅用于项目工具。
+需要 Go 1.26 或更高版本（SQLite 驱动是纯 Go，无需 C 编译器）；Python 3 仅用于项目工具。
 
 ```bash
 bash run.sh        # Linux, macOS (run.bat on Windows)

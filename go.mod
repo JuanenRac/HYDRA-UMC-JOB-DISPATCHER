@@ -1,6 +1,6 @@
 module github.com/JuanenRac/HYDRA-UMC-JOB-DISPATCHER
 
-go 1.25.0
+go 1.26.0
 
 require (
 	google.golang.org/grpc v1.83.2
