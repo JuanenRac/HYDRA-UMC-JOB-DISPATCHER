@@ -6,7 +6,9 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"regexp"
 	"strings"
 	"testing"
@@ -14,15 +16,28 @@ import (
 	"github.com/JuanenRac/HYDRA-UMC-JOB-DISPATCHER/src/dispatcher"
 )
 
+// metricsFrom asks GET /metrics from the given remote address, with the bearer token when it is not empty.
+func metricsFrom(h http.Handler, remote, token string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	req.RemoteAddr = remote
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec
+}
+
 var metricLine = regexp.MustCompile(`^[a-z_:][a-z0-9_:]*(\{[^}]*\})? -?[0-9]+(\.[0-9]+)?$`)
 
 func TestMetrics_AreTheTextOfPrometheusWithNumbersOnly(t *testing.T) {
 	s := New(dispatcher.NewEngine())
 	s.SetVersion("9.9.9")
+	s.SetMetricsEnabled(true)
 	post(t, s, "/robots", robotBody{ID: "secret-robot-name", Available: true})
 	get(t, s, "/nothing-here")
 
-	rec := get(t, s, "/metrics")
+	rec := metricsFrom(s, "127.0.0.1:5000", "")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("GET /metrics = %d, want 200", rec.Code)
 	}
@@ -53,13 +68,14 @@ func TestMetrics_AreTheTextOfPrometheusWithNumbersOnly(t *testing.T) {
 func TestMetrics_NeedTheTokenWhenOneIsSet(t *testing.T) {
 	s := New(dispatcher.NewEngine())
 	s.RequireToken("s3cret-token")
-	if rec := withToken(t, s, http.MethodGet, "/metrics", "", nil); rec.Code != http.StatusUnauthorized {
+	s.SetMetricsEnabled(true)
+	if rec := metricsFrom(s, "127.0.0.1:5000", ""); rec.Code != http.StatusUnauthorized {
 		t.Errorf("GET /metrics without a token = %d, want 401", rec.Code)
 	}
-	if rec := withToken(t, s, http.MethodGet, "/metrics", "wrong-token", nil); rec.Code != http.StatusUnauthorized {
+	if rec := metricsFrom(s, "127.0.0.1:5000", "wrong-token"); rec.Code != http.StatusUnauthorized {
 		t.Errorf("GET /metrics with a wrong token = %d, want 401", rec.Code)
 	}
-	rec := withToken(t, s, http.MethodGet, "/metrics", "s3cret-token", nil)
+	rec := metricsFrom(s, "192.0.2.7:5000", "s3cret-token")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("GET /metrics with the token = %d, want 200", rec.Code)
 	}
@@ -73,5 +89,47 @@ func TestMetrics_ACheckNameCannotCarryFreeText(t *testing.T) {
 		if got := CheckName(in); got != want {
 			t.Errorf("CheckName(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+func TestMetrics_AreClosedByDefault(t *testing.T) {
+	for _, token := range []string{"", "s3cret-token"} {
+		s := New(dispatcher.NewEngine())
+		if token != "" {
+			s.RequireToken(token)
+		}
+		rec := metricsFrom(s, "127.0.0.1:5000", token)
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("GET /metrics while closed (token %q) = %d, want 404", token, rec.Code)
+		}
+		if strings.Contains(rec.Body.String(), "hydra_umc_service") {
+			t.Errorf("the numbers were served while the route is closed")
+		}
+	}
+}
+
+func TestMetrics_WithoutATokenOnlyThisMachineReadsThem(t *testing.T) {
+	s := New(dispatcher.NewEngine())
+	s.SetMetricsEnabled(true)
+	for _, remote := range []string{"127.0.0.1:5000", "[::1]:5000"} {
+		if rec := metricsFrom(s, remote, ""); rec.Code != http.StatusOK {
+			t.Errorf("GET /metrics from %s = %d, want 200", remote, rec.Code)
+		}
+	}
+	for _, remote := range []string{"192.0.2.7:5000", "10.0.0.5:80", "not-an-address"} {
+		if rec := metricsFrom(s, remote, ""); rec.Code != http.StatusUnauthorized {
+			t.Errorf("GET /metrics from %s = %d, want 401", remote, rec.Code)
+		}
+	}
+}
+
+func TestMetrics_TheSectionOfTheConfigurationFileSwitchesThemOn(t *testing.T) {
+	var cfg dispatcher.FileConfig
+	if err := json.Unmarshal([]byte(`{"metrics": {"enabled": true}}`), &cfg); err != nil || cfg.Metrics == nil || !cfg.Metrics.Enabled {
+		t.Fatalf("the metrics section was not read: %v %+v", err, cfg.Metrics)
+	}
+	var empty dispatcher.FileConfig
+	if err := json.Unmarshal([]byte(`{}`), &empty); err != nil || empty.Metrics != nil {
+		t.Fatalf("an empty file must leave the metrics off: %v %+v", err, empty.Metrics)
 	}
 }

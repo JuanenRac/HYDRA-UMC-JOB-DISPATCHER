@@ -24,6 +24,13 @@ type FileConfig struct {
 	Events        *EventsSection      `json:"events,omitempty"`
 	ToolConfirm   *ToolConfirmSection `json:"tool_confirmation,omitempty"`
 	HealthGRPC    *HealthGRPCSection  `json:"health_grpc,omitempty"`
+	Metrics       *MetricsSection     `json:"metrics,omitempty"`
+}
+
+// MetricsSection is the "metrics" section: GET /metrics in the text format of Prometheus. Off unless enabled (closed, the route answers 404). Open, it
+// answers a caller on this machine, or any caller that presents the bearer token when the API has one. A change of this section needs a restart.
+type MetricsSection struct {
+	Enabled bool `json:"enabled"`
 }
 
 // HealthGRPCSection is the "health_grpc" section: the health service of the shared contract over gRPC. Off unless enabled; it

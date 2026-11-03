@@ -4,6 +4,7 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+- **`GET /metrics` is off by default and loopback-only:** the new `metrics` section of the configuration file (`{"metrics": {"enabled": true}}`) opens it. Closed, the route answers `404`; open, it answers a caller on this machine, or any caller with the bearer token when the API has one. It also publishes the real version when no token is set (it said `unknown`).
 - **The manifest declares the gRPC health port:** the `service` block of `hydra-umc.project.json` names `grpc_port` (50090) and `grpc_service` (`hydra.common.v1.HealthService`), so the registry of ports of the SDK lists the loopback gRPC health service next to the HTTP port and a clash between the two is caught.
 
 ## [0.2.9] - A gRPC health service with a streaming watch that reports the queue and the store, maintenance proposals that a person approves, signed events and a confirmation of the tool of a robot

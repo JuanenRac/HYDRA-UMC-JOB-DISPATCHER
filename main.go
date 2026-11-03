@@ -241,6 +241,11 @@ func main() {
 	server.SetEvents(eventsHub)
 	server.SetMaintenance(board)
 	server.SetMaxBodyBytes(*maxBody)
+	server.SetVersion(Version)
+	if fileConfig.Metrics != nil && fileConfig.Metrics.Enabled {
+		server.SetMetricsEnabled(true)
+		fmt.Println("[job-dispatcher] GET /metrics is open (this machine, or the bearer token when one is set); numbers only")
+	}
 	if *configPath != "" {
 		// the service can re-read its configuration file while it runs (POST /admin/reload-config, from this machine only)
 		server.SetConfigReloader(newConfigReloader(*configPath, engine, *etaOn, *etaDefault, *etaWindow).withBoard(board).Reload)
@@ -248,7 +253,6 @@ func main() {
 	}
 	if *token != "" {
 		server.RequireToken(*token)
-		server.SetVersion(Version)
 		fmt.Println("[job-dispatcher] every route except GET /health requires a bearer token")
 	} else if !isLoopbackAddr(*addr) {
 		fmt.Println("[job-dispatcher] WARNING: -allow-anonymous: this API is open to the network")

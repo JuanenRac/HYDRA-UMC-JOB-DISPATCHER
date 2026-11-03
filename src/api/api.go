@@ -48,6 +48,8 @@ type Server struct {
 	events *dispatcher.EventHub
 	// version is published by GET /metrics; metrics holds the counters and metricsHandler wraps the routes with them.
 	version        string
+	// metricsOn opens GET /metrics (the "metrics" section of the configuration file); closed, the route answers like any unknown path.
+	metricsOn      bool
 	metrics        *ServiceMetrics
 	metricsHandler http.Handler
 }
@@ -98,7 +100,7 @@ func New(engine *dispatcher.Engine) *Server {
 	s.metrics = NewServiceMetrics("hydra-umc-job-dispatcher")
 	s.metricsHandler = s.metrics.Middleware(http.HandlerFunc(s.serveRoutes),
 		func() string { return s.version },
-		func(r *http.Request) bool { return s.token == "" || s.authorized(r) },
+		func(r *http.Request) bool { return s.metricsAllowed(r) },
 		func() map[string]bool { return map[string]bool{"persistence": s.engine.LastPersistError() == nil} })
 	return s
 }
@@ -106,8 +108,29 @@ func New(engine *dispatcher.Engine) *Server {
 // SetVersion names the version that GET /metrics publishes.
 func (s *Server) SetVersion(version string) { s.version = version }
 
-// ServeHTTP counts every answer and serves GET /metrics (the token when one is set, 401 without it; numbers only), then hands over to the routes.
+// SetMetricsEnabled opens GET /metrics. Without it (the default) the route answers like any unknown path (404).
+func (s *Server) SetMetricsEnabled(on bool) { s.metricsOn = on }
+
+// metricsAllowed says whether the caller may read the numbers of an open GET /metrics: with a token set, the caller must present it; without
+// one, only a caller on this machine may read them.
+func (s *Server) metricsAllowed(r *http.Request) bool {
+	if s.token != "" {
+		return s.authorized(r)
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	ip := net.ParseIP(host)
+	return err == nil && ip != nil && ip.IsLoopback()
+}
+
+// ServeHTTP counts every answer and serves GET /metrics when it is open (the token when one is set, loopback otherwise, 401 without it; numbers only), then
+// hands over to the routes.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if !s.metricsOn && r.Method == http.MethodGet && r.URL.Path == "/metrics" {
+		// closed: the route does not exist (it is not read from the token check or the metrics either)
+		s.metrics.Count(http.StatusNotFound)
+		writeError(w, http.StatusNotFound, errors.New("not found"))
+		return
+	}
 	s.metricsHandler.ServeHTTP(w, r)
 }
 
