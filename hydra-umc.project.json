@@ -28,5 +28,8 @@
     "systemd_unit": "hydra-umc-job-dispatcher.service",
     "grpc_port": 50090,
     "grpc_service": "hydra.common.v1.HealthService"
-  }
+  },
+  "depends_on": [
+    "HYDRA-UMC-ORCHESTRATOR"
+  ]
 }
