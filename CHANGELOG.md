@@ -4,6 +4,8 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+- **The build test of the repository compiles only on CI or when allowed:** for the stacks that compile (`rust`, `go`, `android`, `flutter`, `firmware-c`), `tools/build_test.py` prints `BUILD_TEST=SKIPPED` with exit status 2 on a plain PC, never a pass; `ALLOW_LOCAL_BUILD=1` allows it and a CI runner always may. The `python` and `node` stacks are not locked.
+
 - **The gRPC health service accepts the identity of the server:** with `-identity-key-file` set, `Check` and `Watch` take the signed token of HYDRA-UMC-SERVER as a bearer token next to the token of their own (which keeps working), a call with no credential is refused even on loopback, and an address reachable from the network needs no token of its own. Without the key file nothing changes.
 
 - **The identity of HYDRA-UMC-SERVER, off by default (`-identity-key-file FILE`, or `JOB_DISPATCHER_IDENTITY_KEY_FILE`):** the service verifies the signed token (HS256 JWT with `exp`, `username` and `role`) that the server issues at login and accepts it next to its own token. A viewer may read but not change, and a request with no credential is refused even on loopback, `GET /health` and `GET /stats` included: nothing is open. An address that is not loopback no longer needs a token of the service. The key is the signing key of the server, read from a file that only the group of the service may read, at least 32 characters; without the switch nothing changes.
