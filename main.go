@@ -121,6 +121,7 @@ func configProblem(cfg dispatcher.FileConfig, etaOn bool) string {
 func main() {
 	addr := flag.String("addr", "127.0.0.1:8090", "address to listen on for the HTTP API (loopback by default: another address needs a token)")
 	token := flag.String("token", os.Getenv("JOB_DISPATCHER_TOKEN"), "bearer token every route except GET /health requires (default: the JOB_DISPATCHER_TOKEN environment variable)")
+	serverIdentityKeyFile := flag.String("identity-key-file", os.Getenv("JOB_DISPATCHER_IDENTITY_KEY_FILE"), "file with the signing key of HYDRA-UMC-SERVER (its JWT_SECRET): a valid token of the SERVER is then accepted next to -token, every route (GET /health and GET /metrics too) demands an identity and a viewer may read but not change; off by default (default: the JOB_DISPATCHER_IDENTITY_KEY_FILE environment variable)")
 	allowAnonymous := flag.Bool("allow-anonymous", false, "allow an address other than loopback without a token (an open lab dispatcher)")
 	robotTimeout := flag.Duration("robot-timeout", 2*time.Minute, "a robot silent for longer than this is not offered new work (0 disables the check)")
 	dbPath := flag.String("db", "", "path to a real SQLite database file for fault-tolerant mission-queue persistence (unset: purely in-memory, cleared on restart)")
@@ -160,7 +161,15 @@ func main() {
 		log.Fatalf("[job-dispatcher] refusing to start: %s", problem)
 	}
 
-	if problem := startupProblem(*addr, *token, *allowAnonymous); problem != "" {
+	var serverIdentityKey []byte
+	if *serverIdentityKeyFile != "" {
+		key, err := dispatcher.LoadIdentityKey(*serverIdentityKeyFile)
+		if err != nil {
+			log.Fatalf("[job-dispatcher] refusing to start: -identity-key-file: %v", err)
+		}
+		serverIdentityKey = key
+	}
+	if problem := startupProblem(*addr, *token, *allowAnonymous || serverIdentityKey != nil); problem != "" {
 		log.Fatalf("[job-dispatcher] refusing to start: %s", problem)
 	}
 	healthGRPC, err := healthGRPCSettings(fileConfig.HealthGRPC, *token, os.Getenv)
@@ -264,10 +273,14 @@ func main() {
 		server.SetConfigReloader(newConfigReloader(*configPath, engine, *etaOn, *etaDefault, *etaWindow).withBoard(board).Reload)
 		fmt.Println("[job-dispatcher] POST /admin/reload-config re-reads the configuration file (from this machine only; an invalid file changes nothing)")
 	}
+	if serverIdentityKey != nil {
+		server.SetIdentityKey(serverIdentityKey)
+		fmt.Println("[job-dispatcher] tokens of HYDRA-UMC-SERVER are accepted, and nothing is open: every route needs an identity, a viewer may read but not change")
+	}
 	if *token != "" {
 		server.RequireToken(*token)
 		fmt.Println("[job-dispatcher] every route except GET /health requires a bearer token")
-	} else if !isLoopbackAddr(*addr) {
+	} else if serverIdentityKey == nil && !isLoopbackAddr(*addr) {
 		fmt.Println("[job-dispatcher] WARNING: -allow-anonymous: this API is open to the network")
 	}
 

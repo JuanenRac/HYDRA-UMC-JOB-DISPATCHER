@@ -38,6 +38,8 @@ type Server struct {
 	engine *dispatcher.Engine
 	mux    *http.ServeMux
 	token  string
+	// identityKey is the signing key of HYDRA-UMC-SERVER when the operator turned its identity on (SetIdentityKey); nil leaves the earlier rules.
+	identityKey []byte
 	// maxBody is the largest request body any route reads (MaxBodyBytes unless SetMaxBodyBytes changed it).
 	maxBody int64
 	// reloader runs POST /admin/reload-config; nil (no configuration file was given) leaves the route unknown.
@@ -65,6 +67,10 @@ func (s *Server) SetConfigReloader(fn ConfigReloader) { s.reloader = fn }
 // (compared in constant time). An empty token leaves the API open, as before - the caller
 // (main.go) refuses that combination on an address other than loopback.
 func (s *Server) RequireToken(token string) { s.token = token }
+
+// SetIdentityKey turns the identity of HYDRA-UMC-SERVER on: a valid signed token of the server is accepted next to the token of the API (a viewer may read but
+// not change), and nothing is open any more, not even GET /health or a request from this machine. A nil key leaves the earlier rules.
+func (s *Server) SetIdentityKey(key []byte) { s.identityKey = key }
 
 // SetMaxBodyBytes changes the largest request body any route reads (default MaxBodyBytes). A value of zero or less keeps the default.
 func (s *Server) SetMaxBodyBytes(n int64) {
@@ -114,6 +120,9 @@ func (s *Server) SetMetricsEnabled(on bool) { s.metricsOn = on }
 // metricsAllowed says whether the caller may read the numbers of an open GET /metrics: with a token set, the caller must present it; without
 // one, only a caller on this machine may read them.
 func (s *Server) metricsAllowed(r *http.Request) bool {
+	if s.identityKey != nil {
+		return s.identityAllowed(r)
+	}
 	if s.token != "" {
 		return s.authorized(r)
 	}
@@ -135,7 +144,13 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) serveRoutes(w http.ResponseWriter, r *http.Request) {
-	if s.token != "" && r.URL.Path != "/health" && !s.authorized(r) {
+	if s.identityKey != nil {
+		if !s.identityAllowed(r) {
+			w.Header().Set("WWW-Authenticate", "Bearer")
+			writeError(w, http.StatusUnauthorized, errors.New("a valid identity is required"))
+			return
+		}
+	} else if s.token != "" && r.URL.Path != "/health" && !s.authorized(r) {
 		w.Header().Set("WWW-Authenticate", "Bearer")
 		writeError(w, http.StatusUnauthorized, errors.New("a valid Authorization: Bearer token is required"))
 		return
@@ -144,6 +159,28 @@ func (s *Server) serveRoutes(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, s.maxBody)
 	}
 	s.mux.ServeHTTP(w, r)
+}
+
+// identityAllowed is the rule with the identity of the SERVER on: the token of the API, or a valid signed token of the SERVER (any role reads, admin or operator
+// changes). Nothing else, and never open.
+func (s *Server) identityAllowed(r *http.Request) bool {
+	header := r.Header.Get("Authorization")
+	if !strings.HasPrefix(header, "Bearer ") {
+		return false
+	}
+	given := strings.TrimSpace(strings.TrimPrefix(header, "Bearer "))
+	if s.token != "" && subtle.ConstantTimeCompare([]byte(given), []byte(s.token)) == 1 {
+		return true
+	}
+	identity, err := dispatcher.VerifyServerToken(given, s.identityKey, time.Now())
+	if err != nil {
+		return false
+	}
+	switch r.Method {
+	case http.MethodGet, http.MethodHead, http.MethodOptions:
+		return true
+	}
+	return identity.CanWrite()
 }
 
 func (s *Server) authorized(r *http.Request) bool {

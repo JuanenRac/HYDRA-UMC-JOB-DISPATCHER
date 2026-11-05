@@ -15,10 +15,13 @@ them. With a token every route except `GET /health` answers `401` unless the req
 `Authorization: Bearer <token>`. The HTTP server has read/write/idle timeouts, and a request
 body over 64 KB is refused with `413` (a malformed body is `400`).
 
+`-identity-key-file FILE` (or `JOB_DISPATCHER_IDENTITY_KEY_FILE`; off by default) accepts the signed token of HYDRA-UMC-SERVER next to the token of the service: a viewer may read but not change, and a request with no credential is refused even on loopback, `GET /health` and `GET /stats` included.
+
 | Flag | Default | Meaning |
 |---|---|---|
 | `-addr` | `127.0.0.1:8090` | Where the API listens. |
 | `-token` | `$JOB_DISPATCHER_TOKEN` | Bearer token every route but `GET /health` requires. |
+| `-identity-key-file` | `$JOB_DISPATCHER_IDENTITY_KEY_FILE` | File with the signing key of HYDRA-UMC-SERVER: its signed tokens are accepted and nothing is open (off by default). |
 | `-allow-anonymous` | off | Allows an address other than loopback without a token. |
 | `-robot-timeout` | `2m` | A robot silent for longer is not offered new work (`0` disables the check). |
 | `-db` | unset | SQLite file for persistence (see below). |

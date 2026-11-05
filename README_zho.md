@@ -126,6 +126,7 @@ flowchart LR
 * 📣 **作业事件：事件流与带签名的 Webhook（默认关闭）：** 在配置文件的 `events` 段开启后，`GET /events` 以服务器发送事件的形式推送 `assigned`、`done`、`failed` 和 `unknown`（带 `Last-Event-ID` 重连的客户端可在缓冲区仍保留时补回遗漏的事件），每个 Webhook 收到同样的事件，以 HMAC-SHA256 签名的 `POST`（`X-Hydra-Signature`；密钥从环境变量读取，绝不写在文件里）发送，只发往 `allowed_hosts` 中列出的主机，不跟随重定向，重试次数有上限。发布事件从不等待接收方。
 * 🔎 **工具的物理确认（默认关闭）：** 开启 `tool_confirmation` 段后，每次 `POST /dispatch` 先向每个空闲机器人的控制器（文件中带 `{robot}` 的 URL，通常是机器人的服务器）询问它实际装的是哪种工具，需要工具的作业只交给回答一致的机器人。回答在 `ttl_seconds` 后失效；不回答的机器人被跳过（`on_unconfirmed`：默认 `skip`，`allow` 则信任申报的工具），`GET /dispatch/waiting` 会显示 `robot_tool_not_confirmed_by_its_controller`。
 * 🩺 **gRPC 健康服务（默认关闭）：** 启用配置文件的 `health_grpc` 部分后，共享 `HealthService` 的 `Check()` 和流式 `Watch()` 在回环地址上应答（其他地址需要持有者令牌）：队列有响应且存储接受写入时为 OK，存储报告错误时为降级，队列无响应时为不健康。连接数和打开的流有上限，每个流随其客户端结束。已用真实的 gRPC 客户端对真实服务器测试；从未对真实的看门狗、机器人或工作单元测试。参见 [`docs/HEALTH_GRPC.md`](docs/HEALTH_GRPC.md)。
+* 🪪 **HYDRA-UMC-SERVER 的身份（默认关闭）：** `-identity-key-file 文件`（或 `JOB_DISPATCHER_IDENTITY_KEY_FILE=文件`）会让服务在自己的令牌之外，也接受服务器在登录时签发的已签名令牌：查看者只能读取而不能更改，没有凭据的请求即使在环回地址上也会被拒绝。不开启该开关时一切照旧。
 
 ## 🔒 安全与防护
 
