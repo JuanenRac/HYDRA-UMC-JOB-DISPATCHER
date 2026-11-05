@@ -172,7 +172,7 @@ func main() {
 	if problem := startupProblem(*addr, *token, *allowAnonymous || serverIdentityKey != nil); problem != "" {
 		log.Fatalf("[job-dispatcher] refusing to start: %s", problem)
 	}
-	healthGRPC, err := healthGRPCSettings(fileConfig.HealthGRPC, *token, os.Getenv)
+	healthGRPC, err := healthGRPCSettings(fileConfig.HealthGRPC, *token, os.Getenv, serverIdentityKey)
 	if err != nil {
 		log.Fatalf("[job-dispatcher] refusing to start: %v", err)
 	}

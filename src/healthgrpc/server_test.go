@@ -352,3 +352,31 @@ func waitFor(t *testing.T, what string, ok func() bool) {
 	}
 	t.Fatalf("timed out waiting for %s", what)
 }
+
+// With an identity check the signed token of the server opens the service next to the token of its own, and a call with no credential is refused even on loopback.
+func TestTheIdentityOfTheServerIsAcceptedAndNothingIsOpen(t *testing.T) {
+	good := "signed-by-the-server"
+	identity := func(token string) bool { return token == good }
+	for name, cfg := range map[string]Config{"identity only": {Identity: identity}, "identity and token": {Token: "s3cret", Identity: identity}} {
+		_, client, _ := start(t, cfg, fixed(pb.HealthState_HEALTH_STATE_OK))
+		for label, token := range map[string]string{"none": "", "wrong": "nope"} {
+			if _, err := client.Check(ctxWith(t, token), &pb.Empty{}); status.Code(err) != codes.Unauthenticated {
+				t.Errorf("%s: Check with %s token: %v", name, label, err)
+			}
+		}
+		if _, err := client.Check(ctxWith(t, good), &pb.Empty{}); err != nil {
+			t.Errorf("%s: Check with the identity of the server: %v", name, err)
+		}
+		stream, err := client.Watch(ctxWith(t, good), &pb.Empty{})
+		if err == nil {
+			_, err = stream.Recv()
+		}
+		if err != nil {
+			t.Errorf("%s: Watch with the identity of the server: %v", name, err)
+		}
+	}
+	_, client, _ := start(t, Config{Token: "s3cret", Identity: identity}, fixed(pb.HealthState_HEALTH_STATE_OK))
+	if _, err := client.Check(ctxWith(t, "s3cret"), &pb.Empty{}); err != nil {
+		t.Errorf("the own token keeps working next to the identity: %v", err)
+	}
+}

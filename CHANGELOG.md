@@ -4,6 +4,8 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+- **The gRPC health service accepts the identity of the server:** with `-identity-key-file` set, `Check` and `Watch` take the signed token of HYDRA-UMC-SERVER as a bearer token next to the token of their own (which keeps working), a call with no credential is refused even on loopback, and an address reachable from the network needs no token of its own. Without the key file nothing changes.
+
 - **The identity of HYDRA-UMC-SERVER, off by default (`-identity-key-file FILE`, or `JOB_DISPATCHER_IDENTITY_KEY_FILE`):** the service verifies the signed token (HS256 JWT with `exp`, `username` and `role`) that the server issues at login and accepts it next to its own token. A viewer may read but not change, and a request with no credential is refused even on loopback, `GET /health` and `GET /stats` included: nothing is open. An address that is not loopback no longer needs a token of the service. The key is the signing key of the server, read from a file that only the group of the service may read, at least 32 characters; without the switch nothing changes.
 
 - **The production events can carry the identity of the SERVER:** `-production-events-identity-key-file` (or `JOB_DISPATCHER_PRODUCTION_EVENTS_IDENTITY_KEY_FILE`) names a file with the signing key of HYDRA-UMC-SERVER; every `POST` of `-production-events-url` then presents a short-lived token signed with it (role `operator`) instead of a fixed bearer token, so the events can reach `POST /events/production` of the production reports without pasting a token that expires. Off unless the file is named.

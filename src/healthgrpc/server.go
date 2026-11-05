@@ -46,6 +46,9 @@ const (
 type Config struct {
 	Listen         string        // address to listen on (default DefaultListen)
 	Token          string        // bearer token every call needs; empty is only for loopback
+	// Identity, when set, decides whether a bearer token is a valid signed token of HYDRA-UMC-SERVER (any role: the service only reads). It is accepted next
+	// to Token, and while it is set a call with no credential is refused even on loopback.
+	Identity func(token string) bool
 	MaxConnections int           // most connections open at once
 	MaxWatchers    int           // most Watch streams open at once
 	WatchInterval  time.Duration // how often a Watch stream repeats the report when nothing changed
@@ -103,7 +106,12 @@ type Server struct {
 // Start listens and serves in the background. It returns once the port is open, or why it is not.
 func Start(cfg Config, source Source) (*Server, error) {
 	cfg = cfg.withDefaults()
-	if problem := ListenProblem(cfg.Listen, cfg.Token); problem != "" {
+	// an identity check stands in for the token when it is set: nothing is open then, so an address reachable from the network is served
+	credential := cfg.Token
+	if credential == "" && cfg.Identity != nil {
+		credential = "identity"
+	}
+	if problem := ListenProblem(cfg.Listen, credential); problem != "" {
 		return nil, errors.New(problem)
 	}
 	raw, err := net.Listen("tcp", cfg.Listen)
@@ -111,7 +119,7 @@ func Start(cfg Config, source Source) (*Server, error) {
 		return nil, err
 	}
 	svc := &service{source: source, max: int64(cfg.MaxWatchers), interval: cfg.WatchInterval, done: make(chan struct{})}
-	auth := authorizer(cfg.Token)
+	auth := authorizer{token: cfg.Token, identity: cfg.Identity}
 	g := grpc.NewServer(
 		grpc.UnaryInterceptor(auth.unary),
 		grpc.StreamInterceptor(auth.stream),
@@ -196,15 +204,25 @@ func (s *service) Watch(_ *pb.Empty, stream grpc.ServerStreamingServer[pb.Health
 	}
 }
 
-type authorizer string
+type authorizer struct {
+	token    string
+	identity func(token string) bool
+}
 
 func (a authorizer) check(ctx context.Context) error {
-	if a == "" {
+	if a.token == "" && a.identity == nil {
 		return nil
 	}
 	md, _ := metadata.FromIncomingContext(ctx)
 	for _, v := range md.Get("authorization") {
-		if token, ok := strings.CutPrefix(v, "Bearer "); ok && constantTimeEqual(token, string(a)) {
+		presented, ok := strings.CutPrefix(v, "Bearer ")
+		if !ok {
+			continue
+		}
+		if a.token != "" && constantTimeEqual(presented, a.token) {
+			return nil
+		}
+		if a.identity != nil && presented != "" && a.identity(presented) {
 			return nil
 		}
 	}

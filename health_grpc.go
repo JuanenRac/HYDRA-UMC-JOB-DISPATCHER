@@ -16,8 +16,10 @@ import (
 
 // healthGRPCSettings returns the settings of the gRPC health service, or nil while it is off. The
 // token is the one named by token_env, or else, for an address other than loopback, the token of the HTTP API. An address other than
-// loopback without any token is refused, and so is a token_env that names an empty variable.
-func healthGRPCSettings(section *dispatcher.HealthGRPCSection, apiToken string, getenv func(string) string) (*healthgrpc.Config, error) {
+// loopback without any token is refused, and so is a token_env that names an empty variable. With the identity key of the family (identityKey, the key of
+// HYDRA-UMC-SERVER) the signed token of the server is accepted too, next to the token above, and nothing is open any more: a call with no credential is refused
+// even on loopback and an address reachable from the network needs no token of its own.
+func healthGRPCSettings(section *dispatcher.HealthGRPCSection, apiToken string, getenv func(string) string, identityKey []byte) (*healthgrpc.Config, error) {
 	if section == nil || !section.Enabled {
 		return nil, nil
 	}
@@ -37,7 +39,13 @@ func healthGRPCSettings(section *dispatcher.HealthGRPCSection, apiToken string, 
 		}
 		cfg.Token = token
 	}
-	if problem := healthgrpc.ListenProblem(cfg.Listen, cfg.Token); problem != "" {
+	if identityKey != nil {
+		cfg.Identity = func(token string) bool {
+			_, err := dispatcher.VerifyServerToken(token, identityKey, time.Now())
+			return err == nil
+		}
+	}
+	if problem := healthgrpc.ListenProblem(cfg.Listen, cfg.Token); problem != "" && cfg.Identity == nil {
 		return nil, fmt.Errorf("%s", problem)
 	}
 	if section.MaxConnections != nil {
