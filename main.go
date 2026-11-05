@@ -269,6 +269,14 @@ func main() {
 		fmt.Printf("[job-dispatcher] tool confirmation is on: a job that needs a tool only goes to a robot whose controller confirms it (unconfirmed: %s)\n", tc.OnUnconfirmed)
 	}
 	server := api.New(engine)
+	if pv := fileConfig.ProposalVerifySetting(); pv.Enabled {
+		verifier, err := dispatcher.NewProposalVerifier(pv)
+		if err != nil {
+			log.Fatalf("[job-dispatcher] refusing to start: %v", err)
+		}
+		server.SetProposalVerifier(verifier)
+		fmt.Printf("[job-dispatcher] signed proposals are checked: a job that carries one is queued only when HYDRA-UMC-SERVER finds it valid (a job without one is refused: %v; a change of this section needs a restart)\n", pv.Require)
+	}
 	server.SetEvents(eventsHub)
 	server.SetMaintenance(board)
 	server.SetMaxBodyBytes(*maxBody)

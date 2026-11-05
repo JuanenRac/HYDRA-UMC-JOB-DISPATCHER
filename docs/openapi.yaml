@@ -596,6 +596,10 @@ components:
         requiredTool: { type: string }
         location: { type: string }
         dependsOn: { type: array, items: { type: string } }
+        proposal:
+          type: object
+          description: A signed trajectory proposal (Ed25519) the job is for. Read only while the proposal_verify section of the configuration file is on; HYDRA-UMC-SERVER checks it before the job is queued.
+        expectedRobotId: { type: string, description: The robot the proposal was signed for; required with a proposal. }
     Job:
       type: object
       properties:

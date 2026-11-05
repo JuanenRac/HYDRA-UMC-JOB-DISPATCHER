@@ -139,6 +139,7 @@ Submits a new job to the queue.
 - `priority` (int) - higher runs first.
 - `requiredTool` (string, optional) - must exactly match a robot's `Tool`; empty/omitted means any available robot qualifies.
 - `dependsOn` (array of strings, optional) - job IDs that must already exist and must reach `"done"` before this job becomes eligible. A job with unfinished dependencies starts as `"blocked"`, not `"pending"` - or, if a dependency already ended `"failed"` (or is itself `"unreachable"`), it starts `"unreachable"` instead.
+- `proposal` (object, optional) and `expectedRobotId` (string) - a signed trajectory proposal (Ed25519) the job is for and the robot it was signed for. Both are ignored unless the `proposal_verify` section of the configuration file is on; see "Signed trajectory proposals" below. The same two fields are read by `POST /jobs/submit`.
 
 **Responses**
 
@@ -544,3 +545,18 @@ With `mission_state` on, the service looks at the state of the queue every `inte
 ## Errors
 
 Any other path/method returns Go's default `405 Method Not Allowed` (with an `Allow` header) for a known path with the wrong verb, or `404 page not found` (stdlib `net/http` default) for an unknown path.
+
+## Signed trajectory proposals (`proposal_verify`)
+
+Off unless the `proposal_verify` section of the configuration file is enabled; until then `proposal` and `expectedRobotId` are ignored. A job that carries a signed trajectory proposal (the Ed25519 proposal of the trajectory engine) is queued only when HYDRA-UMC-SERVER finds it valid: before the job is created, the dispatcher asks `POST /api/trajectory/proposals/verify` of the server with `{"proposal": ..., "expected_robot_id": ...}`. The server keeps the public keys of the operators; the dispatcher holds none. The answer is a fact about the proposal and never an order.
+
+The section: `enabled`, `server_url`, the credential as a file (exactly one of `identity_key_file`, the signing key of the server, from which a short token is signed for every request, and `token_file`), `timeout_seconds` (0 to 60, default 5), `require` (a job without a proposal is refused) and `allow_plain_http` (the credential otherwise only goes over HTTPS or to this machine). A redirect is never followed. A change of the section needs a restart.
+
+| Status | Meaning |
+|---|---|
+| 201 | no proposal and `require` is off, or the proposal is valid: the job is queued |
+| 400 | a proposal without `expectedRobotId` |
+| 422 | the server finds the proposal not valid (the reason is in the error), or `require` is on and there is no proposal |
+| 503 | the proposal could not be checked (the server is away, refuses the credential, has the check off or holds no key): it fails closed and nothing is queued |
+
+The server judges the time window of the proposal when it is asked, so a proposal that expires before the job runs has been valid only at submission.

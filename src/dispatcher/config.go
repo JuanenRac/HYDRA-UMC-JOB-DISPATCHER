@@ -17,15 +17,42 @@ import (
 // preference, replanning and estimate ranges. Every section is optional and every switch inside is
 // off unless the file turns it on, so a missing file, an empty file or `{}` change nothing.
 type FileConfig struct {
-	LocationCosts *LocationSection     `json:"location_costs,omitempty"`
-	Replan        *ReplanSection       `json:"replan,omitempty"`
-	ETAInterval   *IntervalSection     `json:"eta_interval,omitempty"`
-	Maintenance   *MaintenanceSection  `json:"maintenance,omitempty"`
-	Events        *EventsSection       `json:"events,omitempty"`
-	ToolConfirm   *ToolConfirmSection  `json:"tool_confirmation,omitempty"`
-	HealthGRPC    *HealthGRPCSection   `json:"health_grpc,omitempty"`
-	Metrics       *MetricsSection      `json:"metrics,omitempty"`
-	MissionState  *MissionStateSection `json:"mission_state,omitempty"`
+	LocationCosts  *LocationSection       `json:"location_costs,omitempty"`
+	Replan         *ReplanSection         `json:"replan,omitempty"`
+	ETAInterval    *IntervalSection       `json:"eta_interval,omitempty"`
+	Maintenance    *MaintenanceSection    `json:"maintenance,omitempty"`
+	Events         *EventsSection         `json:"events,omitempty"`
+	ToolConfirm    *ToolConfirmSection    `json:"tool_confirmation,omitempty"`
+	HealthGRPC     *HealthGRPCSection     `json:"health_grpc,omitempty"`
+	Metrics        *MetricsSection        `json:"metrics,omitempty"`
+	MissionState   *MissionStateSection   `json:"mission_state,omitempty"`
+	ProposalVerify *ProposalVerifySection `json:"proposal_verify,omitempty"`
+}
+
+// ProposalVerifySection is the "proposal_verify" section: a job that carries a signed trajectory proposal is queued only when HYDRA-UMC-SERVER
+// (POST /api/trajectory/proposals/verify) finds the proposal valid for the robot named with it. Off unless enabled. The credential is a file:
+// identity_key_file (the signing key of the SERVER, a short token is signed for every request) or token_file (a token of the SERVER), exactly
+// one of them. require refuses a job without a proposal. A change of this section needs a restart.
+type ProposalVerifySection struct {
+	Enabled         bool     `json:"enabled"`
+	ServerURL       string   `json:"server_url,omitempty"`
+	IdentityKeyFile string   `json:"identity_key_file,omitempty"`
+	TokenFile       string   `json:"token_file,omitempty"`
+	TimeoutSeconds  *float64 `json:"timeout_seconds,omitempty"`
+	Require         bool     `json:"require,omitempty"`
+	AllowPlainHTTP  bool     `json:"allow_plain_http,omitempty"`
+}
+
+// ProposalVerifySetting is the setting of the "proposal_verify" section (off when absent).
+func (c FileConfig) ProposalVerifySetting() ProposalVerifyConfig {
+	if c.ProposalVerify == nil || !c.ProposalVerify.Enabled {
+		return ProposalVerifyConfig{}
+	}
+	p := c.ProposalVerify
+	return ProposalVerifyConfig{
+		Enabled: true, ServerURL: p.ServerURL, IdentityKeyFile: p.IdentityKeyFile, TokenFile: p.TokenFile,
+		Timeout: seconds(p.TimeoutSeconds, 5*time.Second), Require: p.Require, AllowPlainHTTP: p.AllowPlainHTTP,
+	}
 }
 
 // MissionStateSection is the "mission_state" section: the state of the queue (job-dispatch-state/1) published retained on an MQTT topic,
@@ -216,6 +243,9 @@ func (c FileConfig) Validate() error {
 		if u, err := url.Parse(t.URLTemplate); err != nil || !strings.Contains(t.URLTemplate, "{robot}") || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil {
 			return fmt.Errorf("configuration: tool_confirmation.url_template must be an http(s) URL without credentials that contains {robot}")
 		}
+	}
+	if err := c.ProposalVerifySetting().Validate(); err != nil {
+		return fmt.Errorf("configuration: %w", err)
 	}
 	if err := c.HealthGRPC.Validate(); err != nil {
 		return fmt.Errorf("configuration: %w", err)

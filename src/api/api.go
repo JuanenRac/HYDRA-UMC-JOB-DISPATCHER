@@ -46,10 +46,12 @@ type Server struct {
 	reloader ConfigReloader
 	// maintenance holds the maintenance proposals; nil or switched off leaves their routes unknown (404).
 	maintenance *dispatcher.MaintenanceBoard
+	// proposals checks the signed trajectory proposals a job carries (SetProposalVerifier); nil leaves the earlier behaviour.
+	proposals *dispatcher.ProposalVerifier
 	// events is the hub of job events; nil or without the stream leaves GET /events unknown (404).
 	events *dispatcher.EventHub
 	// version is published by GET /metrics; metrics holds the counters and metricsHandler wraps the routes with them.
-	version        string
+	version string
 	// metricsOn opens GET /metrics (the "metrics" section of the configuration file); closed, the route answers like any unknown path.
 	metricsOn      bool
 	metrics        *ServiceMetrics
@@ -221,6 +223,10 @@ type jobRequest struct {
 	RequiredTool string   `json:"requiredTool"`
 	Location     string   `json:"location"`
 	DependsOn    []string `json:"dependsOn"`
+	// Proposal is the signed trajectory proposal the job is for and ExpectedRobotID the robot it was signed for; both are read only while the
+	// "proposal_verify" section is on (the server checks them before the job is queued) and are not part of the job.
+	Proposal        json.RawMessage `json:"proposal,omitempty"`
+	ExpectedRobotID string          `json:"expectedRobotId,omitempty"`
 }
 
 func (s *Server) handleJobs(w http.ResponseWriter, r *http.Request) {
@@ -235,6 +241,9 @@ func (s *Server) handleJobs(w http.ResponseWriter, r *http.Request) {
 		}
 		if req.ID == "" {
 			writeError(w, http.StatusBadRequest, errors.New("\"id\" is required"))
+			return
+		}
+		if !s.checkProposal(w, r, req.Proposal, req.ExpectedRobotID) {
 			return
 		}
 		job := dispatcher.Job{
@@ -340,6 +349,9 @@ type submitRequest struct {
 	Location     string   `json:"location"`
 	DependsOn    []string `json:"dependsOn"`
 	DedupKey     string   `json:"dedupKey"`
+	// Proposal and ExpectedRobotID: see jobRequest.
+	Proposal        json.RawMessage `json:"proposal,omitempty"`
+	ExpectedRobotID string          `json:"expectedRobotId,omitempty"`
 }
 
 type submitResponse struct {
@@ -371,6 +383,9 @@ func (s *Server) handleSubmitJob(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.ID == "" {
 		writeError(w, http.StatusBadRequest, errors.New("\"id\" is required"))
+		return
+	}
+	if !s.checkProposal(w, r, req.Proposal, req.ExpectedRobotID) {
 		return
 	}
 	job := dispatcher.Job{
