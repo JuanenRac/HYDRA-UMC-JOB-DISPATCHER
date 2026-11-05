@@ -63,10 +63,6 @@ type ProposalVerifier struct {
 	now    func() time.Time
 }
 
-func isLoopbackHost(host string) bool {
-	return host == "localhost" || host == "127.0.0.1" || host == "::1"
-}
-
 // Validate refuses a setting that cannot work. Off, anything goes.
 func (c ProposalVerifyConfig) Validate() error {
 	if !c.Enabled {
