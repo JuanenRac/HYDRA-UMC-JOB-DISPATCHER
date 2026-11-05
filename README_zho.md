@@ -161,7 +161,7 @@ flowchart LR
 | `-robot-timeout` | `2m` | 沉默多久后机器人不再分到任务（`0` = 关闭） |
 | `-eta`, `JOB_DISPATCHER_ETA=1`, `-eta-default-duration`, `-eta-window` | 关闭、`1m`、`20` | 启用 `GET /dispatch/eta`(每个未完成作业和队列的预计开始与结束);在该工具有作业完成之前假定的时长(`0` = 不假定),以及每个工具取平均的最近已完成作业数 |
 | `-config`, `JOB_DISPATCHER_CONFIG` | 空 | 含三项可选行为调好数值的 JSON 文件,除非文件开启否则各自关闭:`location_costs`(位置之间的成本表;作业交给成本最低的机器人)、`replan`(故障或静默机器人的作业回到队列)和 `eta_interval`(每个估计旁的区间,需要 `-eta`) |
-| `-production-events`, `JOB_DISPATCHER_PRODUCTION_EVENTS=1`, `-production-events-file`, `-production-events-url`, `-production-events-token` | 关闭、空、空、空 | 为每个结束的作业交出一个共享合约的 `ProductionEvent`:文件中每个事件一行 JSON,和/或向 URL 发送 JSON `POST`(带 bearer 令牌);开关至少需要一个目标 |
+| `-production-events`, `JOB_DISPATCHER_PRODUCTION_EVENTS=1`, `-production-events-file`, `-production-events-url`, `-production-events-token`, `-production-events-identity-key-file` | 关闭、空、空、空、空 | 为每个结束的作业交出一个共享合约的 `ProductionEvent`:文件中每个事件一行 JSON,和/或向 URL 发送 JSON `POST`(带 bearer 令牌);开关至少需要一个目标。指定密钥文件（HYDRA-UMC-SERVER 的签名密钥，不会被打印）后，每个 `POST` 都带有用它签名的短期令牌（角色 operator），而不是 bearer 令牌，这正是 HYDRA-UMC-PRODUCTION-REPORTS 的 `POST /events/production` 所要求的 |
 | `-db` | 空（内存） | 保存队列的 SQLite 文件路径 |
 | `-tools-file`, `JOB_DISPATCHER_TOOLS_FILE`, `-tools`, `JOB_DISPATCHER_TOOLS` | 空 | 任务或机器人可指名的工具列表 |
 | `-max-body-bytes`, `-read-header-timeout`, `-read-timeout`, `-write-timeout`, `-idle-timeout` | `65536`, `5s`, `15s`, `30s`, `60s` | 请求体的最大字节数（更大的返回 `413`）以及 HTTP 服务器的时间限制；都不接受 0 |

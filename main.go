@@ -86,13 +86,17 @@ func productionEventsProblem(on bool, file, url string) string {
 }
 
 // buildProductionSink joins the sinks that were asked for; the HTTP one runs on its own goroutine so a slow receiver never holds up a completion.
-func buildProductionSink(file, url, token string) dispatcher.ProductionEventSink {
+func buildProductionSink(file, url, token string, identityKey []byte) dispatcher.ProductionEventSink {
 	var sinks []dispatcher.ProductionEventSink
 	if file != "" {
 		sinks = append(sinks, dispatcher.JSONLinesSink(file))
 	}
 	if url != "" {
-		async, _ := dispatcher.AsyncSink(dispatcher.HTTPSink(url, token, 5*time.Second), 256)
+		post := dispatcher.HTTPSink(url, token, 5*time.Second)
+		if identityKey != nil {
+			post = dispatcher.SignedHTTPSink(url, identityKey, 5*time.Second) // a token of the SERVER format, signed for every request
+		}
+		async, _ := dispatcher.AsyncSink(post, 256)
 		sinks = append(sinks, async)
 	}
 	return func(event dispatcher.ProductionEvent) error {
@@ -133,6 +137,7 @@ func main() {
 	productionOn := flag.Bool("production-events", os.Getenv("JOB_DISPATCHER_PRODUCTION_EVENTS") == "1", "hand over a ProductionEvent of the shared contract (when the cycle ended, how long it took, whether it went well) every time a robot reports that a job ended; needs -production-events-file and/or -production-events-url (off by default; JOB_DISPATCHER_PRODUCTION_EVENTS=1 does the same)")
 	productionFile := flag.String("production-events-file", os.Getenv("JOB_DISPATCHER_PRODUCTION_EVENTS_FILE"), "append every production event as one JSON line to this file; only with -production-events")
 	productionURL := flag.String("production-events-url", os.Getenv("JOB_DISPATCHER_PRODUCTION_EVENTS_URL"), "POST every production event as JSON to this URL; only with -production-events")
+	productionKeyFile := flag.String("production-events-identity-key-file", os.Getenv("JOB_DISPATCHER_PRODUCTION_EVENTS_IDENTITY_KEY_FILE"), "file with the signing key of HYDRA-UMC-SERVER (its JWT_SECRET): every event sent with -production-events-url carries a short-lived token signed with it (role operator), instead of -production-events-token")
 	productionToken := flag.String("production-events-token", os.Getenv("JOB_DISPATCHER_PRODUCTION_EVENTS_TOKEN"), "bearer token sent with -production-events-url (default: the JOB_DISPATCHER_PRODUCTION_EVENTS_TOKEN environment variable)")
 	configPath := flag.String("config", os.Getenv("JOB_DISPATCHER_CONFIG"), "JSON file with the tuned values of the optional behaviours: location_costs (the closest robot by a declared table of costs), replan (jobs of a robot that failed or went silent go back to the queue) and eta_interval (a range next to every estimate, needs -eta); every one is off unless the file turns it on (default: the JOB_DISPATCHER_CONFIG environment variable)")
 	flag.Parse()
@@ -198,7 +203,15 @@ func main() {
 		fmt.Println("[job-dispatcher] replanning is on: the jobs of a robot that failed or went silent go back to the queue (POST /jobs/replan)")
 	}
 	if *productionOn {
-		engine.SetProductionEvents(buildProductionSink(*productionFile, *productionURL, *productionToken))
+		var identityKey []byte
+		if *productionKeyFile != "" {
+			key, err := dispatcher.LoadIdentityKey(*productionKeyFile)
+			if err != nil {
+				log.Fatalf("[job-dispatcher] refusing to start: -production-events-identity-key-file: %v", err)
+			}
+			identityKey = key
+		}
+		engine.SetProductionEvents(buildProductionSink(*productionFile, *productionURL, *productionToken, identityKey))
 		fmt.Println("[job-dispatcher] production events are on: a ProductionEvent is handed over for every job that ends")
 	}
 	catalog, err := buildToolCatalog(*toolsFile, *toolsList)

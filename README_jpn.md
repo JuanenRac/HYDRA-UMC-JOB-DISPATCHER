@@ -162,7 +162,7 @@ flowchart LR
 | `-robot-timeout` | `2m` | この時間沈黙したロボットには仕事を渡さない（`0` = 無効） |
 | `-eta`, `JOB_DISPATCHER_ETA=1`, `-eta-default-duration`, `-eta-window` | 無効、`1m`、`20` | `GET /dispatch/eta` を有効にする(未完了の各ジョブとキューの開始・終了の見積もり)。そのツールのジョブが完了するまでに仮定する所要時間(`0` = 仮定なし)と、ツールごとに平均する直近の完了ジョブ数 |
 | `-config`, `JOB_DISPATCHER_CONFIG` | 空 | 調整済みの値を持つ JSON ファイル。3 つの任意機能はファイルが有効にしない限りオフ:`location_costs`(場所間のコスト表。ジョブは最低コストのロボットへ)、`replan`(故障または無応答のロボットのジョブをキューへ戻す)、`eta_interval`(各見積もりの隣に範囲。`-eta` が必要) |
-| `-production-events`, `JOB_DISPATCHER_PRODUCTION_EVENTS=1`, `-production-events-file`, `-production-events-url`, `-production-events-token` | 無効、空、空、空 | 終了したジョブごとに共有契約の `ProductionEvent` を渡す：ファイルにイベントごと JSON 1 行、や、URL への JSON `POST`（bearer トークン付き）。スイッチには少なくとも 1 つの送り先が必要 |
+| `-production-events`, `JOB_DISPATCHER_PRODUCTION_EVENTS=1`, `-production-events-file`, `-production-events-url`, `-production-events-token`, `-production-events-identity-key-file` | 無効、空、空、空、空 | 終了したジョブごとに共有契約の `ProductionEvent` を渡す：ファイルにイベントごと JSON 1 行、や、URL への JSON `POST`（bearer トークン付き）。スイッチには少なくとも 1 つの送り先が必要。鍵ファイル（HYDRA-UMC-SERVER の署名鍵、出力されません）を指定すると、各 `POST` は bearer トークンの代わりにその鍵で署名した短寿命のトークン（ロール operator）を運び、HYDRA-UMC-PRODUCTION-REPORTS の `POST /events/production` が求める形になります |
 | `-db` | 空（メモリ） | キューを保持する SQLite ファイルのパス |
 | `-tools-file`, `JOB_DISPATCHER_TOOLS_FILE`, `-tools`, `JOB_DISPATCHER_TOOLS` | 空 | ジョブやロボットが指定できるツールの一覧 |
 | `-max-body-bytes`, `-read-header-timeout`, `-read-timeout`, `-write-timeout`, `-idle-timeout` | `65536`, `5s`, `15s`, `30s`, `60s` | リクエスト本文の最大バイト数（超えると `413`）と HTTP サーバーの時間制限。どれも 0 は受け付けません |

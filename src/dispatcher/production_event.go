@@ -131,6 +131,11 @@ func JSONLinesSink(path string) ProductionEventSink {
 
 // HTTPSink posts every event as JSON to the URL (with a bearer token when one is given); anything but a 2xx answer is an error.
 func HTTPSink(url, token string, timeout time.Duration) ProductionEventSink {
+	return httpSink(url, func() string { return token }, timeout)
+}
+
+// httpSink is HTTPSink with the bearer token asked for on every request, so a token that expires (the signed identity) is made again each time.
+func httpSink(url string, token func() string, timeout time.Duration) ProductionEventSink {
 	client := &http.Client{Timeout: timeout}
 	return func(event ProductionEvent) error {
 		body, err := json.Marshal(event)
@@ -142,8 +147,8 @@ func HTTPSink(url, token string, timeout time.Duration) ProductionEventSink {
 			return err
 		}
 		request.Header.Set("Content-Type", "application/json")
-		if token != "" {
-			request.Header.Set("Authorization", "Bearer "+token)
+		if bearer := token(); bearer != "" {
+			request.Header.Set("Authorization", "Bearer "+bearer)
 		}
 		response, err := client.Do(request)
 		if err != nil {

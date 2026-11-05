@@ -4,6 +4,7 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+- **The production events can carry the identity of the SERVER:** `-production-events-identity-key-file` (or `JOB_DISPATCHER_PRODUCTION_EVENTS_IDENTITY_KEY_FILE`) names a file with the signing key of HYDRA-UMC-SERVER; every `POST` of `-production-events-url` then presents a short-lived token signed with it (role `operator`) instead of a fixed bearer token, so the events can reach `POST /events/production` of the production reports without pasting a token that expires. Off unless the file is named.
 - **The minimum Go of the project goes from 1.25 to 1.26:** `go.mod` and the README now ask for Go 1.26 or newer.
 
 - **`GET /metrics` is off by default and loopback-only:** the new `metrics` section of the configuration file (`{"metrics": {"enabled": true}}`) opens it. Closed, the route answers `404`; open, it answers a caller on this machine, or any caller with the bearer token when the API has one. It also publishes the real version when no token is set (it said `unknown`).
