@@ -89,8 +89,9 @@ Lists the jobs known to the engine, oldest submission first. Without parameters 
 | `status` | Only the jobs in that status (`pending`, `blocked`, `assigned`, `done`, `failed`, `unreachable`, `unknown`, `cancelled`); another value is a `400`. |
 | `limit` | At most this many jobs (a positive whole number). |
 | `offset` | Skip this many jobs first. |
+| `robot` | Only the jobs assigned to that robot (`AssignedRobot`). An unknown robot gives an empty list; a value longer than 256 characters is a `400`. A client that cares about one robot (the orchestrator) reads only its jobs instead of the whole queue. |
 
-The `X-Total-Count` header says how many jobs matched the `status` filter, whatever `limit` and `offset` cut, so a client can read a long queue in pieces. A machine-readable description of every route is in [`openapi.yaml`](openapi.yaml).
+The `X-Total-Count` header says how many jobs matched the `status` filter, whatever `limit` and `offset` cut (the `robot` filter counts too), so a client can read a long queue in pieces. A machine-readable description of every route is in [`openapi.yaml`](openapi.yaml).
 
 **Response** - `200`, a JSON array of `Job`:
 
@@ -338,6 +339,18 @@ Each assigned job's `Status` becomes `"assigned"` and `AssignedRobot` is set; th
 
 ---
 
+## `GET /dispatch/state`
+
+Read-only: the state of the queue as one small document, `job-dispatch-state/1`, for a reader that must not fetch every job. `counts` is the number of jobs in each status and `by_robot` lists, for each robot that holds a job, the ids of the jobs assigned to it in submission order (a robot with none is not listed). It carries no job content. Requires the token when one is set.
+
+```json
+{"schema": "job-dispatch-state/1", "counts": {"pending": 2, "assigned": 1}, "by_robot": {"arm-3": ["weld-42"]}}
+```
+
+The same document is published retained on MQTT when the `mission_state` section is on (see the configuration file below).
+
+---
+
 ## `GET /dispatch/waiting`
 
 Read-only: the `"pending"` jobs in dispatch order, each with the reason it has no robot right now. It assigns nothing and `POST /dispatch` keeps answering the plain list of assignments above.
@@ -508,7 +521,8 @@ The tuned values of seven optional behaviours live in a JSON file given with `-c
   },
   "replan": {"enabled": true, "on_stale": true, "on_fault": true, "stop_ack_timeout_seconds": 30, "allow_unconfirmed": false},
   "eta_interval": {"enabled": true, "low_percentile": 25, "high_percentile": 75, "min_samples": 3},
-  "maintenance": {"enabled": true, "priority": 1, "required_tool": "", "location": "", "max_open": 100, "cooldown_seconds": 86400, "expire_seconds": 604800}
+  "maintenance": {"enabled": true, "priority": 1, "required_tool": "", "location": "", "max_open": 100, "cooldown_seconds": 86400, "expire_seconds": 604800},
+  "mission_state": {"enabled": true, "url": "mqtt://127.0.0.1:1883", "topic": "hydra/jobs/state", "user_env": "JOB_DISPATCHER_MQTT_USER", "password_env": "JOB_DISPATCHER_MQTT_PASSWORD", "interval_seconds": 5, "refresh_seconds": 60}
 }
 ```
 
@@ -522,6 +536,10 @@ The tuned values of seven optional behaviours live in a JSON file given with `-c
 - **`maintenance`:** the proposals of maintenance orders (see `POST /maintenance/proposals`), off unless `enabled` is `true`. `priority` (0 to 1000, default 1), `required_tool` and `location` are those of the job an approval submits; `max_open` (1 to 10000, default 100), `cooldown_seconds` (default 86400) and `expire_seconds` (default 604800, 0 = never) bound the list. It can be reloaded while the service runs.
 
 ---
+
+### The state of the queue on MQTT
+
+With `mission_state` on, the service looks at the state of the queue every `interval_seconds` (default 5) and publishes `job-dispatch-state/1` on `topic` (default `hydra/jobs/state`) at QoS 0, retained, when it changed, and again every `refresh_seconds` (default 60) even if it did not, so a reader that connects late finds a current one. It is read-only for every reader: HYDRA-UMC-NODE-HEALING reads it to know which robots hold a mission before it acts. `url` is `mqtt://` only for this machine and `mqtts://` for another host (no credentials in the URL); the user and password of the broker come from the environment variables named by `user_env` and `password_env`. A change of this section needs a restart. Off by default.
 
 ## Errors
 

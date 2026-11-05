@@ -95,6 +95,7 @@ func New(engine *dispatcher.Engine) *Server {
 	s.mux.HandleFunc("/robots/", s.handleRobotByID)
 	s.mux.HandleFunc("/dispatch", s.handleDispatch)
 	s.mux.HandleFunc("/dispatch/waiting", s.handleWaiting)
+	s.mux.HandleFunc("/dispatch/state", s.handleState)
 	s.mux.HandleFunc("/dispatch/eta", s.handleETA)
 	s.mux.HandleFunc("/jobs/detect-stale", s.handleDetectStale)
 	s.mux.HandleFunc("/admin/reload-config", s.handleReloadConfig)
@@ -280,9 +281,24 @@ func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {
 			*target = n
 		}
 	}
-	jobs, total := s.engine.JobsPage(status, offset, limit)
+	robot := query.Get("robot")
+	if len(robot) > 256 {
+		writeError(w, http.StatusBadRequest, errors.New("\"robot\" is too long"))
+		return
+	}
+	jobs, total := s.engine.JobsPageFor(robot, status, offset, limit)
 	w.Header().Set("X-Total-Count", strconv.Itoa(total))
 	writeJSON(w, http.StatusOK, jobs)
+}
+
+// handleState answers GET /dispatch/state: how many jobs are in each status and which jobs each robot holds (job-dispatch-state/1).
+func (s *Server) handleState(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", "GET")
+		writeError(w, http.StatusMethodNotAllowed, errors.New("use GET"))
+		return
+	}
+	writeJSON(w, http.StatusOK, s.engine.State())
 }
 
 // handleRobotByID answers DELETE /robots/{id}: the robot is forgotten, unless a job is still

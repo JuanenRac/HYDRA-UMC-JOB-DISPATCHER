@@ -1300,11 +1300,17 @@ func (e *Engine) RemoveRobot(id string) error {
 // skipping `offset` and returning at most `limit` (0 = no limit), and how many jobs matched in
 // total. It lets a client read a long queue in pieces instead of downloading it all.
 func (e *Engine) JobsPage(status JobStatus, offset, limit int) ([]Job, int) {
+	return e.JobsPageFor("", status, offset, limit)
+}
+
+// JobsPageFor is JobsPage narrowed to the jobs whose AssignedRobot is `robot` (empty = every robot). A client that only cares about
+// one robot (ORCHESTRATOR asking what its robot is doing) reads that robot's jobs instead of downloading the whole queue.
+func (e *Engine) JobsPageFor(robot string, status JobStatus, offset, limit int) ([]Job, int) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	matching := make([]*Job, 0, len(e.jobs))
 	for _, j := range e.jobs {
-		if status == "" || j.Status == status {
+		if (status == "" || j.Status == status) && (robot == "" || j.AssignedRobot == robot) {
 			matching = append(matching, j)
 		}
 	}

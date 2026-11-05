@@ -34,6 +34,7 @@ paths:
         - { name: status, in: query, required: false, schema: { $ref: "#/components/schemas/Status" } }
         - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1 } }
         - { name: offset, in: query, required: false, schema: { type: integer, minimum: 0 } }
+        - { name: robot, in: query, required: false, description: Only the jobs assigned to this robot., schema: { type: string, maxLength: 256 } }
       responses:
         "200":
           description: The jobs; X-Total-Count is how many matched the status filter.
@@ -411,6 +412,20 @@ paths:
                   properties:
                     JobID: { type: string }
                     RobotID: { type: string }
+  /dispatch/state:
+    get:
+      summary: The state of the queue, job-dispatch-state/1 (counts by status and the jobs each robot holds)
+      responses:
+        "200":
+          description: The state document.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  schema: { type: string, enum: ["job-dispatch-state/1"] }
+                  counts: { type: object, additionalProperties: { type: integer } }
+                  by_robot: { type: object, additionalProperties: { type: array, items: { type: string } } }
   /dispatch/waiting:
     get:
       summary: Pending jobs and why each has no robot now (changes nothing)

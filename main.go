@@ -245,6 +245,15 @@ func main() {
 		eventsHub = hub
 		fmt.Printf("[job-dispatcher] job events are on: stream %v, %d signed webhook(s) (a change of this section needs a restart)\n", events.SSE, len(events.Webhooks))
 	}
+	if ms := fileConfig.MissionStateSetting(os.Getenv); ms.Enabled {
+		publisher, err := dispatcher.NewStatePublisher(engine, ms, log.Printf)
+		if err != nil {
+			log.Fatalf("[job-dispatcher] refusing to start: %v", err)
+		}
+		publisher.Start()
+		defer publisher.Stop()
+		fmt.Printf("[job-dispatcher] the state of the queue is published, retained and read-only, on %s of %s (a change of this section needs a restart)\n", ms.Topic, ms.URL)
+	}
 	if tc := fileConfig.ToolConfirmSetting(); tc.Enabled {
 		token := ""
 		if env := fileConfig.ToolConfirm.TokenEnv; env != "" {

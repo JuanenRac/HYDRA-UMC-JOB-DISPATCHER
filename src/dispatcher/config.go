@@ -17,14 +17,28 @@ import (
 // preference, replanning and estimate ranges. Every section is optional and every switch inside is
 // off unless the file turns it on, so a missing file, an empty file or `{}` change nothing.
 type FileConfig struct {
-	LocationCosts *LocationSection    `json:"location_costs,omitempty"`
-	Replan        *ReplanSection      `json:"replan,omitempty"`
-	ETAInterval   *IntervalSection    `json:"eta_interval,omitempty"`
-	Maintenance   *MaintenanceSection `json:"maintenance,omitempty"`
-	Events        *EventsSection      `json:"events,omitempty"`
-	ToolConfirm   *ToolConfirmSection `json:"tool_confirmation,omitempty"`
-	HealthGRPC    *HealthGRPCSection  `json:"health_grpc,omitempty"`
-	Metrics       *MetricsSection     `json:"metrics,omitempty"`
+	LocationCosts *LocationSection     `json:"location_costs,omitempty"`
+	Replan        *ReplanSection       `json:"replan,omitempty"`
+	ETAInterval   *IntervalSection     `json:"eta_interval,omitempty"`
+	Maintenance   *MaintenanceSection  `json:"maintenance,omitempty"`
+	Events        *EventsSection       `json:"events,omitempty"`
+	ToolConfirm   *ToolConfirmSection  `json:"tool_confirmation,omitempty"`
+	HealthGRPC    *HealthGRPCSection   `json:"health_grpc,omitempty"`
+	Metrics       *MetricsSection      `json:"metrics,omitempty"`
+	MissionState  *MissionStateSection `json:"mission_state,omitempty"`
+}
+
+// MissionStateSection is the "mission_state" section: the state of the queue (job-dispatch-state/1) published retained on an MQTT topic,
+// read-only for whoever reads it. Off unless enabled. The user and the password of the broker are never in the file: user_env and
+// password_env name the environment variables that hold them. A change of this section needs a restart.
+type MissionStateSection struct {
+	Enabled         bool     `json:"enabled"`
+	URL             string   `json:"url,omitempty"`
+	Topic           string   `json:"topic,omitempty"`
+	UserEnv         string   `json:"user_env,omitempty"`
+	PasswordEnv     string   `json:"password_env,omitempty"`
+	IntervalSeconds *float64 `json:"interval_seconds,omitempty"`
+	RefreshSeconds  *float64 `json:"refresh_seconds,omitempty"`
 }
 
 // MetricsSection is the "metrics" section: GET /metrics in the text format of Prometheus. Off unless enabled (closed, the route answers 404). Open, it
@@ -192,6 +206,9 @@ func (c FileConfig) Validate() error {
 	if err := c.EventsSetting().Validate(); err != nil {
 		return fmt.Errorf("configuration: %w", err)
 	}
+	if err := c.MissionStateSetting(os.Getenv).Validate(); err != nil {
+		return fmt.Errorf("configuration: %w", err)
+	}
 	if err := c.ToolConfirmSetting().Validate(); err != nil {
 		return fmt.Errorf("configuration: %w", err)
 	}
@@ -288,6 +305,27 @@ func (c FileConfig) EventsSetting() EventsConfig {
 	cfg.KeepAlive = seconds(e.KeepAliveSeconds, cfg.KeepAlive)
 	for _, w := range e.Webhooks {
 		cfg.Webhooks = append(cfg.Webhooks, WebhookConfig(w))
+	}
+	return cfg
+}
+
+// MissionStateSetting is the setting of the "mission_state" section (off when absent); getenv reads the user and the password of the broker.
+func (c FileConfig) MissionStateSetting(getenv func(string) string) MissionStateConfig {
+	if c.MissionState == nil || !c.MissionState.Enabled {
+		return MissionStateConfig{}
+	}
+	m := c.MissionState
+	cfg := MissionStateConfig{Enabled: true, URL: m.URL, Topic: StateTopic, Interval: 5 * time.Second, Refresh: 60 * time.Second}
+	if m.Topic != "" {
+		cfg.Topic = m.Topic
+	}
+	cfg.Interval = seconds(m.IntervalSeconds, cfg.Interval)
+	cfg.Refresh = seconds(m.RefreshSeconds, cfg.Refresh)
+	if m.UserEnv != "" {
+		cfg.User = getenv(m.UserEnv)
+	}
+	if m.PasswordEnv != "" {
+		cfg.Password = getenv(m.PasswordEnv)
 	}
 	return cfg
 }
