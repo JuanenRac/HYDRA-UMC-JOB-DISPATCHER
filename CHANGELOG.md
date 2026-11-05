@@ -4,6 +4,8 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+## [0.3.0] - A job can carry a signed trajectory proposal that the server checks before it is queued (off by default): the proposalverify section of the configuration file turns on the check of the optional proposal and expectedRobotId of... (and 8 more changes)
+
 - **A job can carry a signed trajectory proposal that the server checks before it is queued (off by default):** the `proposal_verify` section of the configuration file turns on the check of the optional `proposal` and `expectedRobotId` of `POST /jobs` and `POST /jobs/submit` with `POST /api/trajectory/proposals/verify` of HYDRA-UMC-SERVER. A proposal the server does not find valid is `422`, one that could not be checked is `503` (it fails closed), and `require` refuses a job without a proposal. The credential is a file (the signing key of the server or a token), only goes over HTTPS or to this machine, and no redirect is followed.
 
 - **The jobs of one robot, and the state of the queue as one small document:** `GET /jobs?robot=<id>` lists only the jobs assigned to that robot (additive; the orchestrator no longer has to download the whole queue), and `GET /dispatch/state` answers `job-dispatch-state/1` (counts by status and the jobs each robot holds). With the `mission_state` section of the configuration file on (off by default) the same document is published retained and read-only on `hydra/jobs/state` of the MQTT broker, so the node watchdog can know which robots hold a mission. Tests for the filter, the document, the packets and the publisher.
