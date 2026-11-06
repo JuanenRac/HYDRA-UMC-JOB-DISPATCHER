@@ -56,13 +56,13 @@ func TestRobotIndex_AgreesWithAFullScanAfterEveryKindOfChange(t *testing.T) {
 	check("dispatched")
 	for _, j := range e.Jobs() {
 		if j.Status == StatusAssigned {
-			if err := e.CancelJob(j.ID); err != nil {
+			if err := e.RequeueJob(j.ID, j.AssignedRobot); err != nil {
 				t.Fatal(err)
 			}
 			break
 		}
 	}
-	check("one cancelled")
+	check("one requeued")
 	e.UpsertRobot(Robot{ID: "r1", Available: true})
 	e.UpsertRobot(Robot{ID: "r2", Available: true})
 	e.DispatchOnce()
