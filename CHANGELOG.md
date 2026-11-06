@@ -4,6 +4,8 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+- **The jobs of one robot are found through an index, not by walking the whole queue:** listing the jobs of a robot (`GET /jobs?robot=<id>`), checking whether a robot is reserved, removing a robot and replanning one now read a per-robot index that is rebuilt on start and pruned as it is read, so the cost no longer grows with the size of the queue. The answers are the same; a test compares the index with a full scan after dispatch, cancel and re-dispatch.
+
 ## [0.3.0] - A job can carry a signed trajectory proposal that the server checks before it is queued (off by default): the proposalverify section of the configuration file turns on the check of the optional proposal and expectedRobotId of... (and 8 more changes)
 
 - **A job can carry a signed trajectory proposal that the server checks before it is queued (off by default):** the `proposal_verify` section of the configuration file turns on the check of the optional `proposal` and `expectedRobotId` of `POST /jobs` and `POST /jobs/submit` with `POST /api/trajectory/proposals/verify` of HYDRA-UMC-SERVER. A proposal the server does not find valid is `422`, one that could not be checked is `503` (it fails closed), and `require` refuses a job without a proposal. The credential is a file (the signing key of the server or a token), only goes over HTTPS or to this machine, and no redirect is followed.

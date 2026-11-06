@@ -197,6 +197,7 @@ type Engine struct {
 	robots         map[string]*Robot
 	nextSeq        int64
 	dedupIndex     map[string]string // DedupKey -> JobID, only for jobs submitted with a non-empty DedupKey
+	heldBy         map[string]map[string]struct{} // robot -> ids of the jobs that name it as AssignedRobot (a superset, pruned when read: see jobsHeldByLocked)
 	store          Store
 	lastPersistErr error
 	// robotFreshness is how long a robot may stay silent and still be offered new work (see
@@ -325,6 +326,7 @@ func NewEngineWithStore(store Store) (*Engine, error) {
 		j := r.Job
 		j.seq = r.Seq
 		e.jobs[j.ID] = &j
+		e.noteAssignedLocked(&j)
 		if j.DedupKey != "" {
 			e.dedupIndex[j.DedupKey] = j.ID
 		}
@@ -474,6 +476,7 @@ func (e *Engine) addJobLocked(j Job) (*Job, error) {
 		return nil, fmt.Errorf("persisting new job %q: %w", stored.ID, err)
 	}
 	e.jobs[j.ID] = &stored
+	e.noteAssignedLocked(&stored)
 	if stored.DedupKey != "" {
 		e.dedupIndex[stored.DedupKey] = stored.ID
 	}
@@ -746,12 +749,51 @@ func (e *Engine) upsertRobotLocked(r Robot, availabilityGiven bool) {
 // robot's own heartbeat currently declares. See 's fix in
 // UpsertRobot. Caller must hold e.mu.
 func (e *Engine) robotHasActiveAssignmentLocked(robotID string) bool {
-	for _, j := range e.jobs {
-		if j.Status == StatusAssigned && j.AssignedRobot == robotID {
+	for _, j := range e.jobsHeldByLocked(robotID) {
+		if j.Status == StatusAssigned {
 			return true
 		}
 	}
 	return false
+}
+
+// noteAssignedLocked records that j names a robot, so the jobs of one robot are found without walking the whole queue. Every place that
+// gives a job a robot calls it; a job that later loses its robot stays listed until the next read prunes it. Caller must hold e.mu.
+func (e *Engine) noteAssignedLocked(j *Job) {
+	if j.AssignedRobot == "" {
+		return
+	}
+	if e.heldBy == nil {
+		e.heldBy = map[string]map[string]struct{}{}
+	}
+	set := e.heldBy[j.AssignedRobot]
+	if set == nil {
+		set = map[string]struct{}{}
+		e.heldBy[j.AssignedRobot] = set
+	}
+	set[j.ID] = struct{}{}
+}
+
+// jobsHeldByLocked returns the jobs whose AssignedRobot is robotID (any status), in no particular order, from the robot index instead of a
+// scan of every job; entries that no longer match are dropped on the way. Caller must hold e.mu.
+func (e *Engine) jobsHeldByLocked(robotID string) []*Job {
+	set := e.heldBy[robotID]
+	if len(set) == 0 {
+		return nil
+	}
+	out := make([]*Job, 0, len(set))
+	for id := range set {
+		j, ok := e.jobs[id]
+		if !ok || j.AssignedRobot != robotID {
+			delete(set, id)
+			continue
+		}
+		out = append(out, j)
+	}
+	if len(set) == 0 {
+		delete(e.heldBy, robotID)
+	}
+	return out
 }
 
 // computeStatus derives Pending vs Blocked vs Unreachable from current
@@ -890,6 +932,7 @@ func (e *Engine) DispatchOnce() []Assignment {
 		prevAssignedAt := j.AssignedAtMs
 		j.Status = StatusAssigned
 		j.AssignedRobot = robot.ID
+		e.noteAssignedLocked(j)
 		j.Attempt++
 		j.AssignedAtMs = e.now().UnixMilli()
 		if err := e.persistJobLocked(j); err != nil {
@@ -1282,8 +1325,8 @@ func (e *Engine) RemoveRobot(id string) error {
 	if _, ok := e.robots[id]; !ok {
 		return fmt.Errorf("%w: %q", ErrUnknownRobot, id)
 	}
-	for _, j := range e.jobs {
-		if (j.Status == StatusAssigned || j.Status == StatusUnknown) && j.AssignedRobot == id {
+	for _, j := range e.jobsHeldByLocked(id) {
+		if j.Status == StatusAssigned || j.Status == StatusUnknown {
 			return fmt.Errorf("%w: job %q is %q on robot %q", ErrRobotBusy, j.ID, j.Status, id)
 		}
 	}
@@ -1309,8 +1352,15 @@ func (e *Engine) JobsPageFor(robot string, status JobStatus, offset, limit int) 
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	matching := make([]*Job, 0, len(e.jobs))
-	for _, j := range e.jobs {
-		if (status == "" || j.Status == status) && (robot == "" || j.AssignedRobot == robot) {
+	candidates := e.jobsHeldByLocked(robot)
+	if robot == "" {
+		candidates = candidates[:0]
+		for _, j := range e.jobs {
+			candidates = append(candidates, j)
+		}
+	}
+	for _, j := range candidates {
+		if status == "" || j.Status == status {
 			matching = append(matching, j)
 		}
 	}

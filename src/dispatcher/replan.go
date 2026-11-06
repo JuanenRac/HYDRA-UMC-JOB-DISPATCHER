@@ -72,10 +72,7 @@ func (e *Engine) requeueJobLocked(j *Job) (robotErr, jobErr error) {
 // outcome is unknown), in submission order, so the result never depends on map order.
 func (e *Engine) jobsOfRobotLocked(robotID string, includeUnknown bool) []*Job {
 	var out []*Job
-	for _, j := range e.jobs {
-		if j.AssignedRobot != robotID {
-			continue
-		}
+	for _, j := range e.jobsHeldByLocked(robotID) {
 		if j.Status == StatusAssigned || (includeUnknown && j.Status == StatusUnknown) {
 			out = append(out, j)
 		}
