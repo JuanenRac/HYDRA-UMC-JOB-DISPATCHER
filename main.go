@@ -349,8 +349,7 @@ func main() {
 				}
 			}
 		}()
-		fmt.Printf("[job-dispatcher] jobs that ended more than %s ago are archived, looking every %s (\"archive\" section; GET /jobs?archived=1)
-", archive.After, archive.Every)
+		fmt.Printf("[job-dispatcher] jobs that ended more than %s ago are archived, looking every %s (\"archive\" section; GET /jobs?archived=1)\n", archive.After, archive.Every)
 	}
 	// http.ListenAndServe has no timeouts: a client that opens a connection and never finishes a
 	// request would hold it (and a goroutine) for ever.
