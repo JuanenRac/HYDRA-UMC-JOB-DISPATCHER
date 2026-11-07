@@ -35,6 +35,7 @@ paths:
         - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1 } }
         - { name: offset, in: query, required: false, schema: { type: integer, minimum: 0 } }
         - { name: robot, in: query, required: false, description: Only the jobs assigned to this robot., schema: { type: string, maxLength: 256 } }
+        - { name: archived, in: query, required: false, description: "1 reads the archive (jobs that ended long ago and left the live queue) instead of the queue; it takes no status or robot.", schema: { type: string, enum: ["0", "1"] } }
       responses:
         "200":
           description: The jobs; X-Total-Count is how many matched the status filter.

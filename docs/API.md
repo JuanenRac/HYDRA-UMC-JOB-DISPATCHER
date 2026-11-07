@@ -116,6 +116,10 @@ The `X-Total-Count` header says how many jobs matched the `status` filter, whate
 
 `Status` is one of `"pending"`, `"blocked"`, `"assigned"`, `"done"`, `"failed"`, `"cancelled"`, `"unreachable"`, `"unknown"` - computed by the engine, never caller-supplied (see `POST /jobs` below). `"unreachable"` means a `dependsOn` entry itself ended `"failed"` (or is itself `"unreachable"`) - unlike `"blocked"`, which just means "still waiting", an `"unreachable"` job can never become eligible on its own; it only resolves back to `"pending"`/`"blocked"` if that dependency is retried (see `POST /jobs/submit`) and eventually succeeds. `"unknown"` means the job was `"assigned"` to a robot whose heartbeat then went stale with no completion ever reported (see `POST /jobs/detect-stale` below) - the dispatcher genuinely cannot tell whether it succeeded, is still running, or was lost with the robot; it only ever resolves via a real, later `POST /jobs/complete` for that same job.
 
+### `GET /jobs?archived=1`
+
+The jobs that ended more than `archive.days` (30 by default) ago and left the live queue, oldest finished first, in the shape `GET /jobs` lists. `limit` and `offset` apply and `X-Total-Count` says how many are archived; `status` and `robot` do not (`400`). `404` when the service keeps no database. `GET /jobs` itself lists the live queue only. A job submitted again under the id of an archived one replaces the archived record.
+
 ## `GET /jobs/{id}`
 
 One job, in the shape `GET /jobs` lists. `404` for an unknown id. Use it instead of downloading the whole list to learn the state of one job.
@@ -534,6 +538,7 @@ The tuned values of seven optional behaviours live in a JSON file given with `-c
 - **`tool_confirmation`:** the physical confirmation of the tool, see above. Off unless `enabled` is `true`; read at start.
 - **`metrics`:** `GET /metrics` in the text format of Prometheus, off unless `enabled` is `true` (closed, the route answers `404` like any unknown path); read at start. Open, it answers a caller on this machine, or any caller that presents the bearer token when the API has one; a caller that is neither gets `401`. It publishes numbers only (version, uptime, responses by class of status, health and the persistence check) and no label carries a path, an address, a robot or a job. Example: `{"metrics": {"enabled": true}}`.
 - **`health_grpc`:** the health service of the shared contract over gRPC (`Check()` and `Watch()`), off unless `enabled` is `true`; loopback by default, a token on any other address; read at start. See [`HEALTH_GRPC.md`](HEALTH_GRPC.md).
+- **`archive`:** how long a job that ended (`done`, `failed` or `cancelled`) stays in the live queue before it is archived, and how often the service looks. `days` (0 to 3650, default 30; `0` turns the archive off) and `every_minutes` (1 to 1440, default 60). An archived job stays in the database (`-db`) and is read with `GET /jobs?archived=1`; without the database nothing is archived. A job that another job still in the queue depends on stays, so the verdict of the jobs that wait for it never changes. Read at start.
 - **`maintenance`:** the proposals of maintenance orders (see `POST /maintenance/proposals`), off unless `enabled` is `true`. `priority` (0 to 1000, default 1), `required_tool` and `location` are those of the job an approval submits; `max_open` (1 to 10000, default 100), `cooldown_seconds` (default 86400) and `expire_seconds` (default 604800, 0 = never) bound the list. It can be reloaded while the service runs.
 
 ---

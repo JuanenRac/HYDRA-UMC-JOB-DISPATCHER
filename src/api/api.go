@@ -269,9 +269,10 @@ func (s *Server) handleJobs(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleListJobs answers GET /jobs. Without parameters it returns every job, as it always did.
-// ?status=, ?limit= and ?offset= narrow it; X-Total-Count says how many jobs matched, so a client
-// can read a long queue in pieces.
+// handleListJobs answers GET /jobs. Without parameters it returns every job of the live queue, as it always did (a job that ended
+// long ago has been archived and is no longer in it). ?status=, ?limit= and ?offset= narrow it; X-Total-Count says how many jobs
+// matched, so a client can read a long queue in pieces. ?archived=1 reads the archive instead: the jobs that ended more than the
+// configured time ago and left the queue (oldest first; ?limit= and ?offset= apply, ?status= and ?robot= do not).
 func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 	status := dispatcher.JobStatus(query.Get("status"))
@@ -288,6 +289,30 @@ func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			*target = n
+		}
+	}
+	if raw := query.Get("archived"); raw != "" {
+		if raw != "1" && raw != "0" {
+			writeError(w, http.StatusBadRequest, errors.New("\"archived\" must be 1 or 0"))
+			return
+		}
+		if raw == "1" {
+			if status != "" || query.Get("robot") != "" {
+				writeError(w, http.StatusBadRequest, errors.New("the archive is read without \"status\" or \"robot\""))
+				return
+			}
+			archived, total, err := s.engine.ArchivedPage(offset, limit)
+			if errors.Is(err, dispatcher.ErrNoArchive) {
+				writeError(w, http.StatusNotFound, err)
+				return
+			}
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, err)
+				return
+			}
+			w.Header().Set("X-Total-Count", strconv.Itoa(total))
+			writeJSON(w, http.StatusOK, archived)
+			return
 		}
 	}
 	robot := query.Get("robot")

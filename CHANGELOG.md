@@ -4,6 +4,7 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+- **Jobs that ended long ago are archived:** with the database (`-db`), a job that ended (done, failed or cancelled) more than 30 days ago leaves the live queue and stays in the database; `GET /jobs?archived=1` reads them (`limit`, `offset`, `X-Total-Count`). A job that another job in the queue still depends on stays, so no verdict changes. The time and the interval are the `archive` section of the configuration file (`days`, `every_minutes`; `days` 0 turns it off). A queue that only grows made every read and every scheduling pass slower.
 - **The jobs of one robot are found through an index, not by walking the whole queue:** listing the jobs of a robot (`GET /jobs?robot=<id>`), checking whether a robot is reserved, removing a robot and replanning one now read a per-robot index that is rebuilt on start and pruned as it is read, so the cost no longer grows with the size of the queue. The answers are the same; a test compares the index with a full scan after dispatch, cancel and re-dispatch.
 
 ## [0.3.0] - A job can carry a signed trajectory proposal that the server checks before it is queued (off by default): the proposalverify section of the configuration file turns on the check of the optional proposal and expectedRobotId of... (and 8 more changes)

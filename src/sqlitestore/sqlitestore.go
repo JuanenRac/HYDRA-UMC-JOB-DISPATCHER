@@ -87,7 +87,8 @@ CREATE TABLE IF NOT EXISTS jobs (
 	submitted_at_ms INTEGER NOT NULL DEFAULT 0,
 	assigned_at_ms  INTEGER NOT NULL DEFAULT 0,
 	completed_at_ms INTEGER NOT NULL DEFAULT 0,
-	attempt         INTEGER NOT NULL DEFAULT 0
+	attempt         INTEGER NOT NULL DEFAULT 0,
+	archived_at_ms  INTEGER NOT NULL DEFAULT 0 -- 0 = in the live queue; otherwise when the job was archived (see ArchiveJobs)
 );
 CREATE TABLE IF NOT EXISTS robots (
 	id        TEXT PRIMARY KEY,
@@ -108,6 +109,7 @@ var migrations = []struct{ table, column, ddl string }{
 	{"jobs", "assigned_at_ms", "ALTER TABLE jobs ADD COLUMN assigned_at_ms INTEGER NOT NULL DEFAULT 0"},
 	{"jobs", "completed_at_ms", "ALTER TABLE jobs ADD COLUMN completed_at_ms INTEGER NOT NULL DEFAULT 0"},
 	{"jobs", "attempt", "ALTER TABLE jobs ADD COLUMN attempt INTEGER NOT NULL DEFAULT 0"},
+	{"jobs", "archived_at_ms", "ALTER TABLE jobs ADD COLUMN archived_at_ms INTEGER NOT NULL DEFAULT 0"},
 }
 
 func migrate(db *sql.DB) error {
@@ -212,7 +214,8 @@ func saveJob(db execer, record dispatcher.JobRecord) error {
 			submitted_at_ms = excluded.submitted_at_ms,
 			assigned_at_ms = excluded.assigned_at_ms,
 			completed_at_ms = excluded.completed_at_ms,
-			attempt = excluded.attempt`,
+			attempt = excluded.attempt,
+			archived_at_ms = 0`,
 		record.ID, record.Priority, record.RequiredTool, string(dependsOnJSON), string(record.Status), record.AssignedRobot, record.DedupKey, record.Seq, record.Location,
 		record.SubmittedAtMs, record.AssignedAtMs, record.CompletedAtMs, record.Attempt,
 	)
@@ -259,12 +262,16 @@ func (s *Store) LoadAll() ([]dispatcher.JobRecord, []dispatcher.Robot, error) {
 
 func (s *Store) loadJobs() ([]dispatcher.JobRecord, error) {
 	rows, err := s.db.Query(`SELECT id, priority, required_tool, depends_on, status, assigned_robot, dedup_key, seq, location,
-		submitted_at_ms, assigned_at_ms, completed_at_ms, attempt FROM jobs`)
+		submitted_at_ms, assigned_at_ms, completed_at_ms, attempt FROM jobs WHERE archived_at_ms = 0`)
 	if err != nil {
 		return nil, fmt.Errorf("loading jobs: %w", err)
 	}
 	defer rows.Close()
+	return scanJobs(rows)
+}
 
+// scanJobs reads the rows of a query that selects the columns of a job in the order loadJobs does.
+func scanJobs(rows *sql.Rows) ([]dispatcher.JobRecord, error) {
 	var records []dispatcher.JobRecord
 	for rows.Next() {
 		var (
@@ -330,3 +337,57 @@ var (
 	_ dispatcher.BatchStore   = (*Store)(nil)
 	_ dispatcher.RobotDeleter = (*Store)(nil)
 )
+
+// ArchiveJobs implements dispatcher.ArchiveStore: the jobs are marked archived at atMs in one transaction. They stay in the database,
+// are not loaded back into the queue at the next start and are read with LoadArchived. An id that is not in the database, or that is
+// archived already, is left as it is.
+func (s *Store) ArchiveJobs(ids []string, atMs int64) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	if atMs <= 0 {
+		return fmt.Errorf("archiving jobs: the time of the archive must be positive")
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("archiving jobs: %w", err)
+	}
+	for _, id := range ids {
+		if _, err := tx.Exec(`UPDATE jobs SET archived_at_ms = ? WHERE id = ? AND archived_at_ms = 0`, atMs, id); err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("archiving job %q: %w", id, err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("archiving jobs: %w", err)
+	}
+	return nil
+}
+
+// LoadArchived implements dispatcher.ArchiveStore: the archived jobs, oldest finished first, skipping offset and returning at most
+// limit (0 = all), and how many are archived in total.
+func (s *Store) LoadArchived(offset, limit int) ([]dispatcher.JobRecord, int, error) {
+	var total int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM jobs WHERE archived_at_ms > 0`).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("counting archived jobs: %w", err)
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	sqlLimit := -1 // SQLite: a negative LIMIT means no limit
+	if limit > 0 {
+		sqlLimit = limit
+	}
+	rows, err := s.db.Query(`SELECT id, priority, required_tool, depends_on, status, assigned_robot, dedup_key, seq, location,
+		submitted_at_ms, assigned_at_ms, completed_at_ms, attempt FROM jobs WHERE archived_at_ms > 0
+		ORDER BY completed_at_ms, seq LIMIT ? OFFSET ?`, sqlLimit, offset)
+	if err != nil {
+		return nil, 0, fmt.Errorf("loading archived jobs: %w", err)
+	}
+	defer rows.Close()
+	records, err := scanJobs(rows)
+	if err != nil {
+		return nil, 0, err
+	}
+	return records, total, nil
+}

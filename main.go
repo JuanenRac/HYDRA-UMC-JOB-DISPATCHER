@@ -197,6 +197,8 @@ func main() {
 		fmt.Printf("[job-dispatcher] persisting the mission queue to %s\n", *dbPath)
 	}
 	engine.SetRobotFreshness(*robotTimeout)
+	archive := fileConfig.ArchiveSetting()
+	engine.SetArchiveAfter(archive.After)
 	if *etaOn {
 		engine.SetETA(dispatcher.ETAConfig{Enabled: true, DefaultDuration: *etaDefault, Window: *etaWindow, Interval: fileConfig.IntervalSetting()})
 		fmt.Println("[job-dispatcher] GET /dispatch/eta is on: estimates of when each job and the whole queue finish")
@@ -331,6 +333,24 @@ func main() {
 				}
 			}
 		}()
+	}
+	if *dbPath != "" && archive.After > 0 {
+		// A job that ended long ago leaves the live queue (GET /jobs) and stays in the database (GET /jobs?archived=1): a queue that only grows
+		// makes every read and every scheduling pass slower.
+		go func() {
+			ticker := time.NewTicker(archive.Every)
+			defer ticker.Stop()
+			for range ticker.C {
+				ids, err := engine.ArchiveFinished()
+				if err != nil {
+					log.Printf("[job-dispatcher] archiving the finished jobs failed (they stay in the queue): %v", err)
+				} else if len(ids) > 0 {
+					log.Printf("[job-dispatcher] %d jobs that ended more than %s ago were archived (GET /jobs?archived=1)", len(ids), archive.After)
+				}
+			}
+		}()
+		fmt.Printf("[job-dispatcher] jobs that ended more than %s ago are archived, looking every %s (\"archive\" section; GET /jobs?archived=1)
+", archive.After, archive.Every)
 	}
 	// http.ListenAndServe has no timeouts: a client that opens a connection and never finishes a
 	// request would hold it (and a goroutine) for ever.

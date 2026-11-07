@@ -27,6 +27,44 @@ type FileConfig struct {
 	Metrics        *MetricsSection        `json:"metrics,omitempty"`
 	MissionState   *MissionStateSection   `json:"mission_state,omitempty"`
 	ProposalVerify *ProposalVerifySection `json:"proposal_verify,omitempty"`
+	Archive        *ArchiveSection        `json:"archive,omitempty"`
+}
+
+// ArchiveSection is the "archive" section: how long a job that ended (done, failed or cancelled) stays in the live queue before it is archived,
+// and how often the service looks for such jobs. An archived job stays in the database and is read with GET /jobs?archived=1. Days is 30 and
+// every_minutes 60 when absent; days 0 turns the archive off. It needs the database (-db); a change of this section needs a restart.
+type ArchiveSection struct {
+	Days         *float64 `json:"days,omitempty"`
+	EveryMinutes *float64 `json:"every_minutes,omitempty"`
+}
+
+// ArchiveSetting is the setting of the "archive" section: 30 days and a look every hour when the section is absent.
+func (c FileConfig) ArchiveSetting() ArchiveConfig {
+	cfg := ArchiveConfig{After: DefaultArchiveAfter, Every: DefaultArchiveEvery}
+	if c.Archive == nil {
+		return cfg
+	}
+	if c.Archive.Days != nil {
+		cfg.After = time.Duration(*c.Archive.Days * 24 * float64(time.Hour))
+	}
+	if c.Archive.EveryMinutes != nil {
+		cfg.Every = time.Duration(*c.Archive.EveryMinutes * float64(time.Minute))
+	}
+	return cfg
+}
+
+// Validate refuses a number of days outside 0 to 3650 and a look more often than every minute or less often than every day.
+func (a *ArchiveSection) Validate() error {
+	if a == nil {
+		return nil
+	}
+	if a.Days != nil && !(*a.Days >= 0 && *a.Days <= 3650) {
+		return fmt.Errorf("archive.days must be between 0 and 3650 (0 turns the archive off)")
+	}
+	if a.EveryMinutes != nil && !(*a.EveryMinutes >= 1 && *a.EveryMinutes <= 1440) {
+		return fmt.Errorf("archive.every_minutes must be between 1 and 1440")
+	}
+	return nil
 }
 
 // ProposalVerifySection is the "proposal_verify" section: a job that carries a signed trajectory proposal is queued only when HYDRA-UMC-SERVER
@@ -248,6 +286,9 @@ func (c FileConfig) Validate() error {
 		return fmt.Errorf("configuration: %w", err)
 	}
 	if err := c.HealthGRPC.Validate(); err != nil {
+		return fmt.Errorf("configuration: %w", err)
+	}
+	if err := c.Archive.Validate(); err != nil {
 		return fmt.Errorf("configuration: %w", err)
 	}
 	if c.ETAInterval != nil && c.ETAInterval.Enabled && !c.IntervalSetting().Valid() {

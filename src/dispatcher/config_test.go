@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestConfig_EmptyOrMissingSectionsSwitchEverythingOff(t *testing.T) {
@@ -80,5 +81,31 @@ func TestConfig_LoadFile(t *testing.T) {
 	}
 	if _, err := LoadConfigFile(filepath.Join(t.TempDir(), "missing.json")); err == nil {
 		t.Fatal("a file that does not exist must be refused")
+	}
+}
+
+func TestConfig_ArchiveDefaultsToThirtyDaysAndCanBeTunedOrTurnedOff(t *testing.T) {
+	c, err := ParseConfig([]byte(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := c.ArchiveSetting(); got.After != 30*24*time.Hour || got.Every != time.Hour {
+		t.Fatalf("default archive setting = %+v", got)
+	}
+	c, err = ParseConfig([]byte(`{"archive":{"days":7,"every_minutes":10}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := c.ArchiveSetting(); got.After != 7*24*time.Hour || got.Every != 10*time.Minute {
+		t.Fatalf("tuned archive setting = %+v", got)
+	}
+	c, err = ParseConfig([]byte(`{"archive":{"days":0}}`))
+	if err != nil || c.ArchiveSetting().After != 0 {
+		t.Fatalf("days 0 must turn the archive off: %+v, %v", c.ArchiveSetting(), err)
+	}
+	for _, bad := range []string{`{"archive":{"days":-1}}`, `{"archive":{"days":4000}}`, `{"archive":{"every_minutes":0}}`, `{"archive":{"every_minutes":2000}}`, `{"archive":{"daysx":1}}`} {
+		if _, err := ParseConfig([]byte(bad)); err == nil {
+			t.Fatalf("%s must be refused", bad)
+		}
 	}
 }

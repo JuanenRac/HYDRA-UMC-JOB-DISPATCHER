@@ -211,6 +211,8 @@ type Engine struct {
 	location LocationConfig
 	// replan says what happens to the jobs of a robot that fails or goes silent (see replan.go); the zero value is "off".
 	replan ReplanConfig
+	// archiveAfter is how long a finished job stays in the live queue before ArchiveFinished moves it to the archive of the store (see archive.go); zero = never.
+	archiveAfter time.Duration
 	// stopReq holds the stop requests made to silent robots, by job ID (see stopconfirm.go); in memory only.
 	stopReq map[string]*stopRequest
 	// productionSink receives the ProductionEvent of every job that ends; nil (the default) means the events are off (see production_event.go).
@@ -321,6 +323,8 @@ func NewEngineWithStore(store Store) (*Engine, error) {
 		store:      store,
 		now:        time.Now,
 	}
+	// a job that ended more than 30 days ago leaves the live queue (see SetArchiveAfter)
+	e.archiveAfter = DefaultArchiveAfter
 	for i := range records {
 		r := records[i]
 		j := r.Job
