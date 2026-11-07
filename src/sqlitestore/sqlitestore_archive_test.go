@@ -73,7 +73,7 @@ func TestArchive_ADatabaseOfAnOlderVersionGainsTheColumn(t *testing.T) {
 	if _, err := store.db.Exec("ALTER TABLE jobs DROP COLUMN archived_at_ms"); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.SaveJob(finished("old", 1, 100)); err != nil {
+	if _, err := store.db.Exec(`INSERT INTO jobs (id, priority, required_tool, depends_on, status, assigned_robot, dedup_key, seq) VALUES ('old', 0, '', '[]', 'done', '', '', 1)`); err != nil {
 		t.Fatal(err)
 	}
 	store.Close()
