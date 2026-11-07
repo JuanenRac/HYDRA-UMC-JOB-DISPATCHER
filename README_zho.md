@@ -127,6 +127,7 @@ flowchart LR
 * 🔎 **工具的物理确认（默认关闭）：** 开启 `tool_confirmation` 段后，每次 `POST /dispatch` 先向每个空闲机器人的控制器（文件中带 `{robot}` 的 URL，通常是机器人的服务器）询问它实际装的是哪种工具，需要工具的作业只交给回答一致的机器人。回答在 `ttl_seconds` 后失效；不回答的机器人被跳过（`on_unconfirmed`：默认 `skip`，`allow` 则信任申报的工具），`GET /dispatch/waiting` 会显示 `robot_tool_not_confirmed_by_its_controller`。
 * 🩺 **gRPC 健康服务（默认关闭）：** 启用配置文件的 `health_grpc` 部分后，共享 `HealthService` 的 `Check()` 和流式 `Watch()` 在回环地址上应答（其他地址需要持有者令牌）：队列有响应且存储接受写入时为 OK，存储报告错误时为降级，队列无响应时为不健康。连接数和打开的流有上限，每个流随其客户端结束。已用真实的 gRPC 客户端对真实服务器测试；从未对真实的看门狗、机器人或工作单元测试。参见 [`docs/HEALTH_GRPC.md`](docs/HEALTH_GRPC.md)。
 * 🪪 **HYDRA-UMC-SERVER 的身份（默认关闭）：** `-identity-key-file 文件`（或 `JOB_DISPATCHER_IDENTITY_KEY_FILE=文件`）会让服务在自己的令牌之外，也接受服务器在登录时签发的已签名令牌：查看者只能读取而不能更改，没有凭据的请求即使在环回地址上也会被拒绝。不开启该开关时一切照旧。
+* 🗄️ **旧作业会被归档（有数据库时默认开启）：** 使用数据库（`-db`）时，结束（完成、失败或取消）超过30天的作业会离开活动队列并保留在数据库中；`GET /jobs?archived=1` 可读取它们（`limit`、`offset`、`X-Total-Count`）。配置文件的 `archive` 段设置 `days`（默认30；`0` 表示关闭）和 `every_minutes`（默认60）。队列中仍有其他作业依赖的作业会保留，因此任何判定都不会改变。没有数据库时不会归档任何内容。
 
 ## 🔒 安全与防护
 
