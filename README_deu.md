@@ -72,6 +72,8 @@ Er stellt sicher, dass hochpriore Aufgaben (z. B. "Notfall-Defektbehebung") den 
 
 **HYDRA-UMC-JOB-DISPATCHER** entscheidet, welcher Roboter welchen Auftrag bekommt. Clients reichen Aufträge ein, Roboter melden die Werkzeuge an, die sie tragen, und fragen nach Arbeit, und der Dispatcher gibt den passenden Auftrag mit der höchsten Priorität aus. Er bewegt keinen Roboter: Was ein Roboter mit einem Auftrag tut, ist seine Sache und die des Auftragstors des SDK.
 
+> **Plattform:** Wo dieses README CM5 sagt, ist der Pilotprüfstand gemeint, der heute läuft; die Zielplattform von HYDRA-UMC ist ein NVIDIA Jetson Orin NX 16 GB, ein Entwurf, der weder gebaut noch getestet wurde.
+
 ## 🏛️ Architektur
 
 <p align="center">

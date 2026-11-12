@@ -72,6 +72,8 @@ It ensures that high-priority tasks (e.g., "Emergency Defect Fix") bypass the no
 
 **HYDRA-UMC-JOB-DISPATCHER** decides which robot gets which job. Clients submit jobs, robots register the tools they carry and ask for work, and the dispatcher hands out the highest-priority job that fits. It does not move a robot: what a robot does with a job is its own business and the job gate of the SDK.
 
+> **Platform:** where this README says CM5, it means the pilot bench that runs today; the target platform of HYDRA-UMC is an NVIDIA Jetson Orin NX 16 GB, a design that has not been built or tested.
+
 ## 🏛️ Architecture
 
 <p align="center">

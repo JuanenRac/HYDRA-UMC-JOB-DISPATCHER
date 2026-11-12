@@ -72,6 +72,8 @@ Il garantit que les tâches hautement prioritaires (ex : « Réparation de défa
 
 **HYDRA-UMC-JOB-DISPATCHER** décide quel robot reçoit quel travail. Les clients soumettent des travaux, les robots déclarent les outils qu'ils portent et demandent du travail, et le répartiteur donne le travail de plus haute priorité qui convient. Il ne déplace aucun robot : ce qu'un robot fait d'un travail le regarde, ainsi que la porte des travaux du SDK.
 
+> **Plateforme :** là où ce README dit CM5, il s'agit du banc pilote qui fonctionne aujourd'hui ; la plateforme visée par HYDRA-UMC est un NVIDIA Jetson Orin NX 16 Go, une conception ni construite ni testée.
+
 ## 🏛️ Architecture
 
 <p align="center">

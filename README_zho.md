@@ -75,6 +75,8 @@ GPL-3.0-or-later - see LICENSE
 
 **HYDRA-UMC-JOB-DISPATCHER** 决定哪个机器人接哪个任务。客户端提交任务，机器人登记自带的工具并索取任务，调度器把适合的最高优先级任务交出去。它不移动机器人：机器人如何处理任务是其自身和 SDK 任务关口的事。
 
+> **平台：** 本 README 中的 CM5 指的是目前正在运行的试验台；HYDRA-UMC 的目标平台是 NVIDIA Jetson Orin NX 16 GB，这是尚未制造或测试的设计。
+
 ## 🏛️ 架构
 
 <p align="center">

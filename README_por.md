@@ -72,6 +72,8 @@ Garante que as tarefas de alta prioridade (p. ex. "Correção urgente de defeito
 
 O **HYDRA-UMC-JOB-DISPATCHER** decide que robô recebe que trabalho. Os clientes submetem trabalhos, os robôs registam as ferramentas que levam e pedem trabalho, e o despachante entrega o trabalho de maior prioridade que encaixa. Não move nenhum robô: o que um robô faz com um trabalho é assunto dele e da porta de trabalhos do SDK.
 
+> **Plataforma:** onde este README diz CM5, refere-se ao banco piloto que funciona hoje; a plataforma objetivo do HYDRA-UMC é uma NVIDIA Jetson Orin NX de 16 GB, um desenho que não foi construído nem testado.
+
 ## 🏛️ Arquitetura
 
 <p align="center">
