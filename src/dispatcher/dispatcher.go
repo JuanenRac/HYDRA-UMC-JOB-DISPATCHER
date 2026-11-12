@@ -215,6 +215,8 @@ type Engine struct {
 	archiveAfter time.Duration
 	// stopReq holds the stop requests made to silent robots, by job ID (see stopconfirm.go); in memory only.
 	stopReq map[string]*stopRequest
+	// stopAcks holds the newest stop acknowledgement of each job (see stopconfirm.go); loaded from the store at start.
+	stopAcks map[string]StopAckRecord
 	// productionSink receives the ProductionEvent of every job that ends; nil (the default) means the events are off (see production_event.go).
 	productionSink ProductionEventSink
 	// events announces what happens to the jobs (see events.go); nil (the default) means nothing is announced.
@@ -341,6 +343,15 @@ func NewEngineWithStore(store Store) (*Engine, error) {
 	for i := range robots {
 		r := robots[i]
 		e.robots[r.ID] = &r
+	}
+	if acks, ok := store.(StopAckStore); ok {
+		list, err := acks.LoadStopAcks()
+		if err != nil {
+			return nil, fmt.Errorf("loading the stop acknowledgements: %w", err)
+		}
+		for _, a := range list {
+			e.noteStopAckLocked(a)
+		}
 	}
 	return e, nil
 }

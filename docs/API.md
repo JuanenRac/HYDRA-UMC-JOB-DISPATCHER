@@ -471,6 +471,10 @@ If no acknowledgement arrives within `stop_ack_timeout_seconds` (default 30), th
 
 ---
 
+### `GET /jobs/stop-acks`
+
+Off by default: the route exists only when `replan.persist_stop_acks` is on, and answers the same `404` as any unknown path otherwise. With it on, every accepted `POST /jobs/stop-ack` is written down (in the database, when there is one) before the job goes back to the queue; if it cannot be written the acknowledgement is refused and the robot sends it again. The list is the proof a standby reads when the dispatcher that asked for the stop is gone: `[{"jobId": "weld-42", "robotId": "arm-1", "attempt": 1, "ackedAtMs": 1700000000000}]`, newest attempt of each job, in job order.
+
 ## `POST /admin/reload-config`
 
 Off unless the service was started with a configuration file (`-config`, see below): without one the route answers the same `404` as any unknown path. It re-reads that file and installs, while the service runs, the values it can change: the table of `location_costs`, the `replan` section and the range of `eta_interval` (which needs `-eta`, as at start). What is fixed by the switches of the process (`-eta`, the address, the token, the database) is not in the file and stays as started.
@@ -532,7 +536,7 @@ The tuned values of seven optional behaviours live in a JSON file given with `-c
 ```
 
 - **`location_costs`:** a job that names a `location` goes to the eligible robot (available, tool attached, heard from recently) whose location has the lowest declared cost to it, instead of only preferring the robots in exactly that location. `costs[from][to]` is any non-negative number (a distance, a travel time); the table is read both ways and a location is at cost 0 from itself. A pair that is not declared has an unknown cost and ranks after every known one; ties go to the lower load, then the lower ID. A job without a location, and a configuration without this section, behave as before. The location stays a preference, never a requirement. The estimate follows the same rule among the robots free at the same moment.
-- **`replan`:** see `POST /jobs/replan`. `on_stale` and `on_fault` are `true` when the section is enabled unless the file says `false`. `stop_ack_timeout_seconds` (greater than 0, at most 86400; default 30) and `allow_unconfirmed` (default `false`) govern the confirmed stop of a silent robot that declared it can confirm one: see `GET /jobs/stop-requests` and `POST /jobs/stop-ack`.
+- **`replan`:** see `POST /jobs/replan`. `on_stale` and `on_fault` are `true` when the section is enabled unless the file says `false`. `stop_ack_timeout_seconds` (greater than 0, at most 86400; default 30) and `allow_unconfirmed` (default `false`) govern the confirmed stop of a silent robot that declared it can confirm one: see `GET /jobs/stop-requests` and `POST /jobs/stop-ack`. `persist_stop_acks` (default `false`) keeps every acknowledgement (in the database when `-db` is used) and lists it at `GET /jobs/stop-acks`.
 - **`eta_interval`:** the ranges of `GET /dispatch/eta`; the process refuses to start with it enabled and without `-eta`.
 - **`events`:** the stream of job events and the signed webhooks, see `GET /events` and the webhooks. Off unless `enabled` is `true`; secrets only by environment variable; read at start (a change needs a restart).
 - **`tool_confirmation`:** the physical confirmation of the tool, see above. Off unless `enabled` is `true`; read at start.

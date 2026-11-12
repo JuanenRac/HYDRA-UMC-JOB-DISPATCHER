@@ -30,6 +30,9 @@ type ReplanConfig struct {
 	// Off by default: the job then becomes "unknown", exactly as when replanning is off, because the
 	// robot may still be executing it.
 	AllowUnconfirmed bool
+	// PersistStopAcks keeps every stop acknowledgement (in the database when there is one) and lists it in
+	// StopAcks, so a standby that takes over while this dispatcher is down can read the proof. Off by default.
+	PersistStopAcks bool
 }
 
 // ErrReplanOff is returned by ReplanRobot while replanning is switched off.

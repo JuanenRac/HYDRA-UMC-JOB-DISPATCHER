@@ -205,6 +205,8 @@ type ReplanSection struct {
 	StopAckTimeoutSeconds *float64 `json:"stop_ack_timeout_seconds,omitempty"`
 	// AllowUnconfirmed: send the job back to the queue even if the stop was not acknowledged (default false).
 	AllowUnconfirmed bool `json:"allow_unconfirmed,omitempty"`
+	// PersistStopAcks: keep the stop acknowledgements and list them at GET /jobs/stop-acks for a standby (default false).
+	PersistStopAcks bool `json:"persist_stop_acks,omitempty"`
 }
 
 // IntervalSection is the "eta_interval" section; it needs the estimates (-eta) to do anything.
@@ -311,7 +313,7 @@ func (c FileConfig) ReplanSetting() ReplanConfig {
 		return ReplanConfig{}
 	}
 	on := func(p *bool) bool { return p == nil || *p }
-	cfg := ReplanConfig{Enabled: true, OnStale: on(c.Replan.OnStale), OnFault: on(c.Replan.OnFault), AllowUnconfirmed: c.Replan.AllowUnconfirmed}
+	cfg := ReplanConfig{Enabled: true, OnStale: on(c.Replan.OnStale), OnFault: on(c.Replan.OnFault), AllowUnconfirmed: c.Replan.AllowUnconfirmed, PersistStopAcks: c.Replan.PersistStopAcks}
 	if c.Replan.StopAckTimeoutSeconds != nil {
 		cfg.StopAckTimeout = time.Duration(*c.Replan.StopAckTimeoutSeconds * float64(time.Second))
 	}

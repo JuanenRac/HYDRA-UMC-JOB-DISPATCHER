@@ -144,6 +144,59 @@ func (e *Engine) AckStop(robotID, jobID string) error {
 	if (j.Status != StatusAssigned && j.Status != StatusUnknown) || req == nil || req.robotID != robotID || req.attempt != j.Attempt {
 		return fmt.Errorf("%w: %q", ErrNoStopRequest, jobID)
 	}
+	if e.replan.PersistStopAcks {
+		// the proof is written before the job goes back to the queue: if it cannot be kept the acknowledgement is refused and the robot sends it again
+		rec := StopAckRecord{JobID: jobID, RobotID: robotID, Attempt: req.attempt, AtMs: e.now().UnixMilli()}
+		if acks, ok := e.store.(StopAckStore); ok {
+			if err := acks.SaveStopAck(rec); err != nil {
+				return fmt.Errorf("keeping the stop acknowledgement: %w", err)
+			}
+		}
+		e.noteStopAckLocked(rec)
+	}
 	e.requeueAllLocked([]*Job{j})
 	return nil
+}
+
+// StopAckRecord is one acknowledgement kept as proof that a robot stopped a job (attempt = the attempt that was stopped).
+type StopAckRecord struct {
+	JobID   string `json:"jobId"`
+	RobotID string `json:"robotId"`
+	Attempt int    `json:"attempt"`
+	AtMs    int64  `json:"ackedAtMs"`
+}
+
+// StopAckStore is implemented by a Store that keeps the stop acknowledgements across a restart (used only with PersistStopAcks).
+type StopAckStore interface {
+	SaveStopAck(StopAckRecord) error
+	LoadStopAcks() ([]StopAckRecord, error)
+}
+
+// noteStopAckLocked keeps the newest acknowledgement of a job. Caller must hold e.mu (or own the engine, as at start).
+func (e *Engine) noteStopAckLocked(a StopAckRecord) {
+	if e.stopAcks == nil {
+		e.stopAcks = map[string]StopAckRecord{}
+	}
+	if old, ok := e.stopAcks[a.JobID]; !ok || a.Attempt >= old.Attempt {
+		e.stopAcks[a.JobID] = a
+	}
+}
+
+// StopAckProofEnabled reports whether the acknowledgements are kept and listed.
+func (e *Engine) StopAckProofEnabled() bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.replan.Enabled && e.replan.PersistStopAcks
+}
+
+// StopAcks lists the kept acknowledgements, in job order.
+func (e *Engine) StopAcks() []StopAckRecord {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	out := make([]StopAckRecord, 0, len(e.stopAcks))
+	for _, a := range e.stopAcks {
+		out = append(out, a)
+	}
+	sort.Slice(out, func(i, k int) bool { return out[i].JobID < out[k].JobID })
+	return out
 }

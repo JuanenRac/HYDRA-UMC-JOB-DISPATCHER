@@ -146,3 +146,31 @@ func TestStopRoutes_AskThenAcknowledgeSendsTheJobBack(t *testing.T) {
 		t.Fatalf("job = %+v, want pending without a robot", job)
 	}
 }
+
+// The kept acknowledgements are a route only while replan.persist_stop_acks is on; before that it is an unknown path.
+func TestStopAcks_RouteOffUnlessPersisting(t *testing.T) {
+	e := dispatcher.NewEngine()
+	e.SetReplan(dispatcher.ReplanConfig{Enabled: true, OnStale: true})
+	s := New(e)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/jobs/stop-acks", nil))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status %d, want 404", rec.Code)
+	}
+}
+
+func TestStopAcks_RouteListsAndRefusesOtherMethods(t *testing.T) {
+	e := dispatcher.NewEngine()
+	e.SetReplan(dispatcher.ReplanConfig{Enabled: true, OnStale: true, PersistStopAcks: true})
+	s := New(e)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/jobs/stop-acks", nil))
+	if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != "[]" {
+		t.Fatalf("status %d body %s", rec.Code, rec.Body.String())
+	}
+	rec = httptest.NewRecorder()
+	s.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/jobs/stop-acks", nil))
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("POST status %d, want 405", rec.Code)
+	}
+}

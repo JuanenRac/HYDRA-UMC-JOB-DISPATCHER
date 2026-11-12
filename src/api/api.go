@@ -92,6 +92,7 @@ func New(engine *dispatcher.Engine) *Server {
 	s.mux.HandleFunc("/jobs/replan", s.handleReplan)
 	s.mux.HandleFunc("/jobs/stop-requests", s.handleStopRequests)
 	s.mux.HandleFunc("/jobs/stop-ack", s.handleStopAck)
+	s.mux.HandleFunc("/jobs/stop-acks", s.handleStopAcks)
 	s.mux.HandleFunc("/jobs/", s.handleJobByID)
 	s.mux.HandleFunc("/robots", s.handleRobots)
 	s.mux.HandleFunc("/robots/", s.handleRobotByID)
@@ -836,6 +837,21 @@ func (s *Server) handleStopRequests(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, s.engine.StopRequests())
+}
+
+// handleStopAcks answers GET /jobs/stop-acks: the kept stop acknowledgements, the proof a standby reads when it takes over.
+// Off unless replan.persist_stop_acks is on: the same 404 as for any unknown path.
+func (s *Server) handleStopAcks(w http.ResponseWriter, r *http.Request) {
+	if !s.engine.StopAckProofEnabled() {
+		http.NotFound(w, r)
+		return
+	}
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", "GET")
+		writeError(w, http.StatusMethodNotAllowed, errors.New("use GET"))
+		return
+	}
+	writeJSON(w, http.StatusOK, s.engine.StopAcks())
 }
 
 type stopAckRequest struct {

@@ -98,6 +98,13 @@ CREATE TABLE IF NOT EXISTS robots (
 	load      INTEGER NOT NULL,
 	last_heartbeat_ns INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS stop_acks (
+	job_id   TEXT NOT NULL,
+	attempt  INTEGER NOT NULL,
+	robot_id TEXT NOT NULL,
+	at_ms    INTEGER NOT NULL,
+	PRIMARY KEY (job_id, attempt)
+);
 `
 
 // migrations bring a database created by an older version up to the current schema: CREATE TABLE
@@ -390,4 +397,32 @@ func (s *Store) LoadArchived(offset, limit int) ([]dispatcher.JobRecord, int, er
 		return nil, 0, err
 	}
 	return records, total, nil
+}
+
+// SaveStopAck implements dispatcher.StopAckStore: one acknowledgement per job and attempt.
+func (s *Store) SaveStopAck(a dispatcher.StopAckRecord) error {
+	if _, err := s.db.Exec(`INSERT INTO stop_acks (job_id, attempt, robot_id, at_ms) VALUES (?, ?, ?, ?)
+		ON CONFLICT(job_id, attempt) DO UPDATE SET robot_id = excluded.robot_id, at_ms = excluded.at_ms`,
+		a.JobID, a.Attempt, a.RobotID, a.AtMs); err != nil {
+		return fmt.Errorf("saving the stop acknowledgement of job %q: %w", a.JobID, err)
+	}
+	return nil
+}
+
+// LoadStopAcks implements dispatcher.StopAckStore.
+func (s *Store) LoadStopAcks() ([]dispatcher.StopAckRecord, error) {
+	rows, err := s.db.Query(`SELECT job_id, attempt, robot_id, at_ms FROM stop_acks ORDER BY job_id, attempt`)
+	if err != nil {
+		return nil, fmt.Errorf("reading the stop acknowledgements: %w", err)
+	}
+	defer rows.Close()
+	out := []dispatcher.StopAckRecord{}
+	for rows.Next() {
+		var a dispatcher.StopAckRecord
+		if err := rows.Scan(&a.JobID, &a.Attempt, &a.RobotID, &a.AtMs); err != nil {
+			return nil, fmt.Errorf("reading a stop acknowledgement: %w", err)
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
 }
