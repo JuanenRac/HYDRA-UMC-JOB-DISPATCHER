@@ -1,0 +1,39 @@
+# =============================================================================
+# HYDRA-UMC-JOB-DISPATCHER - Simulation bench
+# Copyright (C) 2026 JuanenRac (Electro Hobby 3D) <electrohobby3d@gmail.com>
+# GPL-3.0-or-later - see LICENSE
+#
+# Runs the real queue engine against a simulated fleet of robots with injected faults (robots that
+# fail a job or fall silent) and a controlled clock. No robot, no controller, no hardware.
+# It runs on every push and pull request, by hand, and once a week.
+# =============================================================================
+name: Simulation bench
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 5 * * 2"
+
+permissions:
+  contents: read
+
+jobs:
+  simulation:
+    name: Run the simulated fleet with injected faults
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+      - name: Run the simulation scenarios with the race detector
+        run: go test -race -count=1 -run 'TestSimulation_' -v ./src/dispatcher/
+      - name: Print the coverage of the queue engine
+        run: go test -count=1 -cover ./src/dispatcher/
