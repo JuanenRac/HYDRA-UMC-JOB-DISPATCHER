@@ -18,7 +18,7 @@ GPL-3.0-or-later - see LICENSE
   <img src="https://img.shields.io/badge/License-GPL%203.0--or--later-blue.svg" alt="GPL 3.0 or later">
   <img src="https://img.shields.io/badge/Go-1.21%2B-00ADD8.svg" alt="Go">
   <img src="https://img.shields.io/badge/Architecture-Event--Driven-blue.svg" alt="Architecture">
-  <img src="https://img.shields.io/badge/Tests-356%20passing-2ea44f.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/Tests-367%20passing-2ea44f.svg" alt="Tests">
   <img src="https://img.shields.io/badge/Version-0.3.0-0f6cbd.svg" alt="Version">
   <img src="https://img.shields.io/badge/Maturity-functional-0F6CBD.svg" alt="Maturity">
 </p>
@@ -35,7 +35,7 @@ GPL-3.0-or-later - see LICENSE
 |---|---|
 | Versión | `0.3.0` |
 | Madurez | Funcional |
-| Tests | 356 (`go test ./...`) |
+| Tests | 367 (`go test ./...`) |
 | Tecnología | Go / priority queue / HTTP API / SQLite (modernc.org/sqlite, pure Go) |
 | Destino | La Raspberry Pi CM5 de una celda HYDRA-UMC |
 | En hardware real | Solo simulado: probado con emuladores, dobles de prueba o simuladores; no consta ninguna ejecución en hardware real para esta versión |
@@ -51,7 +51,7 @@ Cada línea es una parte de este repositorio y la luz dice hasta dónde llega ho
 | Área | Estado | Qué significa aquí |
 |---|---|---|
 | Software | 🟡 | Funciona para su propósito principal; la comprobación de honestidad de arriba lista lo que aún falta |
-| Pruebas | 🟢 | 356 pruebas automáticas, ejecutadas en cada cambio |
+| Pruebas | 🟢 | 367 pruebas automáticas, ejecutadas en cada cambio |
 | Hardware real | 🟠 | Solo simulado: probado con emuladores, dobles de prueba o simuladores; no consta ninguna ejecución en hardware real para esta versión |
 | Interfaz y protocolos | 🟡 | Las rutas o los mensajes que ofrece están documentados y probados con un cliente; aún no los han usado todos los clientes |
 | Integración | 🟠 | Funciona junto con los demás servicios en el banco de pruebas de la CM5 y sus mensajes siguen los contratos compartidos del SDK |
@@ -179,7 +179,7 @@ curl http://127.0.0.1:8090/health
 
 ## 🧪 Pruebas
 
-356 pruebas de Go se ejecutan con `go test ./...`; están junto al código (`src/api`, `src/dispatcher`, `src/sqlitestore` y `main_test.go`) e incluyen un proceso que se mata y se relanza sobre un fichero SQLite. Sin hardware ni red externa.
+367 pruebas de Go se ejecutan con `go test ./...`; están junto al código (`src/api`, `src/dispatcher`, `src/sqlitestore` y `main_test.go`) e incluyen un proceso que se mata y se relanza sobre un fichero SQLite. Sin hardware ni red externa.
 
 El CI ejecuta `HYDRA_UMC_CI=1 python tools/ci_validate.py`, que comprueba el manifiesto, los documentos, los ocho README y las imágenes.
 
