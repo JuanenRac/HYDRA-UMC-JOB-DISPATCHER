@@ -23,7 +23,7 @@ on:
         required: true
         default: true
       ref:
-        description: "Branch, tag or commit of this repository"
+        description: "Branch or tag of this repository, the same one the run is started from (--ref); it must be part of main"
         type: string
         required: true
         default: main
@@ -64,16 +64,22 @@ jobs:
       - name: Check out this repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.ref }}
+          # the commit this run was started from; the ref input can only confirm it (start the run from that branch or tag)
+          ref: ${{ github.sha }}
           persist-credentials: false
           fetch-depth: 0
 
       - name: Make sure the commit belongs to the main branch
         shell: bash
+        env:
+          REF: ${{ inputs.ref }}
         run: |
           set -euo pipefail
           # only code that is already in main is built: a branch or a fork commit that is not in main is refused
           git merge-base --is-ancestor HEAD refs/remotes/origin/main || { echo "::error::the commit $(git rev-parse --short HEAD) is not part of the main branch; merge it first"; exit 1; }
+          # the commit built is the one this run was started from (github.sha); the ref input can only confirm it, never choose another commit
+          want="$(git rev-parse --verify --quiet "refs/remotes/origin/${REF}^{commit}" || git rev-parse --verify --quiet "refs/tags/${REF}^{commit}" || git rev-parse --verify --quiet "${REF}^{commit}" || true)"
+          [ -n "$want" ] && [ "$want" = "$(git rev-parse HEAD)" ] || { echo "::error::the ref $REF is not the commit this run was started from ($(git rev-parse --short HEAD)); start the run from that ref"; exit 1; }
 
       - name: Work out the version and pin the commit
         id: plan
@@ -109,7 +115,8 @@ jobs:
       - name: Check out the exact commit that was planned
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.plan.outputs.sha }}
+          # the commit this run was started from, which is the one the plan job checked out and pinned
+          ref: ${{ github.sha }}
           persist-credentials: false
 
       - name: Set up Go
