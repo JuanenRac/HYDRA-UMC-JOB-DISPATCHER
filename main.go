@@ -287,6 +287,10 @@ func main() {
 		server.SetMetricsEnabled(true)
 		fmt.Println("[job-dispatcher] GET /metrics is open (this machine, or the bearer token when one is set); numbers only")
 	}
+	if fileConfig.RobotJSON != nil && fileConfig.RobotJSON.CamelCaseAliases {
+		server.SetRobotCamelAliases(true)
+		fmt.Println("[job-dispatcher] the robot lists carry the camelCase names (id, location, tool, available, load, lastHeartbeat) next to the original ones")
+	}
 	if *configPath != "" {
 		// the service can re-read its configuration file while it runs (POST /admin/reload-config, from this machine only)
 		server.SetConfigReloader(newConfigReloader(*configPath, engine, *etaOn, *etaDefault, *etaWindow).withBoard(board).Reload)

@@ -53,7 +53,9 @@ type Server struct {
 	// version is published by GET /metrics; metrics holds the counters and metricsHandler wraps the routes with them.
 	version string
 	// metricsOn opens GET /metrics (the "metrics" section of the configuration file); closed, the route answers like any unknown path.
-	metricsOn      bool
+	metricsOn bool
+	// robotAliases adds the camelCase names (id, location, tool, available, load, lastHeartbeat) next to those of the Go structure in every robot list.
+	robotAliases   bool
 	metrics        *ServiceMetrics
 	metricsHandler http.Handler
 }
@@ -120,6 +122,45 @@ func (s *Server) SetVersion(version string) { s.version = version }
 
 // SetMetricsEnabled opens GET /metrics. Without it (the default) the route answers like any unknown path (404).
 func (s *Server) SetMetricsEnabled(on bool) { s.metricsOn = on }
+
+// SetRobotCamelAliases adds the camelCase names next to the original ones in every robot list (the "robot_json" section of the configuration file). Off by default.
+func (s *Server) SetRobotCamelAliases(on bool) { s.robotAliases = on }
+
+// robotsView is what the robot routes answer: the robots as they always were, or, with the aliases on, each robot with the camelCase names added
+// next to the original ones. The list is never null.
+func (s *Server) robotsView(robots []dispatcher.Robot) any {
+	if !s.robotAliases {
+		return robots
+	}
+	out := make([]map[string]any, 0, len(robots))
+	for _, robot := range robots {
+		encoded, err := json.Marshal(robot)
+		if err != nil {
+			continue
+		}
+		fields := map[string]any{}
+		if err := json.Unmarshal(encoded, &fields); err != nil {
+			continue
+		}
+		for original, alias := range robotAliasNames {
+			if value, ok := fields[original]; ok {
+				fields[alias] = value
+			}
+		}
+		out = append(out, fields)
+	}
+	return out
+}
+
+// robotAliasNames maps the field names of Robot that are not camelCase to their camelCase alias.
+var robotAliasNames = map[string]string{
+	"ID":            "id",
+	"Location":      "location",
+	"Tool":          "tool",
+	"Available":     "available",
+	"Load":          "load",
+	"LastHeartbeat": "lastHeartbeat",
+}
 
 // metricsAllowed says whether the caller may read the numbers of an open GET /metrics: with a token set, the caller must present it; without
 // one, only a caller on this machine may read them.
@@ -361,7 +402,7 @@ func (s *Server) handleRobotByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	log.Printf("[job-dispatcher] robot %q removed", id)
-	writeJSON(w, http.StatusOK, s.engine.Robots())
+	writeJSON(w, http.StatusOK, s.robotsView(s.engine.Robots()))
 }
 
 // submitRequest is jobRequest plus an optional idempotency key. A separate
@@ -560,7 +601,7 @@ type robotRequest struct {
 func (s *Server) handleRobots(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		writeJSON(w, http.StatusOK, s.engine.Robots())
+		writeJSON(w, http.StatusOK, s.robotsView(s.engine.Robots()))
 	case http.MethodPost:
 		var req robotRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -578,7 +619,7 @@ func (s *Server) handleRobots(w http.ResponseWriter, r *http.Request) {
 			Available:   req.Available,
 			StopCapable: req.StopCapable,
 		})
-		writeJSON(w, http.StatusOK, s.engine.Robots())
+		writeJSON(w, http.StatusOK, s.robotsView(s.engine.Robots()))
 	default:
 		w.Header().Set("Allow", "GET, POST")
 		writeError(w, http.StatusMethodNotAllowed, errors.New("use GET to list robots or POST to register/update one"))
