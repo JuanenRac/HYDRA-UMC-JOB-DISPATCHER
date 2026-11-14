@@ -109,3 +109,17 @@ func TestConfig_ArchiveDefaultsToThirtyDaysAndCanBeTunedOrTurnedOff(t *testing.T
 		}
 	}
 }
+
+func TestParseConfig_RobotJSONSectionIsReadAndOffByDefault(t *testing.T) {
+	on, err := ParseConfig([]byte(`{"robot_json": {"camel_case_aliases": true}}`))
+	if err != nil || on.RobotJSON == nil || !on.RobotJSON.CamelCaseAliases {
+		t.Fatalf("the switch must be read: %+v %v", on.RobotJSON, err)
+	}
+	none, err := ParseConfig([]byte(`{}`))
+	if err != nil || none.RobotJSON != nil {
+		t.Fatalf("no section means the switch is off: %+v %v", none.RobotJSON, err)
+	}
+	if _, err := ParseConfig([]byte(`{"robot_json": {"camel_case": true}}`)); err == nil {
+		t.Fatal("an unknown key of the section must be refused")
+	}
+}

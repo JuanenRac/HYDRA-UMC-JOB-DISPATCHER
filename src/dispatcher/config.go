@@ -28,6 +28,15 @@ type FileConfig struct {
 	MissionState   *MissionStateSection   `json:"mission_state,omitempty"`
 	ProposalVerify *ProposalVerifySection `json:"proposal_verify,omitempty"`
 	Archive        *ArchiveSection        `json:"archive,omitempty"`
+	RobotJSON      *RobotJSONSection      `json:"robot_json,omitempty"`
+}
+
+// RobotJSONSection is the "robot_json" section: how the dispatcher writes a robot in its answers. The robot list has always carried the field
+// names of the Go structure (ID, Location, Tool, Available, Load, LastHeartbeat) next to the camelCase name stopCapable, and the consumers read
+// those names, so they are not renamed. With camel_case_aliases on, every robot also carries id, location, tool, available, load and
+// lastHeartbeat with the same values, so a client can read one style for every field. Off unless enabled; a change of this section needs a restart.
+type RobotJSONSection struct {
+	CamelCaseAliases bool `json:"camel_case_aliases"`
 }
 
 // ArchiveSection is the "archive" section: how long a job that ended (done, failed or cancelled) stays in the live queue before it is archived,
