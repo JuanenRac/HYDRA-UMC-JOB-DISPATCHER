@@ -98,8 +98,8 @@ type Robot struct {
 	// has an active assignment - this project's own guard in UpsertRobot already
 	// refuses to let that heartbeat touch Available directly (the
 	// scheduler's reservation must win over a racing heartbeat), but
-	// silently dropping it entirely lost the real signal outright: a robot
-	// that faults mid-task used to come back fully Available the instant
+	// silently dropping it entirely would lose the real signal outright: a robot
+	// that faults mid-task would come back fully Available the instant
 	// CompleteJob ran, with no memory that anything was ever wrong.
 	// Package-private and never persisted - see CompleteJob/UpsertRobot's
 	// own comments for exactly how it is set and cleared.
@@ -917,11 +917,11 @@ func (e *Engine) DispatchOnce() []Assignment {
 		robot.Available = false
 		persisted = true
 		// Store's own two SaveJob/SaveRobot calls are not a joint
-		// transaction, so this used to emit the assignment (and keep the
-		// in-memory Assigned/Available state) even when either write
+		// transaction, so emitting the assignment (and keeping the
+		// in-memory Assigned/Available state) when either write
 		// failed, only combining the failure into persistErr for the
-		// caller to notice later, out of band - the physical dispatch
-		// this return value drives had no such caller. If the process
+		// caller to notice later, out of band, would be wrong - the physical dispatch
+		// this return value drives has no such caller. If the process
 		// restarted before a later retry happened to persist the job,
 		// that exact job would still read Pending from disk and get
 		// handed to DispatchOnce again next cycle - a second, invisible
@@ -1128,7 +1128,7 @@ func (e *Engine) CompleteJobAttempt(jobID string, success bool, robotID string, 
 	// while this job was active (dropped by UpsertRobot's guard,
 	// but recorded via selfReportedUnavailable) means the robot itself
 	// already said it isn't ready; unconditionally flipping Available
-	// back to true here used to silently discard that real signal the
+	// back to true here would silently discard that real signal the
 	// instant the job ended, regardless of success or failure. Only a
 	// robot that never self-reported unavailable mid-task comes back
 	// available on completion - one that did stays unavailable until its
