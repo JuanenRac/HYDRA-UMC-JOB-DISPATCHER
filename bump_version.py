@@ -86,7 +86,4 @@ if __name__ == "__main__":
     _shared_exit = _delegate_to_shared_utility()
     if _shared_exit is not None:
         raise SystemExit(_shared_exit)
-
-
-if __name__ == "__main__":
     raise SystemExit(main())
