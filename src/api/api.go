@@ -521,8 +521,8 @@ func (s *Server) handleCompleteJob(w http.ResponseWriter, r *http.Request) {
 }
 
 // completeJobErrorStatus maps dispatcher.Engine.CompleteJob's own distinct
-// sentinel errors to a distinct, meaningful HTTP status instead of the
-// generic 400 this handler used to return for every failure mode
+// sentinel errors to a distinct, meaningful HTTP status instead of one
+// generic 400 for every failure mode
 // regardless of what actually went wrong - a caller (an actual robot or
 // an operator script) can't tell "you named a job that was never
 // submitted" apart from "wrong robot reported this" apart from "this job
