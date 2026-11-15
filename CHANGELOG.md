@@ -4,6 +4,9 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+
+## [0.3.1]
+
 - **Comments describe what the code does, not what it used to do:** four comments in `api.go` and `dispatcher.go` say the present behaviour and the reason for it. Comments only: no behaviour changes.
 - **The SDK pin and the shared tools are up to date:** the SDK dependency names the newest release tag, and the shared tools are the canonical copies again.
 - **The robot lists can carry camelCase names next to the original ones (`robot_json.camel_case_aliases`, off by default):** `GET /robots`, `POST /robots` and `DELETE /robots/{id}` answer the robots with the field names of the Go structure (`ID`, `Location`, `Tool`, `Available`, `Load`, `LastHeartbeat`) next to the camelCase `stopCapable`, and the consumers read those names, so none is renamed or removed. With `{"robot_json": {"camel_case_aliases": true}}` in the configuration file (read at start) every robot also carries `id`, `location`, `tool`, `available`, `load` and `lastHeartbeat` with the same values, so a client can read one style for every field. The list is an empty array, never `null`, with the switch on or off. Tests: off by default the list is exactly what it was, on the aliases carry the same values, and the three routes agree.
@@ -13,6 +16,8 @@ All notable changes to this project are documented here.
 - **The stop acknowledgements can be kept as proof (off by default):** with `replan.persist_stop_acks`, every accepted `POST /jobs/stop-ack` is written down (in the database, when there is one) before the job goes back to the queue, survives a restart and is listed at `GET /jobs/stop-acks`, so a standby orchestrator that takes over while the dispatcher is down can read whether a robot stopped its job. If the acknowledgement cannot be kept it is refused and the robot sends it again. Tested with a store that fails, a restart, the database and the route. Simulation only: evidence is the simulator.
 - **Jobs that ended long ago are archived:** with the database (`-db`), a job that ended (done, failed or cancelled) more than 30 days ago leaves the live queue and stays in the database; `GET /jobs?archived=1` reads them (`limit`, `offset`, `X-Total-Count`). A job that another job in the queue still depends on stays, so no verdict changes. The time and the interval are the `archive` section of the configuration file (`days`, `every_minutes`; `days` 0 turns it off). A queue that only grows made every read and every scheduling pass slower.
 - **The jobs of one robot are found through an index, not by walking the whole queue:** listing the jobs of a robot (`GET /jobs?robot=<id>`), checking whether a robot is reserved, removing a robot and replanning one now read a per-robot index that is rebuilt on start and pruned as it is read, so the cost no longer grows with the size of the queue. The answers are the same; a test compares the index with a full scan after dispatch, cancel and re-dispatch.
+
+- Build version synchronized with `hydra-umc.project.json` and the repository-native version source.
 
 ## [0.3.0] - A job can carry a signed trajectory proposal that the server checks before it is queued (off by default): the proposalverify section of the configuration file turns on the check of the optional proposal and expectedRobotId of... (and 8 more changes)
 
