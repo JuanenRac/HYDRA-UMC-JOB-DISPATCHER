@@ -216,6 +216,7 @@ paths:
                     robotId: { type: string }
                     requestedAtMs: { type: integer, format: int64 }
                     expired: { type: boolean, description: True once the acknowledgement did not arrive in time. }
+                    attempt: { type: integer, description: The attempt of the job the request is for; the acknowledgement may name it. }
   /jobs/stop-ack:
     post:
       summary: The robot confirms it stopped the job; the job goes back to the queue (only when the configuration file turns replanning on; otherwise 404)
@@ -229,6 +230,7 @@ paths:
               properties:
                 robotId: { type: string }
                 jobId: { type: string }
+                attempt: { type: integer, minimum: 0, description: The attempt the robot stopped, as the stop request lists it; 0 or absent means not declared. Another attempt than the open request's is a 409. }
       responses:
         "200":
           description: The job went back to the queue.

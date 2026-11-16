@@ -151,6 +151,38 @@ func TestStopConfirm_LateAcknowledgementResolvesAnUnknownJob(t *testing.T) {
 	}
 }
 
+// An acknowledgement that names another attempt is not the stop of the current one; the right attempt, or none, is.
+func TestStopConfirm_AcknowledgementOfAnotherAttemptIsRefused(t *testing.T) {
+	e, _ := stopEngine(t, true, false)
+	e.DetectStaleAssignmentsStop(time.Minute)
+	reqs := e.StopRequests()
+	if len(reqs) != 1 || reqs[0].Attempt != jobState(t, e).Attempt || reqs[0].Attempt == 0 {
+		t.Fatalf("stop requests = %+v, want one that names the attempt of the job", reqs)
+	}
+	for _, wrong := range []int{reqs[0].Attempt + 1, reqs[0].Attempt + 7} {
+		if err := e.AckStopAttempt("r1", "j", wrong); !errors.Is(err, ErrNoStopRequest) {
+			t.Fatalf("ack of attempt %d: err = %v, want ErrNoStopRequest", wrong, err)
+		}
+		if got := jobState(t, e); got.Status != StatusAssigned {
+			t.Fatalf("a refused acknowledgement changed the job: %+v", got)
+		}
+	}
+	if err := e.AckStopAttempt("r1", "j", reqs[0].Attempt); err != nil {
+		t.Fatalf("ack of the right attempt: %v", err)
+	}
+	if got := jobState(t, e); got.Status != StatusPending {
+		t.Fatalf("job = %+v, want pending", got)
+	}
+}
+
+func TestStopConfirm_AcknowledgementWithoutAnAttemptStillMatches(t *testing.T) {
+	e, _ := stopEngine(t, true, false)
+	e.DetectStaleAssignmentsStop(time.Minute)
+	if err := e.AckStopAttempt("r1", "j", 0); err != nil {
+		t.Fatalf("ack with no attempt: %v", err)
+	}
+}
+
 // Not acknowledged and the switch on: the job goes back anyway; a later acknowledgement changes nothing.
 func TestStopConfirm_NoAcknowledgementWithSwitchOnRequeues(t *testing.T) {
 	e, clock := stopEngine(t, true, true)

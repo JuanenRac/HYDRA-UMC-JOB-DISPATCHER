@@ -898,6 +898,8 @@ func (s *Server) handleStopAcks(w http.ResponseWriter, r *http.Request) {
 type stopAckRequest struct {
 	RobotID string `json:"robotId"`
 	JobID   string `json:"jobId"`
+	// Attempt is the attempt the robot stopped, as GET /jobs/stop-requests published it; 0 or absent = not declared.
+	Attempt int `json:"attempt"`
 }
 
 // handleStopAck answers POST /jobs/stop-ack: the robot confirms that it stopped the job it was asked to stop, and the job
@@ -921,7 +923,11 @@ func (s *Server) handleStopAck(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, errors.New("\"robotId\" and \"jobId\" are required"))
 		return
 	}
-	if err := s.engine.AckStop(req.RobotID, req.JobID); err != nil {
+	if req.Attempt < 0 {
+		writeError(w, http.StatusBadRequest, errors.New("\"attempt\" must not be negative"))
+		return
+	}
+	if err := s.engine.AckStopAttempt(req.RobotID, req.JobID, req.Attempt); err != nil {
 		status := http.StatusConflict
 		switch {
 		case errors.Is(err, dispatcher.ErrUnknownJob):

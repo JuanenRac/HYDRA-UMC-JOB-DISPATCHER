@@ -4,6 +4,7 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+- **The stop acknowledgement can name the attempt it confirms:** `GET /jobs/stop-requests` now lists the `attempt` of each request and `POST /jobs/stop-ack` takes an optional `attempt`. An acknowledgement of another attempt than the open request is a `409`, so a late or repeated acknowledgement of an earlier assignment of the same job to the same robot is no longer taken for the stop of the current one (and no longer saved as the proof of the new attempt). `0` or no attempt matches as before, so bridges that do not send it keep working. The OpenAPI file and the API guide are updated; tests cover the engine and the route.
 
 ## [0.3.1]
 
