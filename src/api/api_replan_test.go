@@ -135,6 +135,16 @@ func TestStopRoutes_AskThenAcknowledgeSendsTheJobBack(t *testing.T) {
 	if rec := get(t, s, "/jobs/stop-ack"); rec.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("GET stop-ack: status %d, want 405", rec.Code)
 	}
+	// the request names its attempt, and an acknowledgement of another attempt is not the stop of this one
+	if reqs[0].Attempt == 0 {
+		t.Fatalf("the stop request does not name the attempt: %+v", reqs[0])
+	}
+	if rec := post(t, s, "/jobs/stop-ack", map[string]any{"robotId": "r1", "jobId": "j1", "attempt": reqs[0].Attempt + 1}); rec.Code != http.StatusConflict {
+		t.Fatalf("other attempt: status %d, want 409", rec.Code)
+	}
+	if rec := post(t, s, "/jobs/stop-ack", map[string]any{"robotId": "r1", "jobId": "j1", "attempt": -1}); rec.Code != http.StatusBadRequest {
+		t.Fatalf("negative attempt: status %d, want 400", rec.Code)
+	}
 	if rec := post(t, s, "/jobs/stop-ack", map[string]any{"robotId": "r1", "jobId": "j1"}); rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != `{"requeuedJobIds":["j1"]}` {
 		t.Fatalf("ack: status %d body %s", rec.Code, rec.Body.String())
 	}

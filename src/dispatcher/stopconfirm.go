@@ -41,6 +41,9 @@ type StopRequest struct {
 	// Expired is true once the acknowledgement did not arrive in time (the job is then unknown, or was
 	// sent back to the queue under AllowUnconfirmed).
 	Expired bool `json:"expired"`
+	// Attempt is the attempt of the job this request is for; the acknowledgement may name it so that a late
+	// or repeated acknowledgement of an earlier assignment is not taken for the stop of this one.
+	Attempt int `json:"attempt"`
 }
 
 type stopRequest struct {
@@ -116,7 +119,7 @@ func (e *Engine) StopRequests() []StopRequest {
 		if !ok || (j.Status != StatusAssigned && j.Status != StatusUnknown) || j.AssignedRobot != r.robotID {
 			continue
 		}
-		out = append(out, StopRequest{JobID: id, RobotID: r.robotID, RequestedAtMs: r.at.UnixMilli(), Expired: r.expired})
+		out = append(out, StopRequest{JobID: id, RobotID: r.robotID, RequestedAtMs: r.at.UnixMilli(), Expired: r.expired, Attempt: r.attempt})
 	}
 	sort.Slice(out, func(i, k int) bool { return out[i].JobID < out[k].JobID })
 	return out
@@ -128,6 +131,14 @@ func (e *Engine) StopRequests() []StopRequest {
 // replanning is on (ErrReplanOff), for a known job (ErrUnknownJob), given to that robot
 // (ErrRobotMismatch) and with an open request (ErrNoStopRequest).
 func (e *Engine) AckStop(robotID, jobID string) error {
+	return e.AckStopAttempt(robotID, jobID, 0)
+}
+
+// AckStopAttempt is AckStop for an acknowledgement that names the attempt it confirms. An attempt other than
+// the one of the open request is refused (ErrNoStopRequest), so a late or repeated acknowledgement of an earlier
+// assignment of the same job to the same robot is not taken for the stop of the current one. 0 means the
+// acknowledgement does not say which attempt (bridges that predate the field): it is matched as before.
+func (e *Engine) AckStopAttempt(robotID, jobID string, attempt int) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if !e.replan.Enabled {
@@ -143,6 +154,9 @@ func (e *Engine) AckStop(robotID, jobID string) error {
 	req := e.stopReq[jobID]
 	if (j.Status != StatusAssigned && j.Status != StatusUnknown) || req == nil || req.robotID != robotID || req.attempt != j.Attempt {
 		return fmt.Errorf("%w: %q", ErrNoStopRequest, jobID)
+	}
+	if attempt != 0 && attempt != req.attempt {
+		return fmt.Errorf("%w: %q (the acknowledgement is for attempt %d, the open request for attempt %d)", ErrNoStopRequest, jobID, attempt, req.attempt)
 	}
 	if e.replan.PersistStopAcks {
 		// the proof is written before the job goes back to the queue: if it cannot be kept the acknowledgement is refused and the robot sends it again
