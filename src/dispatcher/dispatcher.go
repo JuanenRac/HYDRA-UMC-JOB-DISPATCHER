@@ -196,7 +196,7 @@ type Engine struct {
 	jobs           map[string]*Job
 	robots         map[string]*Robot
 	nextSeq        int64
-	dedupIndex     map[string]string // DedupKey -> JobID, only for jobs submitted with a non-empty DedupKey
+	dedupIndex     map[string]string              // DedupKey -> JobID, only for jobs submitted with a non-empty DedupKey
 	heldBy         map[string]map[string]struct{} // robot -> ids of the jobs that name it as AssignedRobot (a superset, pruned when read: see jobsHeldByLocked)
 	store          Store
 	lastPersistErr error
@@ -223,6 +223,9 @@ type Engine struct {
 	events *EventHub
 	// toolCheck confirms the tool a robot really carries before a job that needs one is given to it (see toolconfirm.go); the zero value is off.
 	toolCheck toolConfirmation
+	// holdEnabled says the global hold exists and held that no assignment is made now (see hold.go); both off by default.
+	holdEnabled bool
+	held        bool
 	// now is the engine's own clock, injectable so a test can control it
 	// exactly (see DetectStaleAssignments) - real callers always get
 	// time.Now via the constructors below.
@@ -885,6 +888,9 @@ func (e *Engine) refreshBlocked() error {
 func (e *Engine) DispatchOnce() []Assignment {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	if e.held {
+		return nil
+	}
 
 	eligible := make([]*Job, 0, len(e.jobs))
 	for _, j := range e.jobs {

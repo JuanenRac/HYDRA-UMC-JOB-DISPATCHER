@@ -415,6 +415,26 @@ paths:
                   properties:
                     JobID: { type: string }
                     RobotID: { type: string }
+  /dispatch/hold:
+    get:
+      summary: Whether assignments are held (only with the hold switched on)
+      responses:
+        "200": { description: "held true or false" }
+        "404": { description: "the hold is off" }
+    post:
+      summary: Hold every new assignment
+      responses:
+        "200": { description: held }
+        "404": { description: "the hold is off" }
+        "503": { description: "held, but it could not be saved" }
+  /dispatch/release:
+    post:
+      summary: Release the hold (token of the API or admin identity)
+      responses:
+        "200": { description: released }
+        "403": { description: "the caller may not release" }
+        "404": { description: "the hold is off" }
+        "503": { description: "the release could not be saved" }
   /dispatch/state:
     get:
       summary: The state of the queue, job-dispatch-state/1 (counts by status and the jobs each robot holds)

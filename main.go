@@ -287,6 +287,20 @@ func main() {
 		server.SetMetricsEnabled(true)
 		fmt.Println("[job-dispatcher] GET /metrics is open (this machine, or the bearer token when one is set); numbers only")
 	}
+	if fileConfig.Hold != nil && fileConfig.Hold.Enabled {
+		if err := engine.SetHoldEnabled(true); err != nil {
+			log.Fatalf("[job-dispatcher] refusing to start: %v", err)
+		}
+		fmt.Printf("[job-dispatcher] POST /dispatch/hold and /dispatch/release are open; assignments held now: %v\n", engine.Held())
+	}
+	if len(fileConfig.RobotTokens) > 0 {
+		tokens, err := api.RobotTokens(fileConfig.RobotTokens, *token, os.Getenv)
+		if err != nil {
+			log.Fatalf("[job-dispatcher] refusing to start: %v", err)
+		}
+		server.SetRobotTokens(tokens)
+		fmt.Printf("[job-dispatcher] %d robot(s) have a token of their own\n", len(tokens))
+	}
 	if fileConfig.RobotJSON != nil && fileConfig.RobotJSON.CamelCaseAliases {
 		server.SetRobotCamelAliases(true)
 		fmt.Println("[job-dispatcher] the robot lists carry the camelCase names (id, location, tool, available, load, lastHeartbeat) next to the original ones")
