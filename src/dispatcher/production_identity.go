@@ -31,7 +31,11 @@ func LoadIdentityKey(path string) ([]byte, error) {
 	if err != nil {
 		return nil, errors.New("cannot read the identity key file")
 	}
-	key := strings.TrimSpace(string(raw))
+	// a byte order mark (an editor of Windows) is not part of the key; UTF-16 shows as NULs and is refused
+	key := strings.TrimSpace(strings.TrimPrefix(string(raw), "\ufeff"))
+	if strings.ContainsRune(key, 0) {
+		return nil, errors.New("the identity key file is not UTF-8 text")
+	}
 	if len(key) < MinIdentityKeyLength {
 		return nil, fmt.Errorf("the identity key must have at least %d characters", MinIdentityKeyLength)
 	}

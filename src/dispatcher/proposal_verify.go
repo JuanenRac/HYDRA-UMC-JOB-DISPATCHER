@@ -116,9 +116,13 @@ func (v *ProposalVerifier) credential() (string, error) {
 	if err != nil {
 		return "", errors.New("cannot read the token file")
 	}
-	token := strings.TrimSpace(string(raw))
+	// a byte order mark (an editor of Windows) is not part of the token; UTF-16 shows as NULs and is refused
+	token := strings.TrimSpace(strings.TrimPrefix(string(raw), "\ufeff"))
 	if token == "" {
 		return "", errors.New("the token file is empty")
+	}
+	if strings.ContainsRune(token, 0) {
+		return "", errors.New("the token file is not UTF-8 text")
 	}
 	return token, nil
 }
