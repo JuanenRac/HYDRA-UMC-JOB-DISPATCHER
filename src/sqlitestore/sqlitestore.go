@@ -15,6 +15,7 @@ package sqlitestore
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -104,6 +105,10 @@ CREATE TABLE IF NOT EXISTS stop_acks (
 	robot_id TEXT NOT NULL,
 	at_ms    INTEGER NOT NULL,
 	PRIMARY KEY (job_id, attempt)
+);
+CREATE TABLE IF NOT EXISTS settings (
+	key   TEXT PRIMARY KEY,
+	value TEXT NOT NULL
 );
 `
 
@@ -407,6 +412,32 @@ func (s *Store) SaveStopAck(a dispatcher.StopAckRecord) error {
 		return fmt.Errorf("saving the stop acknowledgement of job %q: %w", a.JobID, err)
 	}
 	return nil
+}
+
+// SaveHold implements dispatcher.HoldStore.
+func (s *Store) SaveHold(held bool) error {
+	value := "0"
+	if held {
+		value = "1"
+	}
+	if _, err := s.db.Exec(`INSERT INTO settings (key, value) VALUES ('hold', ?)
+		ON CONFLICT(key) DO UPDATE SET value = excluded.value`, value); err != nil {
+		return fmt.Errorf("saving the hold: %w", err)
+	}
+	return nil
+}
+
+// LoadHold implements dispatcher.HoldStore: a store that never saw a hold holds nothing.
+func (s *Store) LoadHold() (bool, error) {
+	var value string
+	err := s.db.QueryRow(`SELECT value FROM settings WHERE key = 'hold'`).Scan(&value)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("reading the hold: %w", err)
+	}
+	return value == "1", nil
 }
 
 // LoadStopAcks implements dispatcher.StopAckStore.

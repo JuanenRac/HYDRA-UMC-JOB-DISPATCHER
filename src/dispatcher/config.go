@@ -29,6 +29,9 @@ type FileConfig struct {
 	ProposalVerify *ProposalVerifySection `json:"proposal_verify,omitempty"`
 	Archive        *ArchiveSection        `json:"archive,omitempty"`
 	RobotJSON      *RobotJSONSection      `json:"robot_json,omitempty"`
+	Hold           *HoldSection           `json:"hold,omitempty"`
+	// RobotTokens maps a robot id to the name of the environment variable that holds its own token; empty by default.
+	RobotTokens map[string]string `json:"robot_tokens,omitempty"`
 }
 
 // RobotJSONSection is the "robot_json" section: how the dispatcher writes a robot in its answers. The robot list has always carried the field
@@ -37,6 +40,11 @@ type FileConfig struct {
 // lastHeartbeat with the same values, so a client can read one style for every field. Off unless enabled; a change of this section needs a restart.
 type RobotJSONSection struct {
 	CamelCaseAliases bool `json:"camel_case_aliases"`
+}
+
+// HoldSection is the "hold" section: whether POST /dispatch/hold and /dispatch/release exist. Off unless enabled; a change needs a restart.
+type HoldSection struct {
+	Enabled bool `json:"enabled"`
 }
 
 // ArchiveSection is the "archive" section: how long a job that ended (done, failed or cancelled) stays in the live queue before it is archived,

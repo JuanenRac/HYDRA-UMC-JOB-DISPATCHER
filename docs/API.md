@@ -344,6 +344,21 @@ Each assigned job's `Status` becomes `"assigned"` and `AssignedRobot` is set; th
 
 ---
 
+## `GET /dispatch/hold`, `POST /dispatch/hold` and `POST /dispatch/release`
+
+Off unless the configuration file has `{"hold": {"enabled": true}}`; off, the routes answer `404`. While held no job is given to a robot
+(`POST /dispatch` answers `423`); jobs are still accepted, the robots still report and a job already on a robot goes on. `GET` answers
+`{"held": true|false}`. Releasing takes the token of the API or an admin identity of HYDRA-UMC-SERVER (`403` otherwise). With `-db` the hold
+survives a restart. A hold that cannot be saved is applied and answers `503`; a release that cannot be saved is refused with `503`. The
+events `held` and `released` have an empty `jobId`.
+
+## Tokens of the robots
+
+`{"robot_tokens": {"arm-1": "ARM1_TOKEN"}}` reads the token of `arm-1` from the environment variable `ARM1_TOKEN` (the service refuses to
+start when it is empty, shared or equal to the token of the API). That token opens `POST /jobs/complete`, `POST /jobs/stop-ack` and
+`POST /robots` for `arm-1` only (`403` for another robot) and reads `GET /jobs/stop-requests`. A robot with a token of its own is spoken for by
+it or by the token of the API. Robots without one are unchanged. A change needs a restart.
+
 ## `GET /dispatch/state`
 
 Read-only: the state of the queue as one small document, `job-dispatch-state/1`, for a reader that must not fetch every job. `counts` is the number of jobs in each status and `by_robot` lists, for each robot that holds a job, the ids of the jobs assigned to it in submission order (a robot with none is not listed). It carries no job content. Requires the token when one is set.

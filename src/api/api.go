@@ -40,6 +40,8 @@ type Server struct {
 	token  string
 	// identityKey is the signing key of HYDRA-UMC-SERVER when the operator turned its identity on (SetIdentityKey); nil leaves the earlier rules.
 	identityKey []byte
+	// robotTokens gives some robots a token of their own (SetRobotTokens); empty leaves the earlier rules.
+	robotTokens map[string]string
 	// maxBody is the largest request body any route reads (MaxBodyBytes unless SetMaxBodyBytes changed it).
 	maxBody int64
 	// reloader runs POST /admin/reload-config; nil (no configuration file was given) leaves the route unknown.
@@ -99,6 +101,8 @@ func New(engine *dispatcher.Engine) *Server {
 	s.mux.HandleFunc("/robots", s.handleRobots)
 	s.mux.HandleFunc("/robots/", s.handleRobotByID)
 	s.mux.HandleFunc("/dispatch", s.handleDispatch)
+	s.mux.HandleFunc("/dispatch/hold", s.handleHold)
+	s.mux.HandleFunc("/dispatch/release", s.handleRelease)
 	s.mux.HandleFunc("/dispatch/waiting", s.handleWaiting)
 	s.mux.HandleFunc("/dispatch/state", s.handleState)
 	s.mux.HandleFunc("/dispatch/eta", s.handleETA)
@@ -189,7 +193,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) serveRoutes(w http.ResponseWriter, r *http.Request) {
-	if s.identityKey != nil {
+	if s.robotCaller(r) {
+		// the token of a robot on one of its own routes: the handler checks which robot it speaks for
+	} else if s.identityKey != nil {
 		if !s.identityAllowed(r) {
 			w.Header().Set("WWW-Authenticate", "Bearer")
 			writeError(w, http.StatusUnauthorized, errors.New("a valid identity is required"))
@@ -512,6 +518,9 @@ func (s *Server) handleCompleteJob(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, errors.New("\"attempt\" must not be negative"))
 		return
 	}
+	if !s.robotMaySpeak(w, r, req.RobotID) {
+		return
+	}
 	if err := s.engine.CompleteJobAttempt(req.ID, req.Success, req.RobotID, req.Attempt); err != nil {
 		writeError(w, completeJobErrorStatus(err), err)
 		return
@@ -612,6 +621,9 @@ func (s *Server) handleRobots(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, errors.New("\"id\" is required"))
 			return
 		}
+		if !s.robotMaySpeak(w, r, req.ID) {
+			return
+		}
 		s.engine.UpdateRobot(dispatcher.RobotUpdate{
 			ID:          req.ID,
 			Location:    req.Location,
@@ -663,6 +675,10 @@ func (s *Server) handleDispatch(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", "POST")
 		writeError(w, http.StatusMethodNotAllowed, errors.New("use POST"))
+		return
+	}
+	if s.engine.Held() {
+		writeError(w, http.StatusLocked, errors.New("assignments are held (POST /dispatch/release)"))
 		return
 	}
 	s.engine.ConfirmTools() // asks the controllers which tool each robot carries; nothing when the confirmation is off
@@ -925,6 +941,9 @@ func (s *Server) handleStopAck(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Attempt < 0 {
 		writeError(w, http.StatusBadRequest, errors.New("\"attempt\" must not be negative"))
+		return
+	}
+	if !s.robotMaySpeak(w, r, req.RobotID) {
 		return
 	}
 	if err := s.engine.AckStopAttempt(req.RobotID, req.JobID, req.Attempt); err != nil {

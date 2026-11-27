@@ -36,6 +36,9 @@ const (
 	EventDone     = "done"
 	EventFailed   = "failed"
 	EventUnknown  = "unknown"
+	// EventHeld and EventReleased are about the whole queue, not one job: their jobId is empty (see hold.go).
+	EventHeld     = "held"
+	EventReleased = "released"
 )
 
 // Event is one thing that happened to a job.
@@ -77,7 +80,7 @@ func DefaultEventsConfig() EventsConfig {
 // ValidEventType reports whether t is one of the event types.
 func ValidEventType(t string) bool {
 	switch t {
-	case EventAssigned, EventDone, EventFailed, EventUnknown:
+	case EventAssigned, EventDone, EventFailed, EventUnknown, EventHeld, EventReleased:
 		return true
 	}
 	return false
