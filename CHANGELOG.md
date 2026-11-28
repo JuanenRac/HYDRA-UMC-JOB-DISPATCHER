@@ -4,6 +4,7 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+- **The hold of the queue is checked against the contract shared with the orchestrator:** `src/api/testdata/job-dispatcher-hold.json` is a byte copy of the fixture of HYDRA-UMC-SDK. Test added.
 - **The whole queue can be held:** with `{"hold": {"enabled": true}}` in the configuration file (off by default), `POST /dispatch/hold` stops every new assignment (`POST /dispatch` answers `423`), `GET /dispatch/hold` says whether it is held and `POST /dispatch/release` releases it with the token of the API or an admin identity only. The hold survives a restart with `-db`, and `held`/`released` are announced as events. A job already on a robot goes on: this stops the queue, not a machine. Tests added.
 - **A robot can have a token of its own:** the `robot_tokens` section (robot id to the name of an environment variable, empty by default) lets a robot complete its jobs, acknowledge stops and send its heartbeat with that token and nothing else; another robot's token is refused with `403`, and a robot with its own token is spoken for only by it or by the token of the API. Tests added.
 - **Key and token files saved with a byte order mark are read:** a file written by an editor of Windows as "UTF-8 with BOM" kept the mark in front of the identity key or the token, so the server refused every request. The mark is dropped now; a UTF-16 file is refused. Test added.
